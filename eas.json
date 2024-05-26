@@ -19,6 +19,7 @@
     "development:device": {
       "extends": "development",
       "ios": {
+        "credentialsSource": "local",
         "simulator": false
       }
     },
@@ -42,6 +43,7 @@
     "preview:device": {
       "extends": "preview",
       "ios": {
+        "credentialsSource": "local",
         "simulator": false
       }
     },
