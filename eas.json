@@ -18,6 +18,7 @@
     },
     "development:device": {
       "extends": "development",
+      "developmentClient": true,
       "ios": {
         "credentialsSource": "local",
         "simulator": false
