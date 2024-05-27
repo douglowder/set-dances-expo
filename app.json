@@ -35,6 +35,13 @@
     "name": "set-dances",
     "slug": "set-dances",
     "scheme": "set-dances",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#3099b8"
+    },
     "android": {
       "userInterfaceStyle": "automatic",
       "package": "com.douglowder.setdances"
