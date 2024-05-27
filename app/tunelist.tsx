@@ -2,45 +2,44 @@ import { Link, router } from 'expo-router';
 import { StyleSheet, Pressable, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import ParallaxScrollView from '@/components/ParallaxScrollView';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useScale } from '@/hooks/useScale';
 import { useThemeColor } from '@/hooks/useThemeColor';
-import { getTuneMap, Tune } from '@/constants/Tunes';
+import { getTuneMap, Tune, AllTunes } from '@/constants/Tunes';
 import { emitTuneChangeEvent } from '@/utils/TuneChangeEmitter';
+import { storeTuneSettingAsync } from '@/utils/TuneSettings';
+import ParallaxScrollView from '@/components/ParallaxScrollView';
 
 export default function TuneList() {
   const styles = useTuneListStyles();
 
   const handleRowSelect = (item: Tune) => {
-    emitTuneChangeEvent({ tuneKey: item.key });
-    router.back();
+    storeTuneSettingAsync(item).then(() => {
+      emitTuneChangeEvent();
+      router.back();
+    });
   };
   const renderRow = ({ item }: { item: Tune }) => {
     return (
-      <Pressable onPress={() => handleRowSelect(item)}>
+      <Pressable onPress={() => handleRowSelect(item)} key={item.key}>
         <ThemedView style={styles.textContainer}>
-          <ThemedText>{item.name}</ThemedText>
+          <ThemedText>{`${item.key}`}</ThemedText>
         </ThemedView>
       </Pressable>
     );
   };
 
-  const tuneMap = getTuneMap();
-  const data = [...tuneMap.keys()].map((key) => tuneMap.get(key) as Tune);
-
+  console.log(`total number of tunes = ${AllTunes.length}`);
   // If the page was reloaded or navigated to directly, then the modal should be presented as
   // a full screen page. You may need to change the UI to account for this.
   return (
     <ThemedView style={styles.container}>
       <ThemedView style={styles.safeAreaContainer}>
         <ThemedText type="subtitle">Select a tune:</ThemedText>
-        <FlatList
-          contentContainerStyle={styles.list}
-          data={data}
-          renderItem={renderRow}
-        />
+        <ParallaxScrollView>
+          {AllTunes.map((item) => renderRow({ item }))}
+        </ParallaxScrollView>
         {/* Use `../` as a simple way to navigate to the root. This is not analogous to "goBack". */}
         <Link href="../" asChild>
           <Pressable style={styles.button}>
@@ -78,8 +77,6 @@ const useTuneListStyles = function () {
     safeAreaContainer: {
       flex: 1,
       padding: 32 * scale,
-      gap: 16 * scale,
-      overflow: 'hidden',
       width: '100%',
       justifyContent: 'center',
       alignItems: 'center',

@@ -8,16 +8,10 @@ function _getJsEventEmitter(): JsEventEmitter {
   return _jsEventEmitter;
 }
 
-export type TuneChangeEvent = {
-  tuneKey: string;
-};
-
-export const addTuneChangeListener = (
-  listener: (event: TuneChangeEvent) => void,
-) => {
+export const addTuneChangeListener = (listener: () => void) => {
   return _getJsEventEmitter().addListener('tuneChangeEvent', listener);
 };
 
-export const emitTuneChangeEvent = (event: TuneChangeEvent) => {
-  _getJsEventEmitter().emit('tuneChangeEvent', event);
+export const emitTuneChangeEvent = () => {
+  _getJsEventEmitter().emit('tuneChangeEvent');
 };

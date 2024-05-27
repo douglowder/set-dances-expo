@@ -8,7 +8,7 @@ export type Tune = {
   defaultSpeed: number;
 };
 
-const Tunes: Tune[] = [
+export const AllTunes: Tune[] = [
   {
     key: 'aceanddeuceofpipering-107',
     type: 'hp',
@@ -499,7 +499,7 @@ let tuneMap: Map<string, Tune> | undefined = undefined;
 export const getTuneMap = function (): Map<string, Tune> {
   if (!tuneMap) {
     tuneMap = new Map<string, Tune>();
-    Tunes.forEach((tune) => {
+    AllTunes.forEach((tune) => {
       tuneMap?.set(tune.key, tune);
     });
   }

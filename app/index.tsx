@@ -34,60 +34,52 @@ export default function Index() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [sound, setSound] = useState<Audio.Sound | undefined>(undefined);
-  const [fractionComplete, setFractionComplete] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [speed, setSpeed] = useState(0);
+  const [speed, setSpeed] = useState(1);
+  const [tune, setTune] = useState<Tune | undefined>(undefined);
 
-  const tune = useRef<Tune>();
-
-  const progress = useSharedValue(fractionComplete);
-  const min = useSharedValue(0);
-  const max = useSharedValue(1);
+  const progressValue = useSharedValue(0);
+  const minProgressValue = useSharedValue(0);
+  const maxProgressValue = useSharedValue(1);
 
   const speedValue = useSharedValue(1);
-  const speedMin = useSharedValue(0);
-  const speedMax = useSharedValue(2);
+  const minSpeedValue = useSharedValue(0);
+  const maxSpeedValue = useSharedValue(2);
 
-  const changeTune = useCallback(
-    ({ tuneKey }: { tuneKey: string }) => {
-      const handleAsync = async () => {
-        let savedTune;
-        if (tuneKey !== '') {
-          savedTune = getTuneMap().get(tuneKey) as Tune;
-          await storeTuneSettingAsync(savedTune);
-        } else if (tune.current === undefined) {
-          savedTune = await fetchTuneSettingAsync();
-        } else {
-          return;
+  const initialize = useCallback(() => {
+    const handleAsync = async () => {
+      const savedTune = await fetchTuneSettingAsync();
+      setTune(savedTune);
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        savedTune.value,
+      );
+      setSound(newSound);
+      speedValue.value = savedTune.defaultSpeed;
+      minSpeedValue.value = savedTune.defaultSpeed - 10;
+      maxSpeedValue.value = savedTune.defaultSpeed + 10;
+      setSpeed(savedTune.defaultSpeed);
+      progressValue.value = 0;
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded) {
+          const f = fractionCompleteFromStatus(status);
+          setDuration(status.durationMillis ?? 0);
+          progressValue.value = f;
         }
-        tune.current = savedTune;
-        const { sound: newSound } = await Audio.Sound.createAsync(
-          savedTune.value,
-        );
-        setSound(newSound);
-        setSpeed(savedTune.defaultSpeed);
-        speedValue.value = savedTune.defaultSpeed;
-        speedMin.value = savedTune.defaultSpeed - 10;
-        speedMax.value = savedTune.defaultSpeed + 10;
-        setFractionComplete(0);
-        newSound.setOnPlaybackStatusUpdate((status) => {
-          if (status.isLoaded) {
-            const f = fractionCompleteFromStatus(status);
-            setFractionComplete(f);
-            setDuration(status.durationMillis ?? 0);
-            progress.value = f;
-          }
-        });
-        newSound.setProgressUpdateIntervalAsync(1000);
-      };
-      handleAsync();
-    },
-    [tune, sound, progress, speedValue, speedMin, speedMax],
-  );
+      });
+      newSound.setProgressUpdateIntervalAsync(1000);
+    };
+    handleAsync();
+  }, [tune, sound, progressValue, speedValue, minSpeedValue, maxSpeedValue]);
 
-  useEffect(() => changeTune({ tuneKey: '' }), []);
+  useEffect(() => {
+    if (tune === undefined) {
+      initialize();
+    }
+  }, [tune]);
 
-  addTuneChangeListener((event) => changeTune(event));
+  addTuneChangeListener(() => {
+    setTune(undefined);
+  });
 
   const handleRewind = () => {
     if (!sound) {
@@ -158,7 +150,7 @@ export default function Index() {
             </Link>
           </TVFocusGuideView>
           <Text style={styles.title}>Set Dances</Text>
-          <Text style={styles.tuneTitle}>{tune.current?.name}</Text>
+          <Text style={styles.tuneTitle}>{tune?.name ?? ''}</Text>
           <View style={{ flex: 1 }} />
           <TVFocusGuideView
             autoFocus
@@ -191,9 +183,9 @@ export default function Index() {
           </TVFocusGuideView>
           <Slider
             style={styles.progressContainer}
-            progress={progress}
-            maximumValue={max}
-            minimumValue={min}
+            progress={progressValue}
+            maximumValue={maxProgressValue}
+            minimumValue={minProgressValue}
             heartbeat={false}
             renderBubble={() => null}
             renderThumb={() => <View style={styles.progressCenter} />}
@@ -205,28 +197,27 @@ export default function Index() {
             }}
           />
           <Text style={styles.tuneTitle}>{`Speed: ${speed}`}</Text>
-          <Slider
-            style={styles.progressContainer}
-            progress={speedValue}
-            maximumValue={speedMax}
-            minimumValue={speedMin}
-            snapToStep
-            step={20}
-            heartbeat={false}
-            renderBubble={() => null}
-            renderMark={() => null}
-            renderThumb={() => <View style={styles.progressCenter} />}
-            theme={{
-              minimumTrackTintColor: 'blue',
-            }}
-            onSlidingComplete={(value) => {
-              setSpeed(value);
-              sound?.setRateAsync(
-                value / (tune.current?.defaultSpeed ?? 0),
-                false,
-              );
-            }}
-          />
+          {tune && (
+            <Slider
+              style={styles.progressContainer}
+              progress={speedValue}
+              maximumValue={maxSpeedValue}
+              minimumValue={minSpeedValue}
+              snapToStep
+              step={20}
+              heartbeat={false}
+              renderBubble={() => null}
+              renderMark={() => null}
+              renderThumb={() => <View style={styles.progressCenter} />}
+              theme={{
+                minimumTrackTintColor: 'blue',
+              }}
+              onSlidingComplete={(value) => {
+                setSpeed(value);
+                sound?.setRateAsync(value / (tune?.defaultSpeed ?? 0), false);
+              }}
+            />
+          )}
           <View style={{ flex: 2 }} />
         </View>
       </Image>
