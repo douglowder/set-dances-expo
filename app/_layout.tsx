@@ -42,21 +42,27 @@ export default function RootLayout() {
             <Stack.Screen
               name="info"
               options={{
-                // Set the presentation mode to modal for our modal route.
-                presentation: 'modal',
+                presentation: 'fullScreenModal',
                 headerShown: false,
                 contentStyle: {
                   width: '90%',
-                  maxHeight: '80%',
                   alignSelf: 'center',
                   marginTop: 50 * scale,
+                  marginBottom: 50 * scale,
                 },
               }}
             />
             <Stack.Screen
               name="tunelist"
               options={{
+                presentation: 'fullScreenModal',
                 headerShown: false,
+                contentStyle: {
+                  width: '90%',
+                  alignSelf: 'center',
+                  marginTop: 50 * scale,
+                  marginBottom: 50 * scale,
+                },
               }}
             />
             <Stack.Screen name="+not-found" />
