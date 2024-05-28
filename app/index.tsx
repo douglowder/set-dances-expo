@@ -1,11 +1,16 @@
 import { useScale } from '@/hooks/useScale';
 import { AVPlaybackStatusSuccess, Audio } from 'expo-av';
-import { Image } from 'expo-image';
 import { Link, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSharedValue } from 'react-native-reanimated';
-import { StyleSheet, TVFocusGuideView, Text, View } from 'react-native';
+import {
+  StyleSheet,
+  TVFocusGuideView,
+  Text,
+  View,
+  ImageBackground,
+} from 'react-native';
 import { Slider } from 'react-native-awesome-slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -48,7 +53,6 @@ export default function Index() {
       let savedTune;
       try {
         savedTune = await fetchTuneSettingAsync();
-        console.warn(savedTune.key);
         setTune(savedTune);
         const { sound: _sound } = await Audio.Sound.createAsync(
           savedTune.value,
@@ -142,7 +146,7 @@ export default function Index() {
 
   return (
     <View style={styles.container}>
-      <Image
+      <ImageBackground
         source={require('@/assets/images/splash.png')}
         style={styles.backgroundImage}
       >
@@ -227,7 +231,7 @@ export default function Index() {
           )}
           <View style={{ flex: 2 }} />
         </View>
-      </Image>
+      </ImageBackground>
       <StatusBar style="light" />
     </View>
   );
@@ -255,6 +259,7 @@ const useIndexStyles = function () {
       width: '100%',
       justifyContent: 'center',
       alignItems: 'center',
+      backgroundColor: 'transparent',
     },
     title: {
       color: 'white',
