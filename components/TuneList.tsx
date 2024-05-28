@@ -6,25 +6,27 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useScale } from '@/hooks/useScale';
 import { useThemeColor } from '@/hooks/useThemeColor';
-import { getTuneMap, Tune, AllTunes } from '@/constants/Tunes';
+import { Tune, TuneType, AllTunes } from '@/constants/AllTunes';
 import { emitTuneChangeEvent } from '@/utils/TuneChangeEmitter';
 import { storeTuneSettingAsync } from '@/utils/TuneSettings';
 import ParallaxScrollView from '@/components/ParallaxScrollView';
 
-export default function TuneList() {
+export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
   const styles = useTuneListStyles();
+
+  const tuneTypeSet = new Set(tuneTypes);
 
   const handleRowSelect = (item: Tune) => {
     storeTuneSettingAsync(item).then(() => {
       emitTuneChangeEvent();
-      router.back();
+      router.navigate('/');
     });
   };
   const renderRow = ({ item }: { item: Tune }) => {
     return (
       <Pressable onPress={() => handleRowSelect(item)} key={item.key}>
         <ThemedView style={styles.textContainer}>
-          <ThemedText>{`${item.key}`}</ThemedText>
+          <ThemedText>{`${item.name} (${item.defaultSpeed})`}</ThemedText>
         </ThemedView>
       </Pressable>
     );
@@ -35,13 +37,11 @@ export default function TuneList() {
   // a full screen page. You may need to change the UI to account for this.
   return (
     <ThemedView style={styles.container}>
-      <ThemedView style={styles.safeAreaContainer}>
-        <ThemedText type="subtitle">Select a tune:</ThemedText>
-        <ParallaxScrollView>
-          {AllTunes.map((item) => renderRow({ item }))}
-        </ParallaxScrollView>
-        {/* Use `../` as a simple way to navigate to the root. This is not analogous to "goBack". */}
-        <Link href="../" asChild>
+      <ThemedView style={styles.buttonContainer}>
+        <ThemedText style={styles.title} type="subtitle">
+          Select a tune:
+        </ThemedText>
+        <Link href="/" asChild>
           <Pressable style={styles.button}>
             {({ pressed, focused }) => (
               <ThemedText
@@ -58,6 +58,11 @@ export default function TuneList() {
           </Pressable>
         </Link>
       </ThemedView>
+      <ParallaxScrollView>
+        {AllTunes.filter((item) => tuneTypeSet.has(item.type)).map((item) =>
+          renderRow({ item }),
+        )}
+      </ParallaxScrollView>
     </ThemedView>
   );
 }
@@ -73,6 +78,8 @@ const useTuneListStyles = function () {
       width: '100%',
       justifyContent: 'center',
       alignItems: 'center',
+      paddingTop: 20 * scale,
+      paddingBottom: 20 * scale,
     },
     safeAreaContainer: {
       flex: 1,
@@ -104,11 +111,22 @@ const useTuneListStyles = function () {
     button: {
       backgroundColor,
       borderRadius: 10 * scale,
-      margin: 10 * scale,
+      margin: 20 * scale,
       padding: 10 * scale,
     },
     buttonText: {
       color,
+    },
+    buttonContainer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    title: {
+      flex: 1,
+      margin: 20 * scale,
+      fontSize: 30 * scale,
+      lineHeight: 40 * scale,
     },
   });
 };

@@ -10,13 +10,9 @@ import { Slider } from 'react-native-awesome-slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CircularButton } from '@/components/CircularButton';
-import {
-  Tune,
-  fetchTuneSettingAsync,
-  storeTuneSettingAsync,
-} from '@/utils/TuneSettings';
+import { Tune } from '@/constants/AllTunes';
+import { fetchTuneSettingAsync } from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
-import { getTuneMap } from '@/constants/Tunes';
 
 const playImage = require('@/assets/images/play.png');
 const pauseImage = require('@/assets/images/pause.png');
