@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Tune, getTuneMap } from '@/constants/AllTunes';
+import { Tune, getTuneMap, AllTunes } from '@/constants/AllTunes';
 
-const defaultTuneKey = 'missbrownsfancy-70';
+const defaultTuneKey = AllTunes[0].key;
+
 export const defaultTune = getTuneMap().get(defaultTuneKey) as unknown as Tune;
 
 export const fetchTuneSettingAsync: () => Promise<Tune> = async () => {

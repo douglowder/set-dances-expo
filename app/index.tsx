@@ -44,25 +44,35 @@ export default function Index() {
 
   const initialize = useCallback(() => {
     const handleAsync = async () => {
-      const savedTune = await fetchTuneSettingAsync();
-      setTune(savedTune);
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        savedTune.value,
-      );
+      let newSound;
+      let savedTune;
+      try {
+        savedTune = await fetchTuneSettingAsync();
+        console.warn(savedTune.key);
+        setTune(savedTune);
+        const { sound: _sound } = await Audio.Sound.createAsync(
+          savedTune.value,
+        );
+        newSound = _sound;
+      } catch (error) {
+        console.error(error);
+      }
       setSound(newSound);
-      speedValue.value = savedTune.defaultSpeed;
-      minSpeedValue.value = savedTune.defaultSpeed - 10;
-      maxSpeedValue.value = savedTune.defaultSpeed + 10;
-      setSpeed(savedTune.defaultSpeed);
+      if (savedTune) {
+        speedValue.value = savedTune.defaultSpeed;
+        minSpeedValue.value = savedTune.defaultSpeed - 10;
+        maxSpeedValue.value = savedTune.defaultSpeed + 10;
+        setSpeed(savedTune.defaultSpeed);
+      }
       progressValue.value = 0;
-      newSound.setOnPlaybackStatusUpdate((status) => {
+      newSound?.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded) {
           const f = fractionCompleteFromStatus(status);
           setDuration(status.durationMillis ?? 0);
           progressValue.value = f;
         }
       });
-      newSound.setProgressUpdateIntervalAsync(1000);
+      newSound?.setProgressUpdateIntervalAsync(1000);
     };
     handleAsync();
   }, [tune, sound, progressValue, speedValue, minSpeedValue, maxSpeedValue]);
