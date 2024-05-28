@@ -130,7 +130,8 @@ export default function Index() {
           console.warn(error);
         });
     }
-    router.push('/tunelist');
+    const tab = tune?.type.startsWith('trad') ? 'trad' : tune?.type ?? 'hp';
+    router.push(`/(tabs)/${tab}`);
   };
 
   return (

@@ -12,7 +12,7 @@ export const textStyles = function (
 } {
   return {
     default: {
-      fontSize: 16 * scale,
+      fontSize: 20 * scale,
       lineHeight: 24 * scale,
     },
     defaultSemiBold: {

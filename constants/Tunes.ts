@@ -1,8 +1,10 @@
 import { AVPlaybackSource } from 'expo-av';
 
+export type TuneType = 'hp' | 'jig' | 'slowhp' | 'tradhp' | 'tradjig';
+
 export type Tune = {
   key: string;
-  type: 'hp' | 'jig' | 'slowhp' | 'tradhp' | 'tradjig';
+  type: TuneType;
   name: string;
   value: AVPlaybackSource;
   defaultSpeed: number;
