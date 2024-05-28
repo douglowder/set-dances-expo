@@ -53,9 +53,18 @@ export default function Index() {
       let savedTune;
       try {
         savedTune = await fetchTuneSettingAsync();
-        setTune(savedTune);
         const { sound: _sound } = await Audio.Sound.createAsync(
           savedTune.value,
+          {
+            progressUpdateIntervalMillis: 1000,
+          },
+          (status) => {
+            if (status.isLoaded) {
+              const f = fractionCompleteFromStatus(status);
+              setDuration(status.durationMillis ?? 0);
+              progressValue.value = f;
+            }
+          },
         );
         newSound = _sound;
       } catch (error) {
@@ -69,14 +78,7 @@ export default function Index() {
         setSpeed(savedTune.defaultSpeed);
       }
       progressValue.value = 0;
-      newSound?.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded) {
-          const f = fractionCompleteFromStatus(status);
-          setDuration(status.durationMillis ?? 0);
-          progressValue.value = f;
-        }
-      });
-      newSound?.setProgressUpdateIntervalAsync(1000);
+      setTune(savedTune);
     };
     handleAsync();
   }, [tune, sound, progressValue, speedValue, minSpeedValue, maxSpeedValue]);
