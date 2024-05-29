@@ -1,8 +1,8 @@
 node_modules/
 .expo/
 dist/
-set-dances/ios/
-set-dances/android/
+ios/
+android/
 npm-debug.*
 *.jks
 *.p8
