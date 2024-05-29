@@ -1,5 +1,5 @@
 import { Link, router } from 'expo-router';
-import { StyleSheet, Pressable, FlatList } from 'react-native';
+import { StyleSheet, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/ThemedText';
@@ -38,14 +38,14 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
   return (
     <ThemedView style={styles.container}>
       <ThemedView style={styles.buttonContainer}>
-        <ThemedText style={styles.title} type="subtitle">
-          Select a tune:
+        <ThemedText style={styles.title} type="title">
+          Select a tune
         </ThemedText>
         <Link href="/" asChild>
           <Pressable style={styles.button}>
             {({ pressed, focused }) => (
               <ThemedText
-                type="subtitle"
+                type="default"
                 style={[
                   styles.buttonText,
                   pressed ? { color: 'yellow' } : undefined,
@@ -97,7 +97,7 @@ const useTuneListStyles = function () {
     },
     textContainer: {
       flexDirection: 'row',
-      padding: 10 * scale,
+      padding: 5 * scale,
     },
     text: {
       textAlign: 'justify',

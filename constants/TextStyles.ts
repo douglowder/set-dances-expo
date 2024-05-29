@@ -16,18 +16,18 @@ export const textStyles = function (
       lineHeight: 24 * scale,
     },
     defaultSemiBold: {
-      fontSize: 16 * scale,
+      fontSize: 20 * scale,
       lineHeight: 24 * scale,
       fontWeight: '600',
     },
     title: {
       fontSize: 32 * scale,
       fontWeight: 'bold',
-      lineHeight: 32 * scale,
+      lineHeight: 40 * scale,
     },
     subtitle: {
-      fontSize: 20 * scale,
-      lineHeight: 20 * scale,
+      fontSize: 24 * scale,
+      lineHeight: 32 * scale,
       fontWeight: 'bold',
     },
     link: {
