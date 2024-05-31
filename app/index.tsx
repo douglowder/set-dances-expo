@@ -73,8 +73,8 @@ export default function Index() {
       setSound(newSound);
       if (savedTune) {
         speedValue.value = savedTune.defaultSpeed;
-        minSpeedValue.value = savedTune.defaultSpeed - 10;
-        maxSpeedValue.value = savedTune.defaultSpeed + 10;
+        minSpeedValue.value = savedTune.minSpeed;
+        maxSpeedValue.value = savedTune.maxSpeed;
         setSpeed(savedTune.defaultSpeed);
       }
       progressValue.value = 0;
@@ -217,7 +217,7 @@ export default function Index() {
               maximumValue={maxSpeedValue}
               minimumValue={minSpeedValue}
               snapToStep
-              step={20}
+              step={maxSpeedValue.value - minSpeedValue.value}
               heartbeat={false}
               renderBubble={() => null}
               renderMark={() => null}
@@ -268,6 +268,7 @@ const useIndexStyles = function () {
       fontSize: 40 * scale,
       fontWeight: 'bold',
       marginBottom: 50 * scale,
+      marginTop: 30 * scale,
     },
     tuneTitle: {
       color: 'white',

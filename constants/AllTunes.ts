@@ -8,6 +8,8 @@ export type Tune = {
   name: string;
   value: AVPlaybackSource;
   defaultSpeed: number;
+  minSpeed: number;
+  maxSpeed: number;
 };
 
 export const AllTunes: Tune[] = [
@@ -17,6 +19,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_ace_and_deuce_of_pipering_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_bonapartes_retreat_107',
@@ -24,6 +28,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_bonapartes_retreat_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_job_of_journeywork_107',
@@ -31,6 +37,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_job_of_journeywork_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_king_of_the_fairies_107',
@@ -38,6 +46,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_king_of_the_fairies_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_madame_bonaparte_107',
@@ -45,6 +55,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_madame_bonaparte_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_planxty_davis_107',
@@ -52,6 +64,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_planxty_davis_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_rodneys_glory_107',
@@ -59,6 +73,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_rodneys_glory_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_battle_of_arklow_107',
@@ -66,6 +82,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_battle_of_arklow_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_blue_eyed_rascal_107',
@@ -73,6 +91,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_blue_eyed_rascal_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_downfall_of_paris_107',
@@ -80,6 +100,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_downfall_of_paris_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_four_masters_107',
@@ -87,6 +109,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_four_masters_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_garden_of_daisies_107',
@@ -94,6 +118,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_garden_of_daisies_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_hunt_107',
@@ -101,6 +127,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_hunt_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_kilkenny_races_107',
@@ -108,6 +136,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_kilkenny_races_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_lodge_road_107',
@@ -115,6 +145,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_lodge_road_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_piper_107',
@@ -122,6 +154,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_piper_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_rambling_rake_107',
@@ -129,6 +163,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_rambling_rake_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_roving_pedlar_107',
@@ -136,6 +172,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_roving_pedlar_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_the_white_blanket_107',
@@ -143,6 +181,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_the_white_blanket_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'hp_youghal_harbour_107',
@@ -150,6 +190,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/hp_youghal_harbour_107.m4a'),
     type: 'hp',
     defaultSpeed: 107,
+    minSpeed: 100,
+    maxSpeed: 120,
   },
   {
     key: 'jig_hurry_the_jug_70',
@@ -157,6 +199,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_hurry_the_jug_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_is_the_big_man_within_70',
@@ -164,6 +208,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_is_the_big_man_within_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_jockey_to_the_fair_70',
@@ -171,6 +217,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_jockey_to_the_fair_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_miss_browns_fancy_70',
@@ -178,6 +226,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_miss_browns_fancy_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_planxty_drury_70',
@@ -185,6 +235,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_planxty_drury_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_planxty_hugh_odonnell_70',
@@ -192,6 +244,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_planxty_hugh_odonnell_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_planxty_irwin_70',
@@ -199,6 +253,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_planxty_irwin_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_rub_the_bag_70',
@@ -206,6 +262,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_rub_the_bag_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_sprig_of_shillelagh_70',
@@ -213,6 +271,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_sprig_of_shillelagh_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_blackthorn_stick_70',
@@ -220,6 +280,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_blackthorn_stick_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_charlady_70',
@@ -227,6 +289,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_charlady_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_donegal_rambler_70',
@@ -234,6 +298,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_donegal_rambler_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_drunken_gauger_70',
@@ -241,6 +307,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_drunken_gauger_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_fiddler_around_the_fairy_tree_70',
@@ -248,6 +316,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_fiddler_around_the_fairy_tree_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_humours_of_bandon_70',
@@ -255,6 +325,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_humours_of_bandon_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_hurling_boys_70',
@@ -262,6 +334,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_hurling_boys_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_orange_rogue_70',
@@ -269,6 +343,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_orange_rogue_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_storyteller_70',
@@ -276,6 +352,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_storyteller_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_three_sea_captains_70',
@@ -283,6 +361,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_three_sea_captains_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_vanishing_lake_70',
@@ -290,6 +370,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_vanishing_lake_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'jig_the_wandering_musician_70',
@@ -297,6 +379,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/jig_the_wandering_musician_70.m4a'),
     type: 'jig',
     defaultSpeed: 70,
+    minSpeed: 60,
+    maxSpeed: 80,
   },
   {
     key: 'slowhp_ace_and_deuce_of_pipering_80',
@@ -304,6 +388,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_ace_and_deuce_of_pipering_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_bonapartes_retreat_80',
@@ -311,6 +397,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_bonapartes_retreat_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_job_of_journeywork_80',
@@ -318,6 +406,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_job_of_journeywork_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_king_of_the_fairies_80',
@@ -325,6 +415,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_king_of_the_fairies_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_madame_bonaparte_80',
@@ -332,6 +424,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_madame_bonaparte_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_planxty_davis_80',
@@ -339,6 +433,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_planxty_davis_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_rodneys_glory_80',
@@ -346,6 +442,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_rodneys_glory_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_the_blue_eyed_rascal_80',
@@ -353,6 +451,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_the_blue_eyed_rascal_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_the_downfall_of_paris_80',
@@ -360,6 +460,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_the_downfall_of_paris_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_the_four_masters_80',
@@ -367,6 +469,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_the_four_masters_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_the_garden_of_daisies_80',
@@ -374,6 +478,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_the_garden_of_daisies_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_the_hunt_80',
@@ -381,6 +487,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_the_hunt_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_the_kilkenny_races_80',
@@ -388,6 +496,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_the_kilkenny_races_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_the_lodge_road_80',
@@ -395,6 +505,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_the_lodge_road_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_the_piper_80',
@@ -402,6 +514,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_the_piper_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_the_rambling_rake_80',
@@ -409,6 +523,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_the_rambling_rake_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_the_roving_pedlar_80',
@@ -416,6 +532,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_the_roving_pedlar_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_the_white_blanket_80',
@@ -423,6 +541,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_the_white_blanket_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'slowhp_youghal_harbour_80',
@@ -430,6 +550,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/slowhp_youghal_harbour_80.m4a'),
     type: 'slowhp',
     defaultSpeed: 80,
+    minSpeed: 75,
+    maxSpeed: 85,
   },
   {
     key: 'tradhp_job_of_journeywork_140',
@@ -437,6 +559,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/tradhp_job_of_journeywork_140.m4a'),
     type: 'tradhp',
     defaultSpeed: 140,
+    minSpeed: 110,
+    maxSpeed: 160,
   },
   {
     key: 'tradhp_king_of_the_fairies_140',
@@ -444,6 +568,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/tradhp_king_of_the_fairies_140.m4a'),
     type: 'tradhp',
     defaultSpeed: 140,
+    minSpeed: 110,
+    maxSpeed: 160,
   },
   {
     key: 'tradhp_the_blackbird_140',
@@ -451,6 +577,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/tradhp_the_blackbird_140.m4a'),
     type: 'tradhp',
     defaultSpeed: 140,
+    minSpeed: 110,
+    maxSpeed: 160,
   },
   {
     key: 'tradhp_the_garden_of_daisies_140',
@@ -458,6 +586,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/tradhp_the_garden_of_daisies_140.m4a'),
     type: 'tradhp',
     defaultSpeed: 140,
+    minSpeed: 110,
+    maxSpeed: 160,
   },
   {
     key: 'tradhp_the_white_blanket_140',
@@ -465,6 +595,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/tradhp_the_white_blanket_140.m4a'),
     type: 'tradhp',
     defaultSpeed: 140,
+    minSpeed: 110,
+    maxSpeed: 160,
   },
   {
     key: 'tradjig_jockey_to_the_fair_90',
@@ -472,6 +604,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/tradjig_jockey_to_the_fair_90.m4a'),
     type: 'tradjig',
     defaultSpeed: 90,
+    minSpeed: 80,
+    maxSpeed: 100,
   },
   {
     key: 'tradjig_st_patricks_day_90',
@@ -479,6 +613,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/tradjig_st_patricks_day_90.m4a'),
     type: 'tradjig',
     defaultSpeed: 90,
+    minSpeed: 80,
+    maxSpeed: 100,
   },
   {
     key: 'tradjig_the_three_sea_captains_90',
@@ -486,6 +622,8 @@ export const AllTunes: Tune[] = [
     value: require('@/assets/audio/tradjig_the_three_sea_captains_90.m4a'),
     type: 'tradjig',
     defaultSpeed: 90,
+    minSpeed: 80,
+    maxSpeed: 100,
   },
 ];
 
