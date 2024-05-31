@@ -40,7 +40,7 @@ export default function RootLayout() {
           <Stack>
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen
-              name="(tabs)"
+              name="(tunes)"
               options={{
                 presentation: 'modal',
                 headerShown: false,
@@ -53,9 +53,9 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
-              name="info"
+              name="(info)"
               options={{
-                presentation: 'fullScreenModal',
+                presentation: 'modal',
                 headerShown: false,
                 contentStyle: {
                   width: '90%',

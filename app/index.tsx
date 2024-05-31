@@ -143,7 +143,7 @@ export default function Index() {
         });
     }
     const tab = tune?.type.startsWith('trad') ? 'trad' : tune?.type ?? 'hp';
-    router.push(`/(tabs)/${tab}`);
+    router.push(`/(tunes)/${tab}`);
   };
 
   return (
@@ -154,7 +154,7 @@ export default function Index() {
       >
         <View style={styles.safeAreaContainer}>
           <TVFocusGuideView autoFocus style={styles.buttonContainer}>
-            <Link href="/info" asChild>
+            <Link href="/(info)/about" asChild>
               <CircularButton
                 alt="Info"
                 iconName="information-circle"

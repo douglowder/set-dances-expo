@@ -125,8 +125,8 @@ const useTuneListStyles = function () {
     title: {
       flex: 1,
       margin: 20 * scale,
-      fontSize: 30 * scale,
-      lineHeight: 40 * scale,
+      fontSize: 20 * scale,
+      lineHeight: 30 * scale,
     },
   });
 };
