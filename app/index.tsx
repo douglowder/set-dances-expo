@@ -18,6 +18,7 @@ import { CircularButton } from '@/components/CircularButton';
 import { Tune } from '@/constants/AllTunes';
 import { fetchTuneSettingAsync } from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
+import { ExpoAirplayButtonView } from '@/modules/expo-airplay-button-view';
 
 const playImage = require('@/assets/images/play.png');
 const pauseImage = require('@/assets/images/pause.png');
@@ -153,7 +154,7 @@ export default function Index() {
         style={styles.backgroundImage}
       >
         <View style={styles.safeAreaContainer}>
-          <TVFocusGuideView autoFocus style={styles.buttonContainer}>
+          <TVFocusGuideView autoFocus style={styles.rightButtonContainer}>
             <Link href="/(info)/about" asChild>
               <CircularButton
                 alt="Info"
@@ -231,6 +232,9 @@ export default function Index() {
               }}
             />
           )}
+          <View style={styles.centerButtonContainer}>
+            <ExpoAirplayButtonView style={styles.airplayButton} />
+          </View>
           <View style={{ flex: 2 }} />
         </View>
       </ImageBackground>
@@ -274,11 +278,17 @@ const useIndexStyles = function () {
       color: 'white',
       fontSize: 30 * scale,
     },
-    buttonContainer: {
+    rightButtonContainer: {
       width: '80%',
       flexDirection: 'row',
       alignItems: 'flex-end',
       justifyContent: 'flex-end',
+    },
+    centerButtonContainer: {
+      width: '80%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     progressContainer: {
       backgroundColor: 'transparent',
@@ -294,6 +304,15 @@ const useIndexStyles = function () {
       height: 20 * scale,
       borderRadius: 10 * scale,
       backgroundColor: 'white',
+    },
+    airplayButton: {
+      width: 90 * scale,
+      height: 90 * scale,
+      margin: 20 * scale,
+      justifyContent: 'center',
+      alignItems: 'center',
+      flex: 1,
+      backgroundColor: 'transparent',
     },
   });
 };
