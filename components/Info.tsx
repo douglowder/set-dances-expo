@@ -30,28 +30,28 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
         alignItems: 'center',
       }}
     >
+      <ThemedView style={styles.buttonContainer}>
+        <ThemedText style={styles.title} type="title">
+          {tabName}
+        </ThemedText>
+        <Link href="/" asChild>
+          <Pressable style={styles.button}>
+            {({ pressed, focused }) => (
+              <ThemedText
+                type="default"
+                style={[
+                  styles.buttonText,
+                  pressed ? { color: 'yellow' } : undefined,
+                  focused ? { opacity: 0.6 } : undefined,
+                ]}
+              >
+                Dismiss
+              </ThemedText>
+            )}
+          </Pressable>
+        </Link>
+      </ThemedView>
       <ParallaxScrollView>
-        <ThemedView style={styles.buttonContainer}>
-          <ThemedText style={styles.title} type="title">
-            {tabName}
-          </ThemedText>
-          <Link href="/" asChild>
-            <Pressable style={styles.button}>
-              {({ pressed, focused }) => (
-                <ThemedText
-                  type="default"
-                  style={[
-                    styles.buttonText,
-                    pressed ? { color: 'yellow' } : undefined,
-                    focused ? { opacity: 0.6 } : undefined,
-                  ]}
-                >
-                  Dismiss
-                </ThemedText>
-              )}
-            </Pressable>
-          </Link>
-        </ThemedView>
         {tabName === 'Instructions' && (
           <ThemedView>
             <ThemedView style={styles.textContainer}>
@@ -193,11 +193,12 @@ const useHomeScreenStyles = function () {
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
+      marginTop: 20 * scale,
     },
     title: {
       flex: 1,
       margin: 20 * scale,
-      fontSize: 20 * scale,
+      fontSize: 24 * scale,
       lineHeight: 30 * scale,
     },
   });
