@@ -21,7 +21,7 @@ import {
   displayedSpeedString,
 } from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
-import { ExpoAirplayButtonView } from '@/modules/expo-airplay-button-view';
+import { ExpoAvRoutePickerView } from '@douglowder/expo-av-route-picker-view';
 
 const playImage = require('@/assets/images/play.png');
 const pauseImage = require('@/assets/images/pause.png');
@@ -237,7 +237,7 @@ export default function Index() {
             />
           )}
           <View style={styles.centerButtonContainer}>
-            <ExpoAirplayButtonView style={styles.airplayButton} />
+            <ExpoAvRoutePickerView style={styles.airplayButton} />
           </View>
           <View style={{ flex: 2 }} />
         </View>
@@ -310,9 +310,8 @@ const useIndexStyles = function () {
       backgroundColor: 'white',
     },
     airplayButton: {
-      width: 90 * scale,
-      height: 90 * scale,
-      margin: 20 * scale,
+      width: 150 * scale,
+      height: 150 * scale,
       justifyContent: 'center',
       alignItems: 'center',
       flex: 1,

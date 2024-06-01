@@ -87,15 +87,13 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
             </ThemedView>
             <ThemedView style={styles.textContainer}>
               <Image
-                source={require('@/assets/images/airplay1.png')}
-                style={{ width: 40, height: 40, margin: 5 }}
+                source={require('@/assets/images/airplay-route-picker.png')}
+                style={{ width: 30, height: 30, margin: 10 }}
               />
               <ThemedText style={styles.text}>
-                If you are near an Apple TV or other Airplay-enabled device, or
-                you have connected to a compatible Bluetooth stereo accessory,
-                you will see this icon appear in the lower left hand corner of
-                the view. Pressing this icon will bring up a list of available
-                Airplay and Bluetooth devices to which the audio can be sent.
+                Pressing this button will bring up a list of available Airplay
+                and Bluetooth devices to which the audio can be sent. The button
+                will change to a cyan color when AirPlay is active.
               </ThemedText>
             </ThemedView>
           </ThemedView>
