@@ -22,6 +22,7 @@ import {
 } from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
 import { ExpoAvRoutePickerView } from '@douglowder/expo-av-route-picker-view';
+import { RoutePicker } from '@/components/RoutePicker';
 
 const playImage = require('@/assets/images/play.png');
 const pauseImage = require('@/assets/images/pause.png');
@@ -237,7 +238,7 @@ export default function Index() {
             />
           )}
           <View style={styles.centerButtonContainer}>
-            <ExpoAvRoutePickerView style={styles.airplayButton} />
+            <RoutePicker style={styles.airplayButton} />
           </View>
           <View style={{ flex: 2 }} />
         </View>
