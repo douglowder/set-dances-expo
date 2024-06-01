@@ -2,7 +2,7 @@ import { useScale } from '@/hooks/useScale';
 import { AVPlaybackStatusSuccess, Audio } from 'expo-av';
 import { Link, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSharedValue } from 'react-native-reanimated';
 import {
   StyleSheet,
@@ -21,7 +21,6 @@ import {
   displayedSpeedString,
 } from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
-import { ExpoAvRoutePickerView } from '@douglowder/expo-av-route-picker-view';
 import { RoutePicker } from '@/components/RoutePicker';
 
 const playImage = require('@/assets/images/play.png');
@@ -86,13 +85,13 @@ export default function Index() {
       setTune(savedTune);
     };
     handleAsync();
-  }, [tune, sound, progressValue, speedValue, minSpeedValue, maxSpeedValue]);
+  }, [progressValue, speedValue, minSpeedValue, maxSpeedValue]);
 
   useEffect(() => {
     if (tune === undefined) {
       initialize();
     }
-  }, [tune]);
+  }, [initialize, tune]);
 
   addTuneChangeListener(() => {
     setTune(undefined);

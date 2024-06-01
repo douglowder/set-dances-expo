@@ -98,7 +98,7 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
             </ThemedView>
           </ThemedView>
         )}
-        {tabName == 'Thanks' && (
+        {tabName === 'Thanks' && (
           <ThemedView>
             <ThemedView style={styles.textContainer}>
               <ThemedText style={styles.text}>
