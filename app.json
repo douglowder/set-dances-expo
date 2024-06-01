@@ -60,6 +60,11 @@
           }
         ]
       },
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      },
       "bundleIdentifier": "com.douglowder.Set-Dances"
     },
     "extra": {
