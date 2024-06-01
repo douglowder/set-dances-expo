@@ -55,6 +55,7 @@ export default function Index() {
     const handleAsync = async () => {
       let newSound;
       let savedTune;
+      setIsPlaying(false);
       try {
         savedTune = await fetchTuneSettingAsync();
         const { sound: _sound } = await Audio.Sound.createAsync(
