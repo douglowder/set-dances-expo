@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { Link } from 'expo-router';
 import Constants from 'expo-constants';
-import { StyleSheet, Pressable } from 'react-native';
+import { StyleSheet, Pressable, Platform } from 'react-native';
 
 import ParallaxScrollView from '@/components/ParallaxScrollView';
 import { ThemedText } from '@/components/ThemedText';
@@ -85,17 +85,19 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
                 can be played at speeds from 80 - 100 bpm.
               </ThemedText>
             </ThemedView>
-            <ThemedView style={styles.textContainer}>
-              <Image
-                source={require('@/assets/images/airplay-route-picker.png')}
-                style={{ width: 30, height: 30, margin: 10 }}
-              />
-              <ThemedText style={styles.text}>
-                Pressing this button will bring up a list of available Airplay
-                and Bluetooth devices to which the audio can be sent. The button
-                will change to a cyan color when AirPlay is active.
-              </ThemedText>
-            </ThemedView>
+            {Platform.OS === 'ios' && (
+              <ThemedView style={styles.textContainer}>
+                <Image
+                  source={require('@/assets/images/airplay-route-picker.png')}
+                  style={{ width: 30, height: 30, margin: 10 }}
+                />
+                <ThemedText style={styles.text}>
+                  Pressing this button will bring up a list of available Airplay
+                  and Bluetooth devices to which the audio can be sent. The
+                  button will change to a cyan color when AirPlay is active.
+                </ThemedText>
+              </ThemedView>
+            )}
           </ThemedView>
         )}
         {tabName === 'Thanks' && (
