@@ -16,3 +16,12 @@ export const storeTuneSettingAsync: (tune: Tune) => Promise<void> = async (
 ) => {
   return await AsyncStorage.setItem('@lastTuneKey', tune.key);
 };
+
+export const displayedSpeedString = (tune: Tune | undefined, speed: number) => {
+  if (tune?.key.includes('is_the_big')) {
+    const hpSpeed = (113.0 * speed) / 70.0;
+    return `${Math.floor(hpSpeed)}/${Math.floor(speed)}`;
+  } else {
+    return `${Math.floor(speed)}`;
+  }
+};

@@ -16,7 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CircularButton } from '@/components/CircularButton';
 import { Tune } from '@/constants/AllTunes';
-import { fetchTuneSettingAsync } from '@/utils/TuneSettings';
+import {
+  fetchTuneSettingAsync,
+  displayedSpeedString,
+} from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
 import { ExpoAirplayButtonView } from '@/modules/expo-airplay-button-view';
 
@@ -210,15 +213,16 @@ export default function Index() {
               sound?.setPositionAsync(value * duration);
             }}
           />
-          <Text style={styles.tuneTitle}>{`Speed: ${speed}`}</Text>
+          <Text style={styles.tuneTitle}>{`Speed: ${displayedSpeedString(
+            tune,
+            speed,
+          )}`}</Text>
           {tune && (
             <Slider
               style={styles.progressContainer}
               progress={speedValue}
               maximumValue={maxSpeedValue}
               minimumValue={minSpeedValue}
-              snapToStep
-              step={maxSpeedValue.value - minSpeedValue.value}
               heartbeat={false}
               renderBubble={() => null}
               renderMark={() => null}
@@ -226,7 +230,7 @@ export default function Index() {
               theme={{
                 minimumTrackTintColor: 'blue',
               }}
-              onSlidingComplete={(value) => {
+              onValueChange={(value) => {
                 setSpeed(value);
                 sound?.setRateAsync(value / (tune?.defaultSpeed ?? 0), false);
               }}

@@ -32,7 +32,6 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
     );
   };
 
-  console.log(`total number of tunes = ${AllTunes.length}`);
   // If the page was reloaded or navigated to directly, then the modal should be presented as
   // a full screen page. You may need to change the UI to account for this.
   return (
