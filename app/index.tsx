@@ -15,13 +15,13 @@ import { Slider } from 'react-native-awesome-slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CircularButton } from '@/components/CircularButton';
+import { RoutePicker } from '@/components/RoutePicker'; // eslint-disable-line import/no-unresolved
 import { Tune } from '@/constants/AllTunes';
 import {
   fetchTuneSettingAsync,
   displayedSpeedString,
 } from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
-import { RoutePicker } from '@/components/RoutePicker';
 
 const playImage = require('@/assets/images/play.png');
 const pauseImage = require('@/assets/images/pause.png');
@@ -57,6 +57,12 @@ export default function Index() {
       let savedTune;
       setIsPlaying(false);
       try {
+        Audio.setAudioModeAsync({
+          staysActiveInBackground: true,
+          shouldDuckAndroid: false,
+          interruptionModeAndroid: 1, // do not mix
+          interruptionModeIOS: 1, // do not mix
+        });
         savedTune = await fetchTuneSettingAsync();
         const { sound: _sound } = await Audio.Sound.createAsync(
           savedTune.value,
