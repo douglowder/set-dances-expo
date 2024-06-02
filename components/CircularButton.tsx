@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Image, ImageSource } from 'expo-image';
 import { forwardRef, useState } from 'react';
 import { Pressable, PressableProps } from 'react-native';
 import Animated, {
@@ -11,7 +10,6 @@ import { useScale } from '@/hooks/useScale';
 
 type CircularButtonProps = PressableProps & {
   size: number;
-  imageSource?: ImageSource;
   iconName?: any;
   alt: string;
 };
@@ -21,7 +19,7 @@ export const CircularButton = forwardRef(
     const scale = useScale();
     const [focused, setFocused] = useState(false);
     const [pressed, setPressed] = useState(false);
-    const { alt, size, imageSource, iconName, onPress } = props;
+    const { alt, size, iconName, onPress } = props;
 
     return (
       <Pressable
@@ -54,10 +52,7 @@ export const CircularButton = forwardRef(
             },
             useAnimatedStyle(
               () => ({
-                width: withTiming<number>(pressed ? size * 1.1 : size, {
-                  duration: 150,
-                }),
-                height: withTiming<number>(pressed ? size * 1.1 : size, {
+                opacity: withTiming<number>(pressed ? 0.6 : 1.0, {
                   duration: 150,
                 }),
                 borderWidth: withTiming<number>(focused ? scale : 0, {
@@ -68,18 +63,6 @@ export const CircularButton = forwardRef(
             ),
           ]}
         >
-          {imageSource && (
-            <Image
-              alt={alt}
-              source={imageSource}
-              style={{
-                width: '100%',
-                height: '100%',
-                margin: 0,
-                padding: 0,
-              }}
-            />
-          )}
           {iconName && (
             <Ionicons
               size={size * 0.9}

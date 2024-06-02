@@ -13,11 +13,13 @@ import { version as expoVersion } from 'expo/package.json';
 import { version as expoRouterVersion } from 'expo-router/package.json';
 import { version as expoAVVersion } from 'expo-av/package.json';
 import { version as reactNativeVersion } from 'react-native/package.json';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 type InfoTabNames = 'About' | 'Instructions' | 'Thanks';
 
 export default function Info({ tabName }: { tabName: InfoTabNames }) {
   const styles = useHomeScreenStyles();
+  const scale = useScale();
 
   // If the page was reloaded or navigated to directly, then the modal should be presented as
   // a full screen page. You may need to change the UI to account for this.
@@ -55,20 +57,14 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
         {tabName === 'Instructions' && (
           <ThemedView>
             <ThemedView style={styles.textContainer}>
-              <Image
-                source={require('@/assets/images/playsmall.png')}
-                style={styles.image}
-              />
+              <Ionicons size={30 * scale} name="play" style={styles.image} />
               <ThemedText style={styles.text}>
                 Press this to play/pause the music. You can use the sliders to
                 move to a different part of the tune, and to adjust the speed.
               </ThemedText>
             </ThemedView>
             <ThemedView style={styles.textContainer}>
-              <Image
-                source={require('@/assets/images/refreshsmall.png')}
-                style={{ width: 40, height: 40, margin: 5 }}
-              />
+              <Ionicons size={30 * scale} name="search" style={styles.image} />
               <ThemedText style={styles.text}>
                 Press this to bring up a dialog that will allow you to select a
                 different dance tune.
@@ -164,6 +160,7 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
 const useHomeScreenStyles = function () {
   const scale = useScale();
   const backgroundColor = useThemeColor({}, 'tint');
+  const iconColor = useThemeColor({}, 'icon');
   const color = useThemeColor({}, 'background');
   return StyleSheet.create({
     textContainer: {
@@ -176,6 +173,7 @@ const useHomeScreenStyles = function () {
       fontSize: 18 * scale,
     },
     image: {
+      color: iconColor,
       width: 40 * scale,
       height: 40 * scale,
       margin: 5,

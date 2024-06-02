@@ -28,11 +28,6 @@ import {
 } from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
 
-const playImage = require('@/assets/images/play.png');
-const pauseImage = require('@/assets/images/pause.png');
-const rewindImage = require('@/assets/images/rewind.png');
-const refreshImage = require('@/assets/images/refresh.png');
-
 const fractionCompleteFromStatus = (status: AVPlaybackStatusSuccess) =>
   status.positionMillis !== undefined && status.durationMillis !== undefined
     ? status.positionMillis / status.durationMillis
@@ -196,18 +191,18 @@ export default function Index() {
             <CircularButton
               size={75 * scale}
               onPress={handleRewind}
-              imageSource={rewindImage}
+              iconName="caret-back"
               alt="Rewind"
             />
             <CircularButton
-              size={150 * scale}
+              size={100 * scale}
               onPress={handlePlayPause}
-              imageSource={isPlaying ? pauseImage : playImage}
+              iconName={isPlaying ? 'pause' : 'play'}
               alt={isPlaying ? 'Pause' : 'Play'}
             />
             <CircularButton
-              size={75 * scale}
-              imageSource={refreshImage}
+              size={60 * scale}
+              iconName="search"
               alt="Select"
               onPress={handleSelect}
             />
