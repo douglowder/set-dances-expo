@@ -1,5 +1,10 @@
 import { useScale } from '@/hooks/useScale';
-import { AVPlaybackStatusSuccess, Audio } from 'expo-av';
+import {
+  AVPlaybackStatusSuccess,
+  Audio,
+  InterruptionModeAndroid,
+  InterruptionModeIOS,
+} from 'expo-av';
 import { Link, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
@@ -59,9 +64,11 @@ export default function Index() {
       try {
         Audio.setAudioModeAsync({
           staysActiveInBackground: true,
-          shouldDuckAndroid: false,
-          interruptionModeAndroid: 1, // do not mix
-          interruptionModeIOS: 1, // do not mix
+          playsInSilentModeIOS: true,
+          interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: true,
         });
         savedTune = await fetchTuneSettingAsync();
         const { sound: _sound } = await Audio.Sound.createAsync(
