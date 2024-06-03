@@ -842,10 +842,10 @@
   resolved "https://registry.yarnpkg.com/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz#75a2e8b51cb758a7553d6804a5932d7aace75c39"
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
-"@douglowder/expo-av-route-picker-view@^0.0.2":
-  version "0.0.2"
-  resolved "https://registry.yarnpkg.com/@douglowder/expo-av-route-picker-view/-/expo-av-route-picker-view-0.0.2.tgz#7d83fcf456e40240a7bf8547ca6a77a0363aeaa2"
-  integrity sha512-JI4k9jPMvkp+oKH8Stvi8tlW0IzUolrGRyR6j8J73WbGGsJXd6BhaZO7Wu4zhhmBq20CsPGpTG2qD15QaMw/+Q==
+"@douglowder/expo-av-route-picker-view@^0.0.3":
+  version "0.0.3"
+  resolved "https://registry.yarnpkg.com/@douglowder/expo-av-route-picker-view/-/expo-av-route-picker-view-0.0.3.tgz#4ccd5da19540dc74d81038ecf2af3b0116f6f9a1"
+  integrity sha512-NoqON6rCzwVxInvF7cMBfKXSOe/bN4A8oBsyH1ddmcOYDXHhP6b15/0M9LoP8lmgaoKlR81/jypKW+mFt2cH6g==
   dependencies:
     react-native "npm:react-native-tvos@0.74.1-0"
 

@@ -20,7 +20,7 @@ import { Slider } from 'react-native-awesome-slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CircularButton } from '@/components/CircularButton';
-import { RoutePicker } from '@/components/RoutePicker'; // eslint-disable-line import/no-unresolved
+import { RoutePicker } from '@/components/RoutePicker';
 import { Tune } from '@/constants/AllTunes';
 import {
   fetchTuneSettingAsync,
