@@ -5,7 +5,7 @@ import {
   InterruptionModeAndroid,
   InterruptionModeIOS,
 } from 'expo-av';
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { useSharedValue } from 'react-native-reanimated';
@@ -166,15 +166,6 @@ export default function Index() {
         style={styles.backgroundImage}
       >
         <View style={styles.safeAreaContainer}>
-          <TVFocusGuideView autoFocus style={styles.rightButtonContainer}>
-            <Link href="/(info)/about" asChild>
-              <CircularButton
-                alt="Info"
-                iconName="information-circle"
-                size={30 * scale}
-              />
-            </Link>
-          </TVFocusGuideView>
           <Text style={styles.title}>Set Dances</Text>
           <Text style={styles.tuneTitle}>{tune?.name ?? ''}</Text>
           <View style={{ flex: 1 }} />
@@ -285,7 +276,7 @@ const useIndexStyles = function () {
       fontSize: 40 * scale,
       fontWeight: 'bold',
       marginBottom: 50 * scale,
-      marginTop: 30 * scale,
+      marginTop: 60 * scale,
     },
     tuneTitle: {
       color: 'white',

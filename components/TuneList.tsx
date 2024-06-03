@@ -1,4 +1,4 @@
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -36,27 +36,6 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
   // a full screen page. You may need to change the UI to account for this.
   return (
     <ThemedView style={styles.container}>
-      <ThemedView style={styles.buttonContainer}>
-        <ThemedText style={styles.title} type="title">
-          Select a tune
-        </ThemedText>
-        <Link href="/" asChild>
-          <Pressable style={styles.button}>
-            {({ pressed, focused }) => (
-              <ThemedText
-                type="default"
-                style={[
-                  styles.buttonText,
-                  pressed ? { color: 'yellow' } : undefined,
-                  focused ? { opacity: 0.6 } : undefined,
-                ]}
-              >
-                Cancel
-              </ThemedText>
-            )}
-          </Pressable>
-        </Link>
-      </ThemedView>
       <ParallaxScrollView>
         {AllTunes.filter((item) => tuneTypeSet.has(item.type)).map((item) =>
           renderRow({ item }),

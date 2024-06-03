@@ -1,7 +1,6 @@
 import { Image } from 'expo-image';
-import { Link } from 'expo-router';
 import Constants from 'expo-constants';
-import { StyleSheet, Pressable, Platform } from 'react-native';
+import { StyleSheet, Platform } from 'react-native';
 
 import ParallaxScrollView from '@/components/ParallaxScrollView';
 import { ThemedText } from '@/components/ThemedText';
@@ -32,27 +31,6 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
         alignItems: 'center',
       }}
     >
-      <ThemedView style={styles.buttonContainer}>
-        <ThemedText style={styles.title} type="title">
-          {tabName}
-        </ThemedText>
-        <Link href="/" asChild>
-          <Pressable style={styles.button}>
-            {({ pressed, focused }) => (
-              <ThemedText
-                type="default"
-                style={[
-                  styles.buttonText,
-                  pressed ? { color: 'yellow' } : undefined,
-                  focused ? { opacity: 0.6 } : undefined,
-                ]}
-              >
-                Dismiss
-              </ThemedText>
-            )}
-          </Pressable>
-        </Link>
-      </ThemedView>
       <ParallaxScrollView>
         {tabName === 'Instructions' && (
           <ThemedView>
