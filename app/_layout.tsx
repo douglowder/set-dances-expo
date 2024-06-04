@@ -1,14 +1,17 @@
 import { useScale } from '@/hooks/useScale';
+import { Ionicons } from '@expo/vector-icons';
 import {
   DarkTheme,
   DefaultTheme,
+  DrawerActions,
   ThemeProvider,
 } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
+import { useNavigation } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { Pressable, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -18,6 +21,8 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const scale = useScale();
+  const navigation = useNavigation();
+
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
@@ -39,13 +44,42 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <GestureHandlerRootView style={{ flex: 1 }}>
-          <Drawer>
+          <Drawer
+            screenOptions={{
+              headerLeft: (props) => (
+                <Pressable
+                  onPress={() =>
+                    navigation.dispatch(DrawerActions.toggleDrawer)
+                  }
+                >
+                  {({ pressed, focused }) => {
+                    return (
+                      <Ionicons
+                        size={40 * scale}
+                        name="menu"
+                        style={{
+                          width: 40 * scale,
+                          height: 40 * scale,
+                          margin: 5 * scale,
+                          color: props.tintColor,
+                          opacity: pressed || focused ? 0.6 : 1.0,
+                        }}
+                      />
+                    );
+                  }}
+                </Pressable>
+              ),
+            }}
+          >
             <Drawer.Screen
               name="index"
               options={{
                 headerTransparent: true,
                 headerTintColor: 'white',
                 drawerLabel: 'Home',
+                drawerLabelStyle: {
+                  fontSize: 25 * scale,
+                },
                 title: '',
               }}
             />
@@ -57,15 +91,21 @@ export default function RootLayout() {
                 headerTitleStyle: {
                   fontSize: 25 * scale,
                 },
+                drawerLabelStyle: {
+                  fontSize: 25 * scale,
+                },
                 headerTintColor,
               }}
             />
             <Drawer.Screen
               name="(info)"
               options={{
-                drawerLabel: 'More info',
-                title: 'More info',
+                drawerLabel: 'Info',
+                title: 'Info',
                 headerTitleStyle: {
+                  fontSize: 25 * scale,
+                },
+                drawerLabelStyle: {
                   fontSize: 25 * scale,
                 },
                 headerTintColor,
