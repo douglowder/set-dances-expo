@@ -102,6 +102,11 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
           {tabName === 'About' && (
             <ThemedView>
               <ThemedView>
+                <ThemedText type="defaultSemiBold" style={styles.text}>
+                  Programming:
+                </ThemedText>
+              </ThemedView>
+              <ThemedView>
                 <ThemedText
                   style={styles.text}
                 >{`Version ${Constants.expoConfig?.version}`}</ThemedText>
@@ -117,17 +122,32 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
                 <ThemedText
                   style={styles.text}
                 >{`expo-av ${expoAVVersion}`}</ThemedText>
-                <ThemedText style={styles.text}>&nbsp;</ThemedText>
-                <ThemedText style={styles.text}>
-                  Copyright &copy; 2010-2024 by Doug Lowder, all rights
-                  reserved.
+              </ThemedView>
+              <ThemedView>
+                <ThemedText type="defaultSemiBold" style={styles.text}>
+                  &nbsp;
                 </ThemedText>
               </ThemedView>
-              <ThemedView style={styles.textContainer}>
+              <ThemedView>
+                <ThemedText type="defaultSemiBold" style={styles.text}>
+                  Music:
+                </ThemedText>
+              </ThemedView>
+              <ThemedView>
                 <ThemedText style={styles.text}>
                   "The Vanishing Lake" is included by kind permission of the
                   composer, Francis Ward. "The Charlady" is included by kind
-                  permission of the composer, Michael Fitzpatrick.
+                  permission of the composer, Michael Fitzpatrick. All other
+                  compositions are traditional and in the public domain. All
+                  tracks were performed by Douglas Lowder on acoustic fiddle and
+                  electronic instruments.
+                </ThemedText>
+              </ThemedView>
+              <ThemedText>&nbsp;</ThemedText>
+              <ThemedView>
+                <ThemedText style={styles.text}>
+                  Copyright &copy; 2010-2024 by Douglas Lowder, all rights
+                  reserved.
                 </ThemedText>
               </ThemedView>
             </ThemedView>
