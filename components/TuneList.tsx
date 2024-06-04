@@ -26,7 +26,9 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
     return (
       <Pressable onPress={() => handleRowSelect(item)} key={item.key}>
         <ThemedView style={styles.textContainer}>
-          <ThemedText>{`${item.name} (${item.defaultSpeed})`}</ThemedText>
+          <ThemedText
+            style={styles.text}
+          >{`${item.name} (${item.defaultSpeed})`}</ThemedText>
         </ThemedView>
       </Pressable>
     );
@@ -36,36 +38,32 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
   // a full screen page. You may need to change the UI to account for this.
   return (
     <ThemedView style={styles.container}>
-      <ParallaxScrollView>
-        {AllTunes.filter((item) => tuneTypeSet.has(item.type)).map((item) =>
-          renderRow({ item }),
-        )}
-      </ParallaxScrollView>
+      <ThemedView style={[styles.container, styles.safeAreaContainer]}>
+        <ParallaxScrollView>
+          {AllTunes.filter((item) => tuneTypeSet.has(item.type)).map((item) =>
+            renderRow({ item }),
+          )}
+        </ParallaxScrollView>
+      </ThemedView>
     </ThemedView>
   );
 }
 
 const useTuneListStyles = function () {
   const scale = useScale();
-  const backgroundColor = useThemeColor({}, 'tint');
-  const color = useThemeColor({}, 'background');
-  const { top, bottom } = useSafeAreaInsets();
+  const tintColor = useThemeColor({}, 'tint');
+  const textColor = useThemeColor({}, 'text');
+  const backgroundColor = useThemeColor({}, 'background');
+  const { bottom } = useSafeAreaInsets();
+
   return StyleSheet.create({
     container: {
       flex: 1,
       width: '100%',
       justifyContent: 'center',
       alignItems: 'center',
-      paddingTop: 20 * scale,
-      paddingBottom: 20 * scale,
     },
     safeAreaContainer: {
-      flex: 1,
-      padding: 32 * scale,
-      width: '100%',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: top,
       marginBottom: bottom,
     },
     list: {
@@ -78,8 +76,10 @@ const useTuneListStyles = function () {
       padding: 5 * scale,
     },
     text: {
-      textAlign: 'justify',
-      flex: 1,
+      color: textColor,
+    },
+    textHighlighted: {
+      color: tintColor,
     },
     image: {
       width: 40 * scale,
@@ -87,13 +87,13 @@ const useTuneListStyles = function () {
       margin: 5,
     },
     button: {
-      backgroundColor,
+      backgroundColor: tintColor,
       borderRadius: 10 * scale,
       margin: 20 * scale,
       padding: 10 * scale,
     },
     buttonText: {
-      color,
+      color: backgroundColor,
     },
     buttonContainer: {
       flexDirection: 'row',
