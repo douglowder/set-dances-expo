@@ -1,3 +1,4 @@
+import { useScale } from '@/hooks/useScale';
 import {
   DarkTheme,
   DefaultTheme,
@@ -16,6 +17,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const scale = useScale();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
@@ -52,6 +54,9 @@ export default function RootLayout() {
               options={{
                 drawerLabel: 'Select a tune',
                 title: 'Select a tune',
+                headerTitleStyle: {
+                  fontSize: 25 * scale,
+                },
                 headerTintColor,
               }}
             />
@@ -60,6 +65,9 @@ export default function RootLayout() {
               options={{
                 drawerLabel: 'More info',
                 title: 'More info',
+                headerTitleStyle: {
+                  fontSize: 25 * scale,
+                },
                 headerTintColor,
               }}
             />
