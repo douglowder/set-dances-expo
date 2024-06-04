@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Pressable, useColorScheme } from 'react-native';
+import { Platform, Pressable, useColorScheme } from 'react-native';
 import { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 import { Colors } from '@/constants/Colors';
 import { useScale } from '@/hooks/useScale';
@@ -37,6 +37,7 @@ export default function TabLayout() {
           height: textStyles.title.lineHeight * 2,
           marginBottom: 0 * scale,
           borderColor: colors.tint,
+          borderTopWidth: scale,
           borderBottomWidth: scale,
           backgroundColor: colors.background,
         },
@@ -49,7 +50,7 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton,
         tabBarIcon: () => null,
-        tabBarPosition: 'top',
+        tabBarPosition: Platform.isTV ? 'top' : 'bottom',
       }}
     >
       <Tabs.Screen

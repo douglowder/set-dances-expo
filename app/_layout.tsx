@@ -60,7 +60,7 @@ export default function RootLayout() {
                         style={{
                           width: 40 * scale,
                           height: 40 * scale,
-                          margin: 5 * scale,
+                          margin: 10 * scale,
                           color: props.tintColor,
                           opacity: pressed || focused ? 0.6 : 1.0,
                         }}
