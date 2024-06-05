@@ -9,10 +9,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Pressable, useColorScheme } from 'react-native';
+import { Platform, useColorScheme } from 'react-native';
 
 import { useScale } from '@/hooks/useScale';
-import { Ionicons } from '@expo/vector-icons';
 import { CircularButton } from '@/components/CircularButton';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -65,7 +64,7 @@ export default function TVLayout() {
                 contentStyle: {
                   width: '90%',
                   alignSelf: 'center',
-                  marginTop: 50 * scale,
+                  marginTop: Platform.isTV ? 0 : 50 * scale,
                   marginBottom: 50 * scale,
                 },
               }}
@@ -78,7 +77,7 @@ export default function TVLayout() {
                 contentStyle: {
                   width: '90%',
                   alignSelf: 'center',
-                  marginTop: 50 * scale,
+                  marginTop: Platform.isTV ? 0 : 50 * scale,
                   marginBottom: 50 * scale,
                 },
               }}

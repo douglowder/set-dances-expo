@@ -1,10 +1,5 @@
 import type { PropsWithChildren, ReactElement } from 'react';
-import {
-  Platform,
-  StyleSheet,
-  TVTextScrollView,
-  useColorScheme,
-} from 'react-native';
+import { StyleSheet, useColorScheme } from 'react-native';
 import Animated, {
   interpolate,
   useAnimatedRef,
@@ -14,8 +9,6 @@ import Animated, {
 
 import { ThemedView } from '@/components/ThemedView';
 import { useScale } from '@/hooks/useScale';
-
-const WrapperView = Platform.isTV ? TVTextScrollView : ThemedView;
 
 type Props = PropsWithChildren<{
   headerImage?: ReactElement;
@@ -57,26 +50,24 @@ export default function ParallaxScrollView({
   });
 
   return (
-    <WrapperView style={styles.container}>
-      <ThemedView style={styles.container}>
-        <Animated.ScrollView ref={scrollRef} scrollEventThrottle={16}>
-          {headerImage && (
-            <Animated.View
-              style={[
-                styles.header,
-                headerBackgroundColor
-                  ? { backgroundColor: headerBackgroundColor[colorScheme] }
-                  : {},
-                headerAnimatedStyle,
-              ]}
-            >
-              {headerImage}
-            </Animated.View>
-          )}
-          <ThemedView style={styles.content}>{children}</ThemedView>
-        </Animated.ScrollView>
-      </ThemedView>
-    </WrapperView>
+    <ThemedView style={styles.container}>
+      <Animated.ScrollView ref={scrollRef} scrollEventThrottle={16}>
+        {headerImage && (
+          <Animated.View
+            style={[
+              styles.header,
+              headerBackgroundColor
+                ? { backgroundColor: headerBackgroundColor[colorScheme] }
+                : {},
+              headerAnimatedStyle,
+            ]}
+          >
+            {headerImage}
+          </Animated.View>
+        )}
+        <ThemedView style={styles.content}>{children}</ThemedView>
+      </Animated.ScrollView>
+    </ThemedView>
   );
 }
 

@@ -91,10 +91,9 @@ export default function PhoneLayout() {
                 title: 'Select a tune',
                 headerTitleStyle: {
                   fontSize: 25 * scale,
-                  marginTop: Platform.isTV ? -20 * scale : 0,
                 },
                 headerStyle: {
-                  height: Platform.isTV ? 80 * scale : 100 * scale,
+                  height: 100 * scale,
                 },
                 drawerLabelStyle: {
                   fontSize: 25 * scale,
@@ -109,10 +108,9 @@ export default function PhoneLayout() {
                 title: 'Info',
                 headerTitleStyle: {
                   fontSize: 25 * scale,
-                  marginTop: Platform.isTV ? -20 * scale : 0,
                 },
                 headerStyle: {
-                  height: Platform.isTV ? 80 * scale : 100 * scale,
+                  height: 100 * scale,
                 },
                 drawerLabelStyle: {
                   fontSize: 25 * scale,
