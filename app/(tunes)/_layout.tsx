@@ -35,7 +35,7 @@ export default function TabLayout() {
         tabBarStyle: {
           height: textStyles.title.lineHeight * 2,
           borderColor: colors.tint,
-          borderTopWidth: scale,
+          borderTopWidth: Platform.isTV ? 0 : scale,
           borderBottomWidth: scale,
           backgroundColor: colors.background,
         },
@@ -43,6 +43,7 @@ export default function TabLayout() {
           textStyles.default,
           {
             fontWeight: '600',
+            marginTop: 20 * scale,
           },
         ],
         headerShown: false,

@@ -11,7 +11,7 @@ import { useNavigation } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { Pressable, useColorScheme } from 'react-native';
+import { Platform, Pressable, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -46,29 +46,34 @@ export default function RootLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <Drawer
             screenOptions={{
-              headerLeft: (props) => (
-                <Pressable
-                  onPress={() =>
-                    navigation.dispatch(DrawerActions.toggleDrawer)
-                  }
-                >
-                  {({ pressed, focused }) => {
-                    return (
-                      <Ionicons
-                        size={40 * scale}
-                        name="menu"
-                        style={{
-                          width: 40 * scale,
-                          height: 40 * scale,
-                          margin: 10 * scale,
-                          color: props.tintColor,
-                          opacity: pressed || focused ? 0.6 : 1.0,
-                        }}
-                      />
-                    );
-                  }}
-                </Pressable>
-              ),
+              drawerType: Platform.isTV ? 'permanent' : 'slide',
+              drawerStyle: {
+                width: Platform.isTV ? 250 * scale : 200 * scale,
+              },
+              headerLeft: (props) =>
+                Platform.isTV ? null : (
+                  <Pressable
+                    onPress={() =>
+                      navigation.dispatch(DrawerActions.toggleDrawer)
+                    }
+                  >
+                    {({ pressed, focused }) => {
+                      return (
+                        <Ionicons
+                          size={40 * scale}
+                          name="menu"
+                          style={{
+                            width: 40 * scale,
+                            height: 40 * scale,
+                            margin: 10 * scale,
+                            color: props.tintColor,
+                            opacity: pressed || focused ? 0.6 : 1.0,
+                          }}
+                        />
+                      );
+                    }}
+                  </Pressable>
+                ),
             }}
           >
             <Drawer.Screen
@@ -90,6 +95,10 @@ export default function RootLayout() {
                 title: 'Select a tune',
                 headerTitleStyle: {
                   fontSize: 25 * scale,
+                  marginTop: Platform.isTV ? -20 * scale : 0,
+                },
+                headerStyle: {
+                  height: Platform.isTV ? 80 * scale : 100 * scale,
                 },
                 drawerLabelStyle: {
                   fontSize: 25 * scale,
@@ -104,6 +113,10 @@ export default function RootLayout() {
                 title: 'Info',
                 headerTitleStyle: {
                   fontSize: 25 * scale,
+                  marginTop: Platform.isTV ? -20 * scale : 0,
+                },
+                headerStyle: {
+                  height: Platform.isTV ? 80 * scale : 100 * scale,
                 },
                 drawerLabelStyle: {
                   fontSize: 25 * scale,

@@ -281,6 +281,8 @@ const useIndexStyles = function () {
     tuneTitle: {
       color: 'white',
       fontSize: 30 * scale,
+      marginTop: 30 * scale,
+      marginBottom: 15 * scale,
     },
     rightButtonContainer: {
       width: '80%',

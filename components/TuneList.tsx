@@ -25,11 +25,13 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
   const renderRow = ({ item }: { item: Tune }) => {
     return (
       <Pressable onPress={() => handleRowSelect(item)} key={item.key}>
-        <ThemedView style={styles.textContainer}>
-          <ThemedText
-            style={styles.text}
-          >{`${item.name} (${item.defaultSpeed})`}</ThemedText>
-        </ThemedView>
+        {({ pressed, focused }) => (
+          <ThemedView style={styles.textContainer}>
+            <ThemedText
+              style={[styles.text, { opacity: pressed || focused ? 0.6 : 1.0 }]}
+            >{`${item.name} (${item.defaultSpeed})`}</ThemedText>
+          </ThemedView>
+        )}
       </Pressable>
     );
   };
