@@ -13,6 +13,7 @@ import { Pressable, useColorScheme } from 'react-native';
 
 import { useScale } from '@/hooks/useScale';
 import { Ionicons } from '@expo/vector-icons';
+import { CircularButton } from '@/components/CircularButton';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -44,23 +45,13 @@ export default function TVLayout() {
             screenOptions={{
               headerLeft: (props) => {
                 return (
-                  <Pressable onPress={() => router.replace('/')}>
-                    {({ pressed, focused }) => {
-                      return (
-                        <Ionicons
-                          size={40 * scale}
-                          name="caret-back-sharp"
-                          style={{
-                            width: 40 * scale,
-                            height: 40 * scale,
-                            margin: 10 * scale,
-                            color: props.tintColor,
-                            opacity: pressed || focused ? 0.6 : 1.0,
-                          }}
-                        />
-                      );
-                    }}
-                  </Pressable>
+                  <CircularButton
+                    onPress={() => router.replace('/')}
+                    size={40 * scale}
+                    alt="Home"
+                    iconName="caret-back-sharp"
+                    color={props.tintColor}
+                  />
                 );
               },
             }}

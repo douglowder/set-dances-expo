@@ -10,13 +10,14 @@ type CircularButtonProps = PressableProps & {
   size: number;
   iconName?: any;
   alt: string;
+  color?: string;
 };
 
 export const CircularButton = forwardRef(
   (props: CircularButtonProps, ref: any) => {
     const [focused, setFocused] = useState(false);
     const [pressed, setPressed] = useState(false);
-    const { alt, size, iconName, onPress } = props;
+    const { alt, size, iconName, onPress, color } = props;
 
     return (
       <Pressable
@@ -61,7 +62,7 @@ export const CircularButton = forwardRef(
               size={size * 0.9}
               name={iconName}
               style={{
-                color: focused ? '#00ffff' : 'white',
+                color: focused ? '#00ffff' : color ?? 'white',
                 width: '90%',
                 height: '90%',
                 margin: 0,

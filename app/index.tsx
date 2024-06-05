@@ -217,43 +217,86 @@ export default function Index() {
               onPress={handleSelect}
             />
           </TVFocusGuideView>
-          <Slider
-            style={styles.progressContainer}
-            progress={progressValue}
-            maximumValue={maxProgressValue}
-            minimumValue={minProgressValue}
-            heartbeat={false}
-            renderBubble={() => null}
-            renderThumb={() => <View style={styles.progressCenter} />}
-            theme={{
-              minimumTrackTintColor: 'blue',
-            }}
-            onSlidingComplete={(value) => {
-              sound?.setPositionAsync(value * duration);
-            }}
-          />
+          <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
+            {Platform.isTV && (
+              <CircularButton
+                onPress={() =>
+                  sound?.setPositionAsync(
+                    (progressValue.value - 0.1) * duration,
+                  )
+                }
+                alt="Jog back"
+                size={40 * scale}
+                iconName="caret-back-sharp"
+              />
+            )}
+            <Slider
+              style={styles.progressContainer}
+              progress={progressValue}
+              maximumValue={maxProgressValue}
+              minimumValue={minProgressValue}
+              heartbeat={false}
+              renderBubble={() => null}
+              renderThumb={() => <View style={styles.progressCenter} />}
+              theme={{
+                minimumTrackTintColor: 'blue',
+              }}
+              onSlidingComplete={(value) => {
+                sound?.setPositionAsync(value * duration);
+              }}
+            />
+            {Platform.isTV && (
+              <CircularButton
+                onPress={() =>
+                  sound?.setPositionAsync(
+                    (progressValue.value + 0.1) * duration,
+                  )
+                }
+                alt="Jog forward"
+                size={40 * scale}
+                iconName="caret-forward-sharp"
+              />
+            )}
+          </TVFocusGuideView>
           <Text style={styles.tuneTitle}>{`Speed: ${displayedSpeedString(
             tune,
             speed,
           )}`}</Text>
           {tune && (
-            <Slider
-              style={styles.progressContainer}
-              progress={speedValue}
-              maximumValue={maxSpeedValue}
-              minimumValue={minSpeedValue}
-              heartbeat={false}
-              renderBubble={() => null}
-              renderMark={() => null}
-              renderThumb={() => <View style={styles.progressCenter} />}
-              theme={{
-                minimumTrackTintColor: 'blue',
-              }}
-              onValueChange={(value) => {
-                setSpeed(value);
-                sound?.setRateAsync(value / (tune?.defaultSpeed ?? 0), false);
-              }}
-            />
+            <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
+              {Platform.isTV && (
+                <CircularButton
+                  onPress={() => {}}
+                  alt="Decrease speed"
+                  size={40 * scale}
+                  iconName="caret-back-sharp"
+                />
+              )}
+              <Slider
+                style={styles.progressContainer}
+                progress={speedValue}
+                maximumValue={maxSpeedValue}
+                minimumValue={minSpeedValue}
+                heartbeat={false}
+                renderBubble={() => null}
+                renderMark={() => null}
+                renderThumb={() => <View style={styles.progressCenter} />}
+                theme={{
+                  minimumTrackTintColor: 'blue',
+                }}
+                onValueChange={(value) => {
+                  sound?.setRateAsync(value / (tune?.defaultSpeed ?? 0), false);
+                }}
+              />
+              {Platform.isTV && (
+                <CircularButton
+                  onPress={() => {}}
+                  alt="Increase speed"
+                  size={40 * scale}
+                  iconName="caret-forward-sharp"
+                />
+              )}
+            </TVFocusGuideView>
           )}
           <View style={styles.centerButtonContainer}>
             <RoutePicker style={styles.airplayButton} />
