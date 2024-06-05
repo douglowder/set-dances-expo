@@ -6,8 +6,6 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { useScale } from '@/hooks/useScale';
-
 type CircularButtonProps = PressableProps & {
   size: number;
   iconName?: any;
@@ -16,7 +14,6 @@ type CircularButtonProps = PressableProps & {
 
 export const CircularButton = forwardRef(
   (props: CircularButtonProps, ref: any) => {
-    const scale = useScale();
     const [focused, setFocused] = useState(false);
     const [pressed, setPressed] = useState(false);
     const { alt, size, iconName, onPress } = props;
@@ -43,7 +40,6 @@ export const CircularButton = forwardRef(
           style={[
             {
               borderRadius: size * 0.65,
-              borderColor: 'white',
               width: size * 1.1,
               height: size * 1.1,
               justifyContent: 'center',
@@ -53,9 +49,6 @@ export const CircularButton = forwardRef(
             useAnimatedStyle(
               () => ({
                 opacity: withTiming<number>(pressed ? 0.6 : 1.0, {
-                  duration: 150,
-                }),
-                borderWidth: withTiming<number>(focused ? scale : 0, {
                   duration: 150,
                 }),
               }),
@@ -68,7 +61,7 @@ export const CircularButton = forwardRef(
               size={size * 0.9}
               name={iconName}
               style={{
-                color: 'white',
+                color: focused ? '#00ffff' : 'white',
                 width: '90%',
                 height: '90%',
                 margin: 0,

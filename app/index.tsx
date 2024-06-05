@@ -15,6 +15,7 @@ import {
   Text,
   View,
   ImageBackground,
+  Platform,
 } from 'react-native';
 import { Slider } from 'react-native-awesome-slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -159,6 +160,11 @@ export default function Index() {
     router.push(`/(tunes)/${tab}`);
   };
 
+  const handleInfo = () => {
+    router.push(`/(info)/about
+    `);
+  };
+
   return (
     <View style={styles.container}>
       <ImageBackground
@@ -166,7 +172,20 @@ export default function Index() {
         style={styles.backgroundImage}
       >
         <View style={styles.safeAreaContainer}>
-          <Text style={styles.title}>Set Dances</Text>
+          <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
+            {Platform.isTV && <View style={{ width: 30 * scale }} />}
+            <View style={{ flex: 1 }} />
+            <Text style={styles.title}>Set Dances</Text>
+            <View style={{ flex: 1 }} />
+            {Platform.isTV && (
+              <CircularButton
+                onPress={handleInfo}
+                alt="Info"
+                iconName="information-circle"
+                size={30 * scale}
+              />
+            )}
+          </TVFocusGuideView>
           <Text style={styles.tuneTitle}>{tune?.name ?? ''}</Text>
           <View style={{ flex: 1 }} />
           <TVFocusGuideView
@@ -261,7 +280,7 @@ const useIndexStyles = function () {
       width: '100%',
       justifyContent: 'center',
       alignItems: 'center',
-      marginTop: top,
+      marginTop: top * 2,
       marginBottom: bottom,
     },
     backgroundImage: {
@@ -275,8 +294,8 @@ const useIndexStyles = function () {
       color: 'white',
       fontSize: 40 * scale,
       fontWeight: 'bold',
-      marginBottom: 50 * scale,
-      marginTop: 60 * scale,
+      marginBottom: 20 * scale,
+      marginTop: Platform.isTV ? 20 * scale : 60 * scale,
     },
     tuneTitle: {
       color: 'white',
