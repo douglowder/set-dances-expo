@@ -173,7 +173,7 @@ export default function Index() {
       >
         <View style={styles.safeAreaContainer}>
           <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
-            {Platform.isTV && <View style={{ width: 30 * scale }} />}
+            {Platform.isTV && <View style={{ width: 50 * scale }} />}
             <View style={{ flex: 1 }} />
             <Text style={styles.title}>Set Dances</Text>
             <View style={{ flex: 1 }} />
@@ -182,7 +182,7 @@ export default function Index() {
                 onPress={handleInfo}
                 alt="Info"
                 iconName="information-circle"
-                size={30 * scale}
+                size={50 * scale}
               />
             )}
           </TVFocusGuideView>
@@ -266,7 +266,14 @@ export default function Index() {
             <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
               {Platform.isTV && (
                 <CircularButton
-                  onPress={() => {}}
+                  onPress={() => {
+                    speedValue.value = speed - 1;
+                    setSpeed((speed) => speed - 1);
+                    sound?.setRateAsync(
+                      speed / (tune?.defaultSpeed ?? 0),
+                      false,
+                    );
+                  }}
                   alt="Decrease speed"
                   size={40 * scale}
                   iconName="caret-back-sharp"
@@ -290,7 +297,14 @@ export default function Index() {
               />
               {Platform.isTV && (
                 <CircularButton
-                  onPress={() => {}}
+                  onPress={() => {
+                    speedValue.value = speed + 1;
+                    setSpeed((speed) => speed + 1);
+                    sound?.setRateAsync(
+                      speed / (tune?.defaultSpeed ?? 0),
+                      false,
+                    );
+                  }}
                   alt="Increase speed"
                   size={40 * scale}
                   iconName="caret-forward-sharp"
@@ -298,9 +312,11 @@ export default function Index() {
               )}
             </TVFocusGuideView>
           )}
-          <View style={styles.centerButtonContainer}>
-            <RoutePicker style={styles.airplayButton} />
-          </View>
+          {!Platform.isTV && (
+            <View style={styles.centerButtonContainer}>
+              <RoutePicker style={styles.airplayButton} />
+            </View>
+          )}
           <View style={{ flex: 2 }} />
         </View>
       </ImageBackground>

@@ -35,7 +35,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.tint,
         tabBarStyle: {
           height: textStyles.title.lineHeight * 2,
-          marginBottom: 0 * scale,
+          marginBottom: Platform.isTV ? -30 * scale : 0 * scale,
           borderColor: colors.tint,
           borderTopWidth: scale,
           borderBottomWidth: scale,
