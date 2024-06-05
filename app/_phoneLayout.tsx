@@ -46,10 +46,6 @@ export default function PhoneLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <Drawer
             screenOptions={{
-              drawerType: Platform.isTV ? 'permanent' : 'slide',
-              drawerStyle: {
-                width: Platform.isTV ? 250 * scale : 200 * scale,
-              },
               headerLeft: (props) =>
                 Platform.isTV ? null : (
                   <Pressable
@@ -122,6 +118,24 @@ export default function PhoneLayout() {
                   fontSize: 25 * scale,
                 },
                 headerTintColor,
+              }}
+            />
+            <Drawer.Screen
+              name="_tvLayout"
+              redirect
+              options={{
+                drawerItemStyle: {
+                  opacity: 0.0,
+                },
+              }}
+            />
+            <Drawer.Screen
+              name="_phoneLayout"
+              redirect
+              options={{
+                drawerItemStyle: {
+                  opacity: 0.0,
+                },
               }}
             />
           </Drawer>
