@@ -292,6 +292,7 @@ export default function Index() {
                   minimumTrackTintColor: 'blue',
                 }}
                 onValueChange={(value) => {
+                  setSpeed(value);
                   sound?.setRateAsync(value / (tune?.defaultSpeed ?? 0), false);
                 }}
               />
