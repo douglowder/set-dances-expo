@@ -24,12 +24,6 @@
         "simulator": false
       }
     },
-    "development:tv": {
-      "extends": "development",
-      "env": {
-        "EXPO_TV": "1"
-      }
-    },
     "preview": {
       "extends": "production",
       "distribution": "internal",
@@ -50,6 +44,12 @@
     },
     "preview:tv": {
       "extends": "preview",
+      "env": {
+        "EXPO_TV": "1"
+      }
+    },
+    "preview:device:tv": {
+      "extends": "preview:device",
       "env": {
         "EXPO_TV": "1"
       }
