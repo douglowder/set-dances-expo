@@ -118,24 +118,6 @@ export default function PhoneLayout() {
                 headerTintColor,
               }}
             />
-            <Drawer.Screen
-              name="_tvLayout"
-              redirect
-              options={{
-                drawerItemStyle: {
-                  opacity: 0.0,
-                },
-              }}
-            />
-            <Drawer.Screen
-              name="_phoneLayout"
-              redirect
-              options={{
-                drawerItemStyle: {
-                  opacity: 0.0,
-                },
-              }}
-            />
           </Drawer>
         </GestureHandlerRootView>
       </ThemeProvider>

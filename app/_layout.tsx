@@ -1,5 +1,5 @@
-import TVLayout from './_tvLayout';
-import PhoneLayout from './_phoneLayout';
+import TVLayout from '@/layouts/tv';
+import PhoneLayout from '@/layouts/phone';
 import { Platform } from 'react-native';
 
 export default function RootLayout() {
