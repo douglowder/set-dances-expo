@@ -26,6 +26,8 @@ import { Tune } from '@/constants/AllTunes';
 import {
   fetchTuneSettingAsync,
   displayedSpeedString,
+  storeSavedSpeedAsync,
+  fetchSavedSpeedAsync,
 } from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
 
@@ -86,10 +88,11 @@ export default function Index() {
       }
       setSound(newSound);
       if (savedTune) {
-        speedValue.value = savedTune.defaultSpeed;
+        const savedSpeed = await fetchSavedSpeedAsync();
+        setSpeed(savedSpeed);
+        speedValue.value = savedSpeed;
         minSpeedValue.value = savedTune.minSpeed;
         maxSpeedValue.value = savedTune.maxSpeed;
-        setSpeed(savedTune.defaultSpeed);
       }
       progressValue.value = 0;
       setTune(savedTune);
@@ -273,6 +276,7 @@ export default function Index() {
                       speed / (tune?.defaultSpeed ?? 0),
                       false,
                     );
+                    storeSavedSpeedAsync(tune, speed);
                   }}
                   alt="Decrease speed"
                   size={40 * scale}
@@ -291,9 +295,15 @@ export default function Index() {
                 theme={{
                   minimumTrackTintColor: 'blue',
                 }}
+                onSlidingComplete={(value) => {
+                  storeSavedSpeedAsync(tune, value);
+                }}
                 onValueChange={(value) => {
-                  setSpeed(value);
-                  sound?.setRateAsync(value / (tune?.defaultSpeed ?? 0), false);
+                  sound
+                    ?.setRateAsync(value / (tune?.defaultSpeed ?? 0), false)
+                    .then(() => {
+                      setSpeed(value);
+                    });
                 }}
               />
               {Platform.isTV && (
@@ -305,6 +315,7 @@ export default function Index() {
                       speed / (tune?.defaultSpeed ?? 0),
                       false,
                     );
+                    storeSavedSpeedAsync(tune, speed);
                   }}
                   alt="Increase speed"
                   size={40 * scale}

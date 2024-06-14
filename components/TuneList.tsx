@@ -8,7 +8,11 @@ import { useScale } from '@/hooks/useScale';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { Tune, TuneType, AllTunes } from '@/constants/AllTunes';
 import { emitTuneChangeEvent } from '@/utils/TuneChangeEmitter';
-import { storeTuneSettingAsync } from '@/utils/TuneSettings';
+import {
+  fetchTuneSettingAsync,
+  storeSavedSpeedAsync,
+  storeTuneSettingAsync,
+} from '@/utils/TuneSettings';
 import ParallaxScrollView from '@/components/ParallaxScrollView';
 
 export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
@@ -17,10 +21,17 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
   const tuneTypeSet = new Set(tuneTypes);
 
   const handleRowSelect = (item: Tune) => {
-    storeTuneSettingAsync(item).then(() => {
+    const handleAsync = async () => {
+      const savedTune = await fetchTuneSettingAsync();
+      if (savedTune.key === item.key) {
+        return;
+      }
+      await storeTuneSettingAsync(item);
+      await storeSavedSpeedAsync(item, item.defaultSpeed);
       emitTuneChangeEvent();
       router.navigate('/');
-    });
+    };
+    handleAsync();
   };
   const renderRow = ({ item }: { item: Tune }) => {
     return (
