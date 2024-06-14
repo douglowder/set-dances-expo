@@ -299,11 +299,8 @@ export default function Index() {
                   storeSavedSpeedAsync(tune, value);
                 }}
                 onValueChange={(value) => {
-                  sound
-                    ?.setRateAsync(value / (tune?.defaultSpeed ?? 0), false)
-                    .then(() => {
-                      setSpeed(value);
-                    });
+                  sound?.setRateAsync(value / (tune?.defaultSpeed ?? 0), false);
+                  setSpeed(value);
                 }}
               />
               {Platform.isTV && (
