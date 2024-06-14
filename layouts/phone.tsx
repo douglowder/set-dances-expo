@@ -46,6 +46,7 @@ export default function PhoneLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <Drawer
             screenOptions={{
+              swipeEnabled: false,
               headerLeft: (props) =>
                 Platform.isTV ? null : (
                   <Pressable
