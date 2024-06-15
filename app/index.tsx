@@ -5,7 +5,7 @@ import {
   InterruptionModeAndroid,
   InterruptionModeIOS,
 } from 'expo-av';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { useSharedValue } from 'react-native-reanimated';
@@ -60,7 +60,6 @@ export default function Index() {
     const handleAsync = async () => {
       let newSound;
       let savedTune;
-      setIsPlaying(false);
       try {
         Audio.setAudioModeAsync({
           staysActiveInBackground: true,
@@ -107,6 +106,16 @@ export default function Index() {
     };
     handleAsync();
   }, [progressValue, speedValue, minSpeedValue, maxSpeedValue]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        // Pause sound if another screen (tune select or info) is focused
+        sound?.pauseAsync();
+        setIsPlaying(false);
+      };
+    }, [sound]),
+  );
 
   useEffect(() => {
     if (tune === undefined) {
