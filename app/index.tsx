@@ -45,6 +45,8 @@ export default function Index() {
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [tune, setTune] = useState<Tune | undefined>(undefined);
+  const [repeat, setRepeat] = useState(false);
+  const [finished, setFinished] = useState(false);
 
   const progressValue = useSharedValue(0);
   const minProgressValue = useSharedValue(0);
@@ -76,9 +78,14 @@ export default function Index() {
           },
           (status) => {
             if (status.isLoaded) {
-              const f = fractionCompleteFromStatus(status);
-              setDuration(status.durationMillis ?? 0);
+              const successStatus =
+                status as unknown as AVPlaybackStatusSuccess;
+              const f = fractionCompleteFromStatus(successStatus);
+              setDuration(successStatus.durationMillis ?? 0);
               progressValue.value = f;
+              if (f > 0.99) {
+                setFinished(true);
+              }
             }
           },
         );
@@ -96,6 +103,7 @@ export default function Index() {
       }
       progressValue.value = 0;
       setTune(savedTune);
+      setFinished(false);
     };
     handleAsync();
   }, [progressValue, speedValue, minSpeedValue, maxSpeedValue]);
@@ -105,6 +113,15 @@ export default function Index() {
       initialize();
     }
   }, [initialize, tune]);
+
+  useEffect(() => {
+    if (sound && repeat && finished) {
+      sound?.setPositionAsync(0).then(() => {
+        setFinished(false);
+        sound?.playAsync();
+      });
+    }
+  }, [repeat, finished, sound]);
 
   addTuneChangeListener(() => {
     setTune(undefined);
@@ -321,6 +338,17 @@ export default function Index() {
               )}
             </TVFocusGuideView>
           )}
+          <View style={styles.centerButtonContainer}>
+            <Text style={styles.tuneTitle}>Repeat&nbsp;&nbsp;</Text>
+            <CircularButton
+              onPress={() => {
+                setRepeat(!repeat);
+              }}
+              iconName={repeat ? 'checkbox-outline' : 'square-outline'}
+              alt={repeat ? 'Turn off repeat' : 'Turn on repeat'}
+              size={40 * scale}
+            />
+          </View>
           {!Platform.isTV && (
             <View style={styles.centerButtonContainer}>
               <RoutePicker style={styles.airplayButton} />
@@ -369,7 +397,8 @@ const useIndexStyles = function () {
       color: 'white',
       fontSize: 30 * scale,
       marginTop: 30 * scale,
-      marginBottom: 15 * scale,
+      marginBottom: 30 * scale,
+      textAlignVertical: 'center',
     },
     rightButtonContainer: {
       width: '80%',
