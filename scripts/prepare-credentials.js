@@ -13,9 +13,11 @@ const root = process.cwd();
 
 const isTV = process.env.EXPO_TV === '1';
 
+const isProduction = process.env.PRODUCTION === '1';
+
 const credentialsJsonSourcePath = path.join(
   root,
-  isTV ? 'credentials_tv.json' : 'credentials_phone.json',
+  isProduction ? 'credentials_app_store_phone.json' : isTV ? 'credentials_tv.json' : 'credentials_phone.json',
 );
 const credentialsJsonDestPath = path.join(root, 'credentials.json');
 
