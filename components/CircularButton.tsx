@@ -31,8 +31,6 @@ export const CircularButton = forwardRef(
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
-          width: size * 1.2,
-          height: size * 1.2,
           justifyContent: 'center',
           alignItems: 'center',
         }}
@@ -40,9 +38,8 @@ export const CircularButton = forwardRef(
         <Animated.View
           style={[
             {
-              borderRadius: size * 0.65,
-              width: size * 1.1,
-              height: size * 1.1,
+              width: size,
+              height: size,
               justifyContent: 'center',
               alignItems: 'center',
               padding: 0,
@@ -59,14 +56,10 @@ export const CircularButton = forwardRef(
         >
           {iconName && (
             <Ionicons
-              size={size * 0.9}
+              size={size}
               name={iconName}
               style={{
                 color: focused ? '#00ffff' : color ?? 'white',
-                width: '90%',
-                height: '90%',
-                margin: 0,
-                padding: 0,
                 justifyContent: 'center',
                 alignItems: 'center',
               }}
