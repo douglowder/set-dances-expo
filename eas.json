@@ -54,12 +54,7 @@
         "EXPO_TV": "1"
       }
     },
-    "production": {
-      "ios": {
-        "credentialsSource": "local",
-        "simulator": false
-      }
-    },
+    "production": {},
     "production:tv": {
       "extends": "production", 
       "env": {
