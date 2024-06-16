@@ -1,0 +1,19 @@
+diff --git a/node_modules/react-native/Libraries/Components/Pressable/Pressable.js b/node_modules/react-native/Libraries/Components/Pressable/Pressable.js
+index 96fe7d1..77cf69d 100644
+--- a/node_modules/react-native/Libraries/Components/Pressable/Pressable.js
++++ b/node_modules/react-native/Libraries/Components/Pressable/Pressable.js
+@@ -384,12 +384,12 @@ function Pressable(props: Props, forwardedRef): React.Node {
+       if (isTVSelectable !== false || focusable !== false) {
+         // $FlowFixMe[prop-missing]
+         if (evt?.eventType === 'focus') {
+-          shouldUpdatePressed && setFocused(true);
++          setFocused(true);
+           onFocus && onFocus(evt);
+           // $FlowFixMe[prop-missing]
+         } else if (evt.eventType === 'blur') {
+           onBlur && onBlur(evt);
+-          shouldUpdatePressed && setFocused(false);
++          setFocused(false);
+         }
+       }
+       // $FlowFixMe[prop-missing]
