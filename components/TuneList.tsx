@@ -29,16 +29,11 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
       setSavedTune(tune);
     };
     handleAsync();
-    return () => setSavedTune(undefined);
+    return () => {};
   });
 
   const handleRowSelect = (item: Tune) => {
     const handleAsync = async () => {
-      if (savedTune?.key === item.key) {
-        // Navigate back to player, no changes needed
-        router.navigate('/');
-        return;
-      }
       await storeTuneSettingAsync(item);
       await storeSavedSpeedAsync(item, item.defaultSpeed);
       emitTuneChangeEvent();
@@ -48,13 +43,25 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
   };
 
   const renderRow = ({ item }: { item: Tune }) => {
+    const isSameTune = savedTune?.key === item.key;
+    const label = `${item.name} (${item.defaultSpeed})`;
     return (
-      <Pressable onPress={() => handleRowSelect(item)} key={item.key}>
+      <Pressable
+        onPress={() => handleRowSelect(item)}
+        disabled={isSameTune}
+        key={item.key}
+      >
         {({ pressed, focused }) => (
           <ThemedView style={styles.textContainer}>
             <ThemedText
-              style={pressed || focused ? styles.textHighlighted : styles.text}
-            >{`${item.name} (${item.defaultSpeed})`}</ThemedText>
+              style={
+                isSameTune || pressed || focused
+                  ? styles.textHighlighted
+                  : styles.text
+              }
+            >
+              {label}
+            </ThemedText>
           </ThemedView>
         )}
       </Pressable>
