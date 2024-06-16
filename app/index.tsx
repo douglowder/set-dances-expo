@@ -30,8 +30,6 @@ import {
   fetchSavedSpeedAsync,
 } from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
-import { Ionicons } from '@expo/vector-icons';
-import { opacity } from 'react-native-reanimated/lib/typescript/reanimated2/Colors';
 
 const fractionCompleteFromStatus = (status: AVPlaybackStatusSuccess) =>
   status.positionMillis !== undefined && status.durationMillis !== undefined

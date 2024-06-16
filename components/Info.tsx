@@ -3,7 +3,6 @@ import Constants from 'expo-constants';
 import {
   StyleSheet,
   Platform,
-  Pressable,
   TVFocusGuideView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
