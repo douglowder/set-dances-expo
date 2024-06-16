@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,16 +14,29 @@ import {
   storeTuneSettingAsync,
 } from '@/utils/TuneSettings';
 import ParallaxScrollView from '@/components/ParallaxScrollView';
+import { useState } from 'react';
 
 export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
   const styles = useTuneListStyles();
 
   const tuneTypeSet = new Set(tuneTypes);
 
+  const [savedTune, setSavedTune] = useState<Tune | undefined>(undefined);
+
+  useFocusEffect(() => {
+    const handleAsync = async () => {
+      const tune = await fetchTuneSettingAsync();
+      setSavedTune(tune);
+    };
+    handleAsync();
+    return () => setSavedTune(undefined);
+  });
+
   const handleRowSelect = (item: Tune) => {
     const handleAsync = async () => {
-      const savedTune = await fetchTuneSettingAsync();
-      if (savedTune.key === item.key) {
+      if (savedTune?.key === item.key) {
+        // Navigate back to player, no changes needed
+        router.navigate('/');
         return;
       }
       await storeTuneSettingAsync(item);
@@ -33,13 +46,14 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
     };
     handleAsync();
   };
+
   const renderRow = ({ item }: { item: Tune }) => {
     return (
       <Pressable onPress={() => handleRowSelect(item)} key={item.key}>
         {({ pressed, focused }) => (
           <ThemedView style={styles.textContainer}>
             <ThemedText
-              style={[styles.text, { opacity: pressed || focused ? 0.6 : 1.0 }]}
+              style={pressed || focused ? styles.textHighlighted : styles.text}
             >{`${item.name} (${item.defaultSpeed})`}</ThemedText>
           </ThemedView>
         )}
