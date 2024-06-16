@@ -30,6 +30,8 @@ import {
   fetchSavedSpeedAsync,
 } from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
+import { Ionicons } from '@expo/vector-icons';
+import { opacity } from 'react-native-reanimated/lib/typescript/reanimated2/Colors';
 
 const fractionCompleteFromStatus = (status: AVPlaybackStatusSuccess) =>
   status.positionMillis !== undefined && status.durationMillis !== undefined
@@ -347,15 +349,13 @@ export default function Index() {
               )}
             </TVFocusGuideView>
           )}
-          <View style={styles.centerButtonContainer}>
-            <Text style={styles.tuneTitle}>Repeat&nbsp;&nbsp;</Text>
+          <View style={[styles.centerButtonContainer, { margin: 10 * scale }]}>
             <CircularButton
-              onPress={() => {
-                setRepeat(!repeat);
-              }}
-              iconName={repeat ? 'checkbox-outline' : 'square-outline'}
-              alt={repeat ? 'Turn off repeat' : 'Turn on repeat'}
-              size={40 * scale}
+              iconName="repeat"
+              alt="Toggle repeat"
+              color={repeat ? '#00ffff' : 'white'}
+              onPress={() => setRepeat(!repeat)}
+              size={60 * scale}
             />
           </View>
           {!Platform.isTV && (
