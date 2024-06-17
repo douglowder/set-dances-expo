@@ -1,6 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { forwardRef, useState } from 'react';
-import { Pressable, PressableProps, ViewStyle } from 'react-native';
+import {
+  Pressable,
+  PressableProps,
+  ViewStyle,
+  useTVEventHandler,
+} from 'react-native';
 import Animated, {
   useAnimatedStyle,
   withTiming,
@@ -11,6 +16,7 @@ type CircularButtonProps = PressableProps & {
   iconName?: any;
   alt: string;
   color?: string;
+  onPlayPause?: () => void;
 };
 
 export const CircularButton = forwardRef(
@@ -18,6 +24,15 @@ export const CircularButton = forwardRef(
     const [focused, setFocused] = useState(false);
     const [pressed, setPressed] = useState(false);
     const { alt, size, iconName, onPress, color } = props;
+
+    useTVEventHandler((event) => {
+      if (props?.onPlayPause) {
+        console.log(`TV event: ${props.iconName} ${event.eventType}`);
+        if (event.eventType === 'playPause') {
+          props.onPlayPause();
+        }
+      }
+    });
 
     const $animatedStyle: ViewStyle = useAnimatedStyle(
       () => ({

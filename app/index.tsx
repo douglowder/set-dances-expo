@@ -246,6 +246,7 @@ export default function Index() {
               onPress={handlePlayPause}
               iconName={isPlaying ? 'pause' : 'play'}
               alt={isPlaying ? 'Pause' : 'Play'}
+              onPlayPause={handlePlayPause}
             />
             <CircularButton
               size={60 * scale}
