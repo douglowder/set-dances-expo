@@ -202,7 +202,15 @@ export default function Index() {
       >
         <View style={styles.safeAreaContainer}>
           <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
-            {Platform.isTV && <View style={{ width: 50 * scale }} />}
+            {Platform.isTV && (
+              <CircularButton
+                iconName="repeat"
+                alt="Toggle repeat"
+                color={repeat ? '#00ffff' : 'white'}
+                onPress={() => setRepeat(!repeat)}
+                size={50 * scale}
+              />
+            )}
             <View style={{ flex: 1 }} />
             <Text style={styles.title}>Set Dances</Text>
             <View style={{ flex: 1 }} />
@@ -347,15 +355,19 @@ export default function Index() {
               )}
             </TVFocusGuideView>
           )}
-          <View style={[styles.centerButtonContainer, { margin: 10 * scale }]}>
-            <CircularButton
-              iconName="repeat"
-              alt="Toggle repeat"
-              color={repeat ? '#00ffff' : 'white'}
-              onPress={() => setRepeat(!repeat)}
-              size={60 * scale}
-            />
-          </View>
+          {!Platform.isTV && (
+            <View
+              style={[styles.centerButtonContainer, { margin: 10 * scale }]}
+            >
+              <CircularButton
+                iconName="repeat"
+                alt="Toggle repeat"
+                color={repeat ? '#00ffff' : 'white'}
+                onPress={() => setRepeat(!repeat)}
+                size={60 * scale}
+              />
+            </View>
+          )}
           {!Platform.isTV && (
             <View style={styles.centerButtonContainer}>
               <RoutePicker style={styles.airplayButton} />
