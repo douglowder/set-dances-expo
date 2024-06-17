@@ -20,7 +20,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function PhoneLayout() {
   const colorScheme = useColorScheme();
-  const scale = useScale();
+  const { scale } = useScale();
   const navigation = useNavigation();
 
   const [loaded] = useFonts({

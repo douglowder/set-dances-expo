@@ -21,7 +21,7 @@ export default function TVLayout() {
   const colorScheme = useColorScheme();
   const headerTintColor = (colorScheme === 'dark' ? DarkTheme : DefaultTheme)
     .colors.text;
-  const scale = useScale();
+  const { scale } = useScale();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });

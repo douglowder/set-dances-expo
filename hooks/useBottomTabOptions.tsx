@@ -27,7 +27,7 @@ export function useBottomTabOptions(): BottomTabNavigationOptions {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const textStyles = useTextStyles();
-  const scale = useScale();
+  const { scale } = useScale();
   return {
     tabBarActiveTintColor: colors.tint,
     tabBarStyle: {

@@ -37,7 +37,7 @@ const fractionCompleteFromStatus = (status: AVPlaybackStatusSuccess) =>
     : 0;
 
 export default function Index() {
-  const scale = useScale();
+  const { scale } = useScale();
   const styles = useIndexStyles();
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -383,7 +383,7 @@ export default function Index() {
 }
 
 const useIndexStyles = function () {
-  const scale = useScale();
+  const { scale } = useScale();
   const { top, bottom } = useSafeAreaInsets();
   return StyleSheet.create({
     container: {

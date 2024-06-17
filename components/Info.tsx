@@ -1,10 +1,6 @@
 import { Image } from 'expo-image';
 import Constants from 'expo-constants';
-import {
-  StyleSheet,
-  Platform,
-  TVFocusGuideView,
-} from 'react-native';
+import { StyleSheet, Platform, TVFocusGuideView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ParallaxScrollView from '@/components/ParallaxScrollView';
@@ -99,7 +95,7 @@ function About() {
 
 function Instructions() {
   const styles = useHomeScreenStyles();
-  const scale = useScale();
+  const { scale } = useScale();
   return (
     <ThemedView>
       <ThemedView style={styles.textContainer}>
@@ -172,7 +168,7 @@ function Thanks() {
 }
 
 const useHomeScreenStyles = function () {
-  const scale = useScale();
+  const { scale } = useScale();
   const backgroundColor = useThemeColor({}, 'tint');
   const iconColor = useThemeColor({}, 'icon');
   const color = useThemeColor({}, 'background');

@@ -27,7 +27,6 @@ export const CircularButton = forwardRef(
 
     useTVEventHandler((event) => {
       if (props?.onPlayPause) {
-        console.log(`TV event: ${props.iconName} ${event.eventType}`);
         if (event.eventType === 'playPause') {
           props.onPlayPause();
         }

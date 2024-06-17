@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { StyleSheet, Pressable } from 'react-native';
+import { StyleSheet, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/ThemedText';
@@ -15,6 +15,7 @@ import {
 } from '@/utils/TuneSettings';
 import ParallaxScrollView from '@/components/ParallaxScrollView';
 import { useState } from 'react';
+import { FlatList } from 'react-native-gesture-handler';
 
 export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
   const styles = useTuneListStyles();
@@ -68,15 +69,20 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
     );
   };
 
+  const data = AllTunes.filter((item) => tuneTypeSet.has(item.type));
+
   // If the page was reloaded or navigated to directly, then the modal should be presented as
   // a full screen page. You may need to change the UI to account for this.
   return (
     <ThemedView style={styles.container}>
       <ThemedView style={[styles.container, styles.safeAreaContainer]}>
         <ParallaxScrollView>
-          {AllTunes.filter((item) => tuneTypeSet.has(item.type)).map((item) =>
-            renderRow({ item }),
-          )}
+          <FlatList
+            data={data}
+            renderItem={renderRow}
+            scrollEnabled={false}
+            numColumns={Platform.isTV ? 2 : 1}
+          />
         </ParallaxScrollView>
       </ThemedView>
     </ThemedView>
@@ -84,7 +90,7 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
 }
 
 const useTuneListStyles = function () {
-  const scale = useScale();
+  const { width, scale } = useScale();
   const tintColor = useThemeColor({}, 'tint');
   const textColor = useThemeColor({}, 'text');
   const backgroundColor = useThemeColor({}, 'background');
@@ -106,8 +112,9 @@ const useTuneListStyles = function () {
       alignItems: 'flex-start',
     },
     textContainer: {
-      flexDirection: 'row',
+      width: Platform.isTV ? width / 2.5 : undefined,
       padding: 5 * scale,
+      margin: 5 * scale,
     },
     text: {
       color: textColor,
