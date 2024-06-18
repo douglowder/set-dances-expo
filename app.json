@@ -32,7 +32,7 @@
     "experiments": {
       "typedRoutes": true
     },
-    "name": "set-dances",
+    "name": "Set Dances",
     "slug": "set-dances",
     "version": "2.0.0",
     "runtimeVersion": "2.0.0",
