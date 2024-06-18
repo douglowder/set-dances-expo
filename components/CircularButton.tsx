@@ -7,6 +7,8 @@ import {
   useTVEventHandler,
 } from 'react-native';
 import Animated, {
+  Easing,
+  ReduceMotion,
   useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated';
@@ -35,8 +37,10 @@ export const CircularButton = forwardRef(
 
     const $animatedStyle: ViewStyle = useAnimatedStyle(
       () => ({
-        opacity: withTiming<number>(pressed || focused ? 0.6 : 1.0, {
-          duration: 150,
+        opacity: withTiming<number>(pressed ? 0.6 : 1.0, {
+          duration: 300,
+          easing: Easing.circle,
+          reduceMotion: ReduceMotion.Always,
         }),
       }),
       [pressed, focused],
@@ -44,6 +48,10 @@ export const CircularButton = forwardRef(
 
     return (
       <Pressable
+        tvParallaxProperties={{
+          enabled: true,
+          magnification: 1.3,
+        }}
         ref={ref}
         accessible={true}
         accessibilityLabel={alt}
