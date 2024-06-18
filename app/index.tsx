@@ -52,10 +52,6 @@ export default function Index() {
   const minProgressValue = useSharedValue(0);
   const maxProgressValue = useSharedValue(1);
 
-  const speedValue = useSharedValue(1);
-  const minSpeedValue = useSharedValue(0);
-  const maxSpeedValue = useSharedValue(2);
-
   const initialize = useCallback(() => {
     const handleAsync = async () => {
       let newSound;
@@ -96,16 +92,13 @@ export default function Index() {
       if (savedTune) {
         const savedSpeed = await fetchSavedSpeedAsync();
         setSpeed(savedSpeed);
-        speedValue.value = savedSpeed;
-        minSpeedValue.value = savedTune.minSpeed;
-        maxSpeedValue.value = savedTune.maxSpeed;
       }
       progressValue.value = 0;
       setTune(savedTune);
       setFinished(false);
     };
     handleAsync();
-  }, [progressValue, speedValue, minSpeedValue, maxSpeedValue]);
+  }, [progressValue]);
 
   useFocusEffect(
     useCallback(() => {
@@ -269,8 +262,8 @@ export default function Index() {
                   )
                 }
                 alt="Jog back"
-                size={40 * scale}
-                iconName="caret-back-sharp"
+                size={60 * scale}
+                iconName="caret-back"
               />
             )}
             <Slider
@@ -296,8 +289,8 @@ export default function Index() {
                   )
                 }
                 alt="Jog forward"
-                size={40 * scale}
-                iconName="caret-forward-sharp"
+                size={60 * scale}
+                iconName="caret-forward"
               />
             )}
           </TVFocusGuideView>
@@ -308,7 +301,6 @@ export default function Index() {
             >
               <CircularButton
                 onPress={() => {
-                  speedValue.value = speed - 1;
                   setSpeed((speed) => speed - 1);
                   sound?.setRateAsync(speed / (tune?.defaultSpeed ?? 0), false);
                   storeSavedSpeedAsync(tune, speed);
@@ -323,7 +315,6 @@ export default function Index() {
               )}`}</Text>
               <CircularButton
                 onPress={() => {
-                  speedValue.value = speed + 1;
                   setSpeed((speed) => speed + 1);
                   sound?.setRateAsync(speed / (tune?.defaultSpeed ?? 0), false);
                   storeSavedSpeedAsync(tune, speed);
