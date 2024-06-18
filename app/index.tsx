@@ -124,10 +124,15 @@ export default function Index() {
   }, [initialize, tune]);
 
   useEffect(() => {
-    if (sound && repeat && finished) {
+    if (sound && finished) {
       sound?.setPositionAsync(0).then(() => {
         setFinished(false);
-        sound?.playAsync();
+        if (repeat) {
+          sound?.playAsync();
+        } else {
+          sound?.pauseAsync();
+          setIsPlaying(false);
+        }
       });
     }
   }, [repeat, finished, sound]);
@@ -296,64 +301,37 @@ export default function Index() {
               />
             )}
           </TVFocusGuideView>
-          <Text style={styles.tuneTitle}>{`Speed: ${displayedSpeedString(
-            tune,
-            speed,
-          )}`}</Text>
           {tune && (
-            <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
-              {Platform.isTV && (
-                <CircularButton
-                  onPress={() => {
-                    speedValue.value = speed - 1;
-                    setSpeed((speed) => speed - 1);
-                    sound?.setRateAsync(
-                      speed / (tune?.defaultSpeed ?? 0),
-                      false,
-                    );
-                    storeSavedSpeedAsync(tune, speed);
-                  }}
-                  alt="Decrease speed"
-                  size={40 * scale}
-                  iconName="caret-back-sharp"
-                />
-              )}
-              <Slider
-                style={styles.progressContainer}
-                progress={speedValue}
-                maximumValue={maxSpeedValue}
-                minimumValue={minSpeedValue}
-                heartbeat={false}
-                renderBubble={() => null}
-                renderMark={() => null}
-                renderThumb={() => <View style={styles.progressCenter} />}
-                theme={{
-                  minimumTrackTintColor: 'blue',
+            <TVFocusGuideView
+              autoFocus
+              style={[styles.centerButtonContainer, { marginTop: 60 * scale }]}
+            >
+              <CircularButton
+                onPress={() => {
+                  speedValue.value = speed - 1;
+                  setSpeed((speed) => speed - 1);
+                  sound?.setRateAsync(speed / (tune?.defaultSpeed ?? 0), false);
+                  storeSavedSpeedAsync(tune, speed);
                 }}
-                onSlidingComplete={(value) => {
-                  storeSavedSpeedAsync(tune, value);
-                }}
-                onValueChange={(value) => {
-                  sound?.setRateAsync(value / (tune?.defaultSpeed ?? 0), false);
-                  setSpeed(value);
-                }}
+                alt="Decrease speed"
+                size={60 * scale}
+                iconName="caret-down"
               />
-              {Platform.isTV && (
-                <CircularButton
-                  onPress={() => {
-                    speedValue.value = speed + 1;
-                    setSpeed((speed) => speed + 1);
-                    sound?.setRateAsync(
-                      speed / (tune?.defaultSpeed ?? 0),
-                      false,
-                    );
-                    storeSavedSpeedAsync(tune, speed);
-                  }}
-                  alt="Increase speed"
-                  size={40 * scale}
-                  iconName="caret-forward-sharp"
-                />
-              )}
+              <Text style={styles.tuneTitle}>{`Speed: ${displayedSpeedString(
+                tune,
+                speed,
+              )}`}</Text>
+              <CircularButton
+                onPress={() => {
+                  speedValue.value = speed + 1;
+                  setSpeed((speed) => speed + 1);
+                  sound?.setRateAsync(speed / (tune?.defaultSpeed ?? 0), false);
+                  storeSavedSpeedAsync(tune, speed);
+                }}
+                alt="Increase speed"
+                size={60 * scale}
+                iconName="caret-up"
+              />
             </TVFocusGuideView>
           )}
           {!Platform.isTV && (
@@ -416,8 +394,7 @@ const useIndexStyles = function () {
     tuneTitle: {
       color: 'white',
       fontSize: 30 * scale,
-      marginTop: 30 * scale,
-      marginBottom: 30 * scale,
+      margin: 30 * scale,
       textAlignVertical: 'center',
     },
     rightButtonContainer: {
