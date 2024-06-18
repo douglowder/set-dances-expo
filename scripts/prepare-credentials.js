@@ -15,10 +15,19 @@ const isTV = process.env.EXPO_TV === '1';
 
 const isProduction = process.env.PRODUCTION === '1';
 
+let credentialsPath = 'credentials_phone.json';
+
+if (process.env.PRODUCTION === '1') {
+  credentialsPath = process.env.EXPO_TV === '1' ? 'credentials_app_store_tv.json' : 'credentials_tv.json';
+} else {
+  credentialsPath = process.env.EXPO_TV === '1' ? 'credentials_tv.json' : 'credentials_phone.json';
+}
+
 const credentialsJsonSourcePath = path.join(
   root,
-  isProduction ? 'credentials_app_store_phone.json' : isTV ? 'credentials_tv.json' : 'credentials_phone.json',
+  credentialsPath,
 );
+
 const credentialsJsonDestPath = path.join(root, 'credentials.json');
 
 fs.copyFileSync(credentialsJsonSourcePath, credentialsJsonDestPath);
