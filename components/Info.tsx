@@ -29,8 +29,8 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
         style={[styles.container, styles.safeAreaContainer]}
       >
         <ParallaxScrollView>
-          {tabName === 'About' && <About />}
           {tabName === 'Instructions' && <Instructions />}
+          {tabName === 'About' && <About />}
           {tabName === 'Thanks' && <Thanks />}
         </ParallaxScrollView>
       </TVFocusGuideView>
@@ -101,17 +101,27 @@ function Instructions() {
       <ThemedView style={styles.textContainer}>
         <Ionicons size={30 * scale} name="play" style={styles.image} />
         <ThemedText style={styles.text}>
-          Press this to play/pause the music. You can use the sliders to move to
-          a different part of the tune, and to adjust the speed.
+          Press this to play/pause the music. You can use the slider to move to
+          a different part of the tune, and the up and down arrows to adjust the
+          speed.
         </ThemedText>
       </ThemedView>
       <ThemedView style={styles.textContainer}>
         <Ionicons size={30 * scale} name="search" style={styles.image} />
         <ThemedText style={styles.text}>
-          Press this to bring up a dialog that will allow you to select a
+          Press this to bring up a screen that will allow you to select a
           different dance tune.
         </ThemedText>
       </ThemedView>
+      {!Platform.isTV && (
+        <ThemedView style={styles.textContainer}>
+          <Ionicons size={30 * scale} name="menu" style={styles.image} />
+          <ThemedText style={styles.text}>
+            Use the menu to navigate between the main screen, the tune selection
+            screen, and this info screen.
+          </ThemedText>
+        </ThemedView>
+      )}
       <ThemedView style={styles.textContainer}>
         <ThemedText style={styles.text}>
           Tunes can be selected from four lists; use the selector at the bottom

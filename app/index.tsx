@@ -188,7 +188,7 @@ export default function Index() {
   };
 
   const handleInfo = () => {
-    router.push(`/(info)/about
+    router.push(`/(info)/instructions
     `);
   };
 
