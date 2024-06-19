@@ -50,7 +50,9 @@ export const CircularButton = forwardRef(
       <Pressable
         tvParallaxProperties={{
           enabled: true,
-          magnification: 1.3,
+          magnification: 1.2,
+          pressMagnification: 1.3,
+          pressDuration: 0.3,
         }}
         ref={ref}
         accessible={true}
