@@ -192,6 +192,12 @@ export default function Index() {
     `);
   };
 
+  const handleSpeedChange = async (tune: Tune, newSpeed: number) => {
+    await sound?.setRateAsync(newSpeed / (tune?.defaultSpeed ?? 0), false);
+    await storeSavedSpeedAsync(tune, newSpeed);
+    setSpeed(newSpeed);
+  };
+
   return (
     <View style={styles.container}>
       <ImageBackground
@@ -301,9 +307,8 @@ export default function Index() {
             >
               <CircularButton
                 onPress={() => {
-                  setSpeed((speed) => speed - 1);
-                  sound?.setRateAsync(speed / (tune?.defaultSpeed ?? 0), false);
-                  storeSavedSpeedAsync(tune, speed);
+                  const newSpeed = speed - 1;
+                  handleSpeedChange(tune, newSpeed);
                 }}
                 alt="Decrease speed"
                 size={60 * scale}
@@ -315,9 +320,8 @@ export default function Index() {
               )}`}</Text>
               <CircularButton
                 onPress={() => {
-                  setSpeed((speed) => speed + 1);
-                  sound?.setRateAsync(speed / (tune?.defaultSpeed ?? 0), false);
-                  storeSavedSpeedAsync(tune, speed);
+                  const newSpeed = speed + 1;
+                  handleSpeedChange(tune, newSpeed);
                 }}
                 alt="Increase speed"
                 size={60 * scale}
