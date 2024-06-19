@@ -10,13 +10,23 @@ import { Platform, Pressable, useColorScheme } from 'react-native';
 
 const tabBarButton = (props: BottomTabBarButtonProps) => {
   const style: any = props.style ?? {};
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? 'light'];
   return (
     <Pressable
+      tvParallaxProperties={{
+        enabled: true,
+        magnification: 1.2,
+        pressMagnification: 1.3,
+        pressDuration: 0.3,
+      }}
       {...props}
       style={({ pressed, focused }) => [
         style,
         {
-          opacity: pressed || focused ? 0.6 : 1.0,
+          opacity:
+            (pressed || focused) && Platform.OS === 'android' ? 0.6 : 1.0,
+          color: focused ? colors.tint : colors.text,
         },
       ]}
     />

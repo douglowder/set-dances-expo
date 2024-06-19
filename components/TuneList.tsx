@@ -48,17 +48,20 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
     const label = `${item.name} (${item.defaultSpeed})`;
     return (
       <Pressable
+        tvParallaxProperties={{
+          enabled: true,
+          magnification: 1.05,
+          pressMagnification: 1.2,
+          pressDuration: 0.3,
+        }}
         onPress={() => handleRowSelect(item)}
-        disabled={isSameTune}
         key={item.key}
       >
-        {({ pressed, focused }) => (
+        {({ pressed }) => (
           <ThemedView style={styles.textContainer}>
             <ThemedText
               style={
-                isSameTune || pressed || focused
-                  ? styles.textHighlighted
-                  : styles.text
+                isSameTune || pressed ? styles.textHighlighted : styles.text
               }
             >
               {label}
