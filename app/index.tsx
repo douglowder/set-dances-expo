@@ -37,7 +37,7 @@ const fractionCompleteFromStatus = (status: AVPlaybackStatusSuccess) =>
     : 0;
 
 export default function Index() {
-  const { scale } = useScale();
+  const { scale, landscape } = useScale();
   const styles = useIndexStyles();
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -205,29 +205,26 @@ export default function Index() {
         style={styles.backgroundImage}
       >
         <View style={styles.safeAreaContainer}>
+          <View style={{ height: 60 * scale }} />
           <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
-            {Platform.isTV && (
-              <CircularButton
-                iconName="repeat"
-                alt="Toggle repeat"
-                color={repeat ? '#00ffff' : 'white'}
-                onPress={() => setRepeat(!repeat)}
-                size={50 * scale}
-              />
-            )}
+            <CircularButton
+              iconName="repeat"
+              alt="Toggle repeat"
+              color={repeat ? '#00ffff' : 'white'}
+              onPress={() => setRepeat(!repeat)}
+              size={50 * scale}
+            />
             <View style={{ flex: 1 }} />
             <Text style={[styles.title, { fontFamily: 'Zapfino' }]}>
               Set Dances
             </Text>
             <View style={{ flex: 1 }} />
-            {Platform.isTV && (
-              <CircularButton
-                onPress={handleInfo}
-                alt="Info"
-                iconName="information-circle"
-                size={50 * scale}
-              />
-            )}
+            <CircularButton
+              onPress={handleInfo}
+              alt="Info"
+              iconName="information-circle"
+              size={50 * scale}
+            />
           </TVFocusGuideView>
           <Text style={styles.tuneTitle}>{tune?.name ?? ''}</Text>
           <View style={{ flex: 1 }} />
@@ -261,6 +258,7 @@ export default function Index() {
               onPress={handleSelect}
             />
           </TVFocusGuideView>
+          <View style={{ flex: 1 }} />
           <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
             {Platform.isTV && (
               <CircularButton
@@ -307,7 +305,10 @@ export default function Index() {
               autoFocus
               style={[
                 styles.centerButtonContainer,
-                { marginTop: Platform.isTV ? 0 : 60 * scale },
+                {
+                  marginTop: landscape ? 0 : 60 * scale,
+                  width: landscape ? '50%' : '70%',
+                },
               ]}
             >
               <CircularButton
@@ -332,27 +333,13 @@ export default function Index() {
                 size={60 * scale}
                 iconName="caret-up"
               />
-              {Platform.isTV && <View style={{ flex: 1 }} />}
-              {Platform.isTV && <RoutePicker style={styles.airplayButton} />}
-            </TVFocusGuideView>
-          )}
-          {!Platform.isTV && (
-            <View
-              style={[styles.centerButtonContainer, { margin: 10 * scale }]}
-            >
-              <CircularButton
-                iconName="repeat"
-                alt="Toggle repeat"
-                color={repeat ? '#00ffff' : 'white'}
-                onPress={() => setRepeat(!repeat)}
-                size={60 * scale}
+              <View style={{ flex: 1 }} />
+              <RoutePicker
+                style={styles.airplayButton}
+                tintColor="white"
+                activeTintColor="#00ffff"
               />
-            </View>
-          )}
-          {!Platform.isTV && (
-            <View style={styles.centerButtonContainer}>
-              <RoutePicker style={styles.airplayButton} />
-            </View>
+            </TVFocusGuideView>
           )}
           <View style={{ flex: 2 }} />
         </View>
@@ -363,7 +350,7 @@ export default function Index() {
 }
 
 const useIndexStyles = function () {
-  const { scale } = useScale();
+  const { scale, landscape } = useScale();
   const { top, bottom } = useSafeAreaInsets();
   return StyleSheet.create({
     container: {
@@ -388,10 +375,10 @@ const useIndexStyles = function () {
     },
     title: {
       color: 'white',
-      fontSize: 40 * scale,
+      fontSize: 30 * scale,
       fontWeight: 'bold',
-      marginBottom: Platform.isTV ? 0 : 20 * scale,
-      marginTop: Platform.isTV ? 20 * scale : 60 * scale,
+      textAlignVertical: 'center',
+      marginBottom: -15 * scale,
     },
     tuneTitle: {
       color: 'white',
@@ -399,14 +386,8 @@ const useIndexStyles = function () {
       margin: 30 * scale,
       textAlignVertical: 'center',
     },
-    rightButtonContainer: {
-      width: '80%',
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      justifyContent: 'flex-end',
-    },
     centerButtonContainer: {
-      width: '80%',
+      width: landscape ? '60%' : '80%',
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
@@ -431,7 +412,7 @@ const useIndexStyles = function () {
       height: 150 * scale,
       justifyContent: 'center',
       alignItems: 'center',
-      flex: 1,
+      margin: landscape ? 0 : -30 * scale,
       backgroundColor: 'transparent',
     },
   });

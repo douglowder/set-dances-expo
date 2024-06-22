@@ -1,11 +1,13 @@
-import { Platform, useWindowDimensions } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 
 export function useScale() {
   const { height, width } = useWindowDimensions();
-  const scale = Platform.isTV ? width / 1000 : 1;
+  const scale = Math.max(width, height) / 1000;
+  const landscape = width > height;
   return {
     height,
     width,
     scale,
+    landscape,
   };
 }
