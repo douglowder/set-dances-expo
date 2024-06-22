@@ -6,36 +6,16 @@ import {
   DrawerActions,
   ThemeProvider,
 } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
 import { useNavigation } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
 import { Platform, Pressable, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
 
 export default function PhoneLayout() {
   const colorScheme = useColorScheme();
   const { scale } = useScale();
   const navigation = useNavigation();
-
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-
-  if (!loaded) {
-    return null;
-  }
 
   const headerTintColor = (colorScheme === 'dark' ? DarkTheme : DefaultTheme)
     .colors.text;
