@@ -332,6 +332,8 @@ export default function Index() {
                 size={60 * scale}
                 iconName="caret-up"
               />
+              {Platform.isTV && <View style={{ flex: 1 }} />}
+              {Platform.isTV && <RoutePicker style={styles.airplayButton} />}
             </TVFocusGuideView>
           )}
           {!Platform.isTV && (
