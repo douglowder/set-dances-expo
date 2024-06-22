@@ -50,6 +50,9 @@
     "ios": {
       "userInterfaceStyle": "automatic",
       "supportsTablet": true,
+      "entitlements": {
+        "aps-environment": "development"
+      },
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
           {
@@ -63,7 +66,8 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.douglowder.Set-Dances"
     },
