@@ -216,7 +216,9 @@ export default function Index() {
               />
             )}
             <View style={{ flex: 1 }} />
-            <Text style={styles.title}>Set Dances</Text>
+            <Text style={[styles.title, { fontFamily: 'Zapfino' }]}>
+              Set Dances
+            </Text>
             <View style={{ flex: 1 }} />
             {Platform.isTV && (
               <CircularButton
@@ -303,7 +305,10 @@ export default function Index() {
           {tune && (
             <TVFocusGuideView
               autoFocus
-              style={[styles.centerButtonContainer, { marginTop: 60 * scale }]}
+              style={[
+                styles.centerButtonContainer,
+                { marginTop: Platform.isTV ? 0 : 60 * scale },
+              ]}
             >
               <CircularButton
                 onPress={() => {
@@ -383,7 +388,7 @@ const useIndexStyles = function () {
       color: 'white',
       fontSize: 40 * scale,
       fontWeight: 'bold',
-      marginBottom: 20 * scale,
+      marginBottom: Platform.isTV ? 0 : 20 * scale,
       marginTop: Platform.isTV ? 20 * scale : 60 * scale,
     },
     tuneTitle: {
