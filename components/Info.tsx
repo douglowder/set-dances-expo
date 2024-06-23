@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import { StyleSheet, Platform, TVFocusGuideView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -19,7 +20,7 @@ type InfoTabNames = 'About' | 'Instructions' | 'Thanks';
 
 export default function Info({ tabName }: { tabName: InfoTabNames }) {
   const styles = useHomeScreenStyles();
-
+  const { landscape } = useScale();
   // If the page was reloaded or navigated to directly, then the modal should be presented as
   // a full screen page. You may need to change the UI to account for this.
   return (
@@ -28,11 +29,19 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
         autoFocus
         style={[styles.container, styles.safeAreaContainer]}
       >
-        <ParallaxScrollView>
-          {tabName === 'Instructions' && <Instructions />}
-          {tabName === 'About' && <About />}
-          {tabName === 'Thanks' && <Thanks />}
-        </ParallaxScrollView>
+        {landscape ? (
+          <ParallaxScrollView key="landscapeView">
+            {tabName === 'Instructions' && <Instructions />}
+            {tabName === 'About' && <About />}
+            {tabName === 'Thanks' && <Thanks />}
+          </ParallaxScrollView>
+        ) : (
+          <ParallaxScrollView key="portraitView">
+            {tabName === 'Instructions' && <Instructions />}
+            {tabName === 'About' && <About />}
+            {tabName === 'Thanks' && <Thanks />}
+          </ParallaxScrollView>
+        )}
       </TVFocusGuideView>
     </ThemedView>
   );
@@ -48,9 +57,17 @@ function About() {
         </ThemedText>
       </ThemedView>
       <ThemedView>
-        <ThemedText style={styles.textSmall}>{`Build ${
-          Constants.manifest2?.runtimeVersion ?? Constants.expoConfig?.version
-        }`}</ThemedText>
+        <ThemedText style={styles.textSmall}>&nbsp;</ThemedText>
+        <ThemedText
+          style={styles.textSmall}
+        >{`Version: ${Application.nativeApplicationVersion}`}</ThemedText>
+        <ThemedText
+          style={styles.textSmall}
+        >{`Build number: ${Application.nativeBuildVersion}`}</ThemedText>
+        <ThemedText style={styles.textSmall}>&nbsp;</ThemedText>
+        <ThemedText style={styles.textSmall}>
+          Built with React Native and Expo Router:
+        </ThemedText>
         <ThemedText style={styles.textSmall}>&nbsp;</ThemedText>
         <ThemedText
           style={styles.textSmall}
@@ -76,6 +93,7 @@ function About() {
         </ThemedText>
       </ThemedView>
       <ThemedView>
+        <ThemedText style={styles.textSmall}>&nbsp;</ThemedText>
         <ThemedText style={styles.textSmall}>
           "The Vanishing Lake" is included by kind permission of the composer,
           Francis Ward. "The Charlady" is included by kind permission of the
