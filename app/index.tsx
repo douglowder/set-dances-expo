@@ -37,7 +37,7 @@ const fractionCompleteFromStatus = (status: AVPlaybackStatusSuccess) =>
     : 0;
 
 export default function Index() {
-  const { scale, landscape } = useScale();
+  const { scale, landscape, tall } = useScale();
   const styles = useIndexStyles();
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -333,13 +333,22 @@ export default function Index() {
                 size={60 * scale}
                 iconName="caret-up"
               />
-              <View style={{ flex: 1 }} />
-              <RoutePicker
-                style={styles.airplayButton}
-                tintColor="white"
-                activeTintColor="#00ffff"
-              />
+              {!tall && <View style={{ flex: 1 }} />}
+              {!tall && (
+                <RoutePicker
+                  style={[styles.airplayButton, { marginLeft: 50 * scale }]}
+                  tintColor="white"
+                  activeTintColor="#00ffff"
+                />
+              )}
             </TVFocusGuideView>
+          )}
+          {tall && (
+            <RoutePicker
+              style={styles.airplayButton}
+              tintColor="white"
+              activeTintColor="#00ffff"
+            />
           )}
           <View style={{ flex: 2 }} />
         </View>
@@ -412,7 +421,6 @@ const useIndexStyles = function () {
       height: 150 * scale,
       justifyContent: 'center',
       alignItems: 'center',
-      margin: landscape ? 0 : -30 * scale,
       backgroundColor: 'transparent',
     },
   });
