@@ -42,7 +42,7 @@ export default function PhoneLayout() {
                           style={{
                             width: 40 * scale,
                             height: 40 * scale,
-                            margin: 10 * scale,
+                            margin: 20 * scale,
                             color: props.tintColor,
                             opacity: pressed || focused ? 0.6 : 1.0,
                           }}
@@ -57,6 +57,9 @@ export default function PhoneLayout() {
               name="index"
               options={{
                 headerTransparent: true,
+                headerStyle: {
+                  height: 100 * scale,
+                },
                 headerTintColor: 'white',
                 drawerLabel: 'Home',
                 drawerLabelStyle: {
