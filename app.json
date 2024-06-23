@@ -35,7 +35,9 @@
     "name": "Set Dances",
     "slug": "set-dances",
     "version": "2.0.0",
-    "runtimeVersion": "2.0.0",
+    "runtimeVersion": {
+      "policy": "nativeVersion"
+    },
     "scheme": "set-dances",
     "icon": "./assets/images/icon.png",
     "splash": {
