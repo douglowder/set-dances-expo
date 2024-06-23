@@ -19,6 +19,7 @@ import { FlatList } from 'react-native-gesture-handler';
 
 export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
   const styles = useTuneListStyles();
+  const { landscape } = useScale();
 
   const tuneTypeSet = new Set(tuneTypes);
 
@@ -43,9 +44,11 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
     handleAsync();
   };
 
+  const itemLabel = ({ item }: { item: Tune }) =>
+    `${item.name} (${item.defaultSpeed})`;
+
   const renderRow = ({ item }: { item: Tune }) => {
     const isSameTune = savedTune?.key === item.key;
-    const label = `${item.name} (${item.defaultSpeed})`;
     return (
       <Pressable
         tvParallaxProperties={{
@@ -55,7 +58,6 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
           pressDuration: 0.3,
         }}
         onPress={() => handleRowSelect(item)}
-        key={item.key}
       >
         {({ pressed }) => (
           <ThemedView style={styles.textContainer}>
@@ -64,7 +66,7 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
                 isSameTune || pressed ? styles.textHighlighted : styles.text
               }
             >
-              {label}
+              {itemLabel({ item })}
             </ThemedText>
           </ThemedView>
         )}
@@ -80,12 +82,25 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
     <ThemedView style={styles.container}>
       <ThemedView style={[styles.container, styles.safeAreaContainer]}>
         <ParallaxScrollView>
-          <FlatList
-            data={data}
-            renderItem={renderRow}
-            scrollEnabled={false}
-            numColumns={Platform.isTV ? 2 : 1}
-          />
+          {landscape ? (
+            <FlatList
+              key="landscapeList"
+              data={data}
+              keyExtractor={(item) => item.key}
+              renderItem={renderRow}
+              scrollEnabled={false}
+              numColumns={2}
+            />
+          ) : (
+            <FlatList
+              key="portraitList"
+              data={data}
+              keyExtractor={(item) => item.key}
+              renderItem={renderRow}
+              scrollEnabled={false}
+              numColumns={1}
+            />
+          )}
         </ParallaxScrollView>
       </ThemedView>
     </ThemedView>
@@ -93,7 +108,7 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
 }
 
 const useTuneListStyles = function () {
-  const { width, scale } = useScale();
+  const { width, scale, landscape } = useScale();
   const tintColor = useThemeColor({}, 'tint');
   const textColor = useThemeColor({}, 'text');
   const backgroundColor = useThemeColor({}, 'background');
@@ -115,7 +130,7 @@ const useTuneListStyles = function () {
       alignItems: 'flex-start',
     },
     textContainer: {
-      width: Platform.isTV ? width / 2.5 : undefined,
+      width: landscape ? width / 2.5 : undefined,
       padding: 5 * scale,
       margin: 5 * scale,
     },
