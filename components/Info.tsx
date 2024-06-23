@@ -48,12 +48,13 @@ function About() {
         </ThemedText>
       </ThemedView>
       <ThemedView>
+        <ThemedText style={styles.textSmall}>{`Build ${
+          Constants.manifest2?.runtimeVersion ?? Constants.expoConfig?.version
+        }`}</ThemedText>
+        <ThemedText style={styles.textSmall}>&nbsp;</ThemedText>
         <ThemedText
           style={styles.textSmall}
-        >{`App version ${Constants.expoConfig?.version}`}</ThemedText>
-        <ThemedText
-          style={styles.textSmall}
-        >{`react-native-tvos ${reactNativeVersion}`}</ThemedText>
+        >{`react-native ${reactNativeVersion}`}</ThemedText>
         <ThemedText
           style={styles.textSmall}
         >{`expo ${expoVersion}`}</ThemedText>
