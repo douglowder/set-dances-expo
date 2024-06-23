@@ -35,7 +35,9 @@
     "name": "Set Dances",
     "slug": "set-dances",
     "version": "2.0.0",
-    "runtimeVersion": "2.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "scheme": "set-dances",
     "icon": "./assets/images/icon.png",
     "splash": {
@@ -79,6 +81,13 @@
         "projectId": "7c4c3b9b-bbb0-443d-a98e-6458a27e6363"
       }
     },
-    "owner": "douglowderexpo"
+    "owner": "douglowderexpo",
+    "updates": {
+      "assetPatternsToBeBundled": [
+        "app/images/**/*.png",
+        "app/tv_icons/**/*.png"
+      ],
+      "url": "https://u.expo.dev/7c4c3b9b-bbb0-443d-a98e-6458a27e6363"
+    }
   }
 }

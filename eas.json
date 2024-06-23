@@ -15,7 +15,8 @@
       "ios": {
         "buildConfiguration": "Debug",
         "simulator": true
-      }
+      },
+      "channel": "development"
     },
     "development:device": {
       "extends": "development",
@@ -23,7 +24,8 @@
       "ios": {
         "credentialsSource": "local",
         "simulator": false
-      }
+      },
+      "channel": "development"
     },
     "preview": {
       "extends": "production",
@@ -34,39 +36,45 @@
       "android": {
         "buildType": "apk",
         "withoutCredentials": true
-      }
+      },
+      "channel": "preview"
     },
     "preview:device": {
       "extends": "preview",
       "ios": {
         "credentialsSource": "local",
         "simulator": false
-      }
+      },
+      "channel": "preview"
     },
     "preview:tv": {
       "extends": "preview",
       "env": {
         "EXPO_TV": "1"
-      }
+      },
+      "channel": "preview"
     },
     "preview:device:tv": {
       "extends": "preview:device",
       "env": {
         "EXPO_TV": "1"
-      }
+      },
+      "channel": "preview"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "channel": "production"
     },
     "production:tv": {
-      "extends": "production", 
+      "extends": "production",
       "ios": {
         "credentialsSource": "local",
         "simulator": false
       },
       "env": {
         "EXPO_TV": "1"
-      }
+      },
+      "channel": "production"
     }
   },
   "submit": {
