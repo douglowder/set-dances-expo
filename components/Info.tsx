@@ -14,6 +14,7 @@ import { version as expoRouterVersion } from 'expo-router/package.json';
 import { version as expoAVVersion } from 'expo-av/package.json';
 import { version as reactNativeVersion } from 'react-native/package.json';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useUpdates } from 'expo-updates';
 
 type InfoTabNames = 'About' | 'Instructions' | 'Thanks';
 
@@ -48,6 +49,8 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
 
 function About() {
   const styles = useHomeScreenStyles();
+  const { currentlyRunning } = useUpdates();
+
   return (
     <ThemedView>
       <ThemedView>
@@ -64,9 +67,12 @@ function About() {
           style={styles.textSmall}
         >{`Build number: ${Application.nativeBuildVersion}`}</ThemedText>
         <ThemedText style={styles.textSmall}>&nbsp;</ThemedText>
-        <ThemedText style={styles.textSmall}>
-          Built with React Native and Expo Router:
-        </ThemedText>
+        <ThemedText style={styles.textSmall}>{`Bundle ID: ${
+          currentlyRunning.updateId ?? 'Not defined in dev mode'
+        }`}</ThemedText>
+        <ThemedText style={styles.textSmall}>{`Bundle date: ${
+          currentlyRunning.createdAt?.toISOString() ?? 'Not defined in dev mode'
+        }`}</ThemedText>
         <ThemedText style={styles.textSmall}>&nbsp;</ThemedText>
         <ThemedText
           style={styles.textSmall}
