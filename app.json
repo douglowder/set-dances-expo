@@ -74,6 +74,12 @@
       "bundleIdentifier": "com.douglowder.Set-Dances"
     },
     "extra": {
+      "updates": {
+        "assetPatternsToBeBundled": [
+          "app/images/**/*.png",
+          "app/tv_icons/**/*.png"
+        ]
+      },
       "router": {
         "origin": false
       },
@@ -83,10 +89,6 @@
     },
     "owner": "douglowderexpo",
     "updates": {
-      "assetPatternsToBeBundled": [
-        "app/images/**/*.png",
-        "app/tv_icons/**/*.png"
-      ],
       "url": "https://u.expo.dev/7c4c3b9b-bbb0-443d-a98e-6458a27e6363"
     }
   }
