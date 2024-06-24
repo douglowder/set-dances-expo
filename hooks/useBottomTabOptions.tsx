@@ -8,7 +8,7 @@ import {
 
 import { Platform, Pressable, useColorScheme } from 'react-native';
 
-const tabBarButton = (props: BottomTabBarButtonProps) => {
+const TabBarButton = (props: BottomTabBarButtonProps) => {
   const style: any = props.style ?? {};
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
@@ -54,7 +54,7 @@ export function useBottomTabOptions(): BottomTabNavigationOptions {
       },
     ],
     headerShown: false,
-    tabBarButton,
+    tabBarButton: TabBarButton,
     tabBarIcon: () => null,
     tabBarPosition: Platform.isTV ? 'top' : 'bottom',
   };

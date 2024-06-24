@@ -1,5 +1,4 @@
 import { Image } from 'expo-image';
-import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { StyleSheet, Platform, TVFocusGuideView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

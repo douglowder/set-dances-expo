@@ -17,10 +17,10 @@ const isProduction = process.env.PRODUCTION === '1';
 
 let credentialsPath = 'credentials_phone.json';
 
-if (process.env.PRODUCTION === '1') {
-  credentialsPath = process.env.EXPO_TV === '1' ? 'credentials_app_store_tv.json' : 'credentials_tv.json';
+if (isProduction) {
+  credentialsPath = isTV ? 'credentials_app_store_tv.json' : 'credentials_tv.json';
 } else {
-  credentialsPath = process.env.EXPO_TV === '1' ? 'credentials_tv.json' : 'credentials_phone.json';
+  credentialsPath = isTV ? 'credentials_tv.json' : 'credentials_phone.json';
 }
 
 const credentialsJsonSourcePath = path.join(

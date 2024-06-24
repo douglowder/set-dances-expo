@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { StyleSheet, Pressable, Platform } from 'react-native';
+import { StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/ThemedText';
