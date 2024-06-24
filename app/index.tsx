@@ -56,6 +56,7 @@ export default function Index() {
     const handleAsync = async () => {
       let newSound;
       let savedTune;
+      let savedSpeed: number = 0;
       try {
         Audio.setAudioModeAsync({
           staysActiveInBackground: true,
@@ -66,10 +67,12 @@ export default function Index() {
           playThroughEarpieceAndroid: true,
         });
         savedTune = await fetchTuneSettingAsync();
+        savedSpeed = (await fetchSavedSpeedAsync()) ?? 0;
         const { sound: _sound } = await Audio.Sound.createAsync(
           savedTune.value,
           {
             progressUpdateIntervalMillis: 1000,
+            rate: savedSpeed / (savedTune?.defaultSpeed ?? 0),
           },
           (status) => {
             if (status.isLoaded) {
@@ -89,12 +92,9 @@ export default function Index() {
         console.error(error);
       }
       setSound(newSound);
-      if (savedTune) {
-        const savedSpeed = await fetchSavedSpeedAsync();
-        setSpeed(savedSpeed);
-      }
       progressValue.value = 0;
       setTune(savedTune);
+      setSpeed(savedSpeed);
       setFinished(false);
     };
     handleAsync();
