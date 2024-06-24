@@ -1,6 +1,11 @@
 import { Image } from 'expo-image';
 import * as Application from 'expo-application';
-import { StyleSheet, Platform, TVFocusGuideView } from 'react-native';
+import {
+  StyleSheet,
+  Platform,
+  TVFocusGuideView,
+  Pressable,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ParallaxScrollView from '@/components/ParallaxScrollView';
@@ -14,13 +19,21 @@ import { version as expoRouterVersion } from 'expo-router/package.json';
 import { version as expoAVVersion } from 'expo-av/package.json';
 import { version as reactNativeVersion } from 'react-native/package.json';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useUpdates } from 'expo-updates';
+import {
+  UpdateInfoType,
+  UseUpdatesReturnType,
+  checkForUpdateAsync,
+  fetchUpdateAsync,
+  reloadAsync,
+  useUpdates,
+} from 'expo-updates';
 
 type InfoTabNames = 'About' | 'Instructions' | 'Thanks';
 
 export default function Info({ tabName }: { tabName: InfoTabNames }) {
   const styles = useHomeScreenStyles();
   const { landscape } = useScale();
+
   // If the page was reloaded or navigated to directly, then the modal should be presented as
   // a full screen page. You may need to change the UI to account for this.
   return (
@@ -47,9 +60,33 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
   );
 }
 
+function TextButton(props: { title: string; onPress: () => void }) {
+  const styles = useHomeScreenStyles();
+  return (
+    <Pressable onPress={props.onPress} style={styles.button}>
+      <ThemedText type="defaultSemiBold" style={styles.buttonText}>
+        {props.title}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
+function currentlyRunningText(updatesInfo: UseUpdatesReturnType) {
+  return (
+    `Bundle ID: ${updatesInfo.currentlyRunning?.updateId ?? 'not defined'}\n` +
+    `Bundle created: ${
+      updatesInfo.currentlyRunning?.createdAt ?? 'not defined'
+    }`
+  );
+}
+
+function availableUpdateText(updatesInfo: UseUpdatesReturnType) {
+  return `Update ID: ${updatesInfo.availableUpdate?.updateId ?? 'not defined'}`;
+}
+
 function About() {
   const styles = useHomeScreenStyles();
-  const { currentlyRunning } = useUpdates();
+  const updatesInfo = useUpdates();
 
   return (
     <ThemedView>
@@ -67,10 +104,10 @@ function About() {
           style={styles.textSmall}
         >{`Build number: ${Application.nativeBuildVersion}`}</ThemedText>
         <ThemedText style={styles.textSmall}>{`Bundle ID: ${
-          currentlyRunning.updateId ?? 'Not defined in dev mode'
+          updatesInfo.currentlyRunning.updateId ?? 'Not defined in dev mode'
         }`}</ThemedText>
         <ThemedText style={styles.textSmall}>{`Bundle date: ${
-          currentlyRunning.createdAt?.toISOString() ?? 'Not defined in dev mode'
+          updatesInfo.currentlyRunning.createdAt?.toISOString() ?? 'Not defined in dev mode'
         }`}</ThemedText>
         <ThemedText style={styles.textSmall}>&nbsp;</ThemedText>
         <ThemedText
@@ -111,6 +148,31 @@ function About() {
         <ThemedText style={styles.text}>
           Copyright &copy; 2010-2024 by Douglas Lowder, all rights reserved.
         </ThemedText>
+      </ThemedView>
+      <ThemedView>
+        <ThemedText style={styles.text}>
+          {currentlyRunningText(updatesInfo)}
+        </ThemedText>
+        {updatesInfo.isUpdateAvailable && (
+          <ThemedText style={styles.text}>
+            {availableUpdateText(updatesInfo)}
+          </ThemedText>
+        )}
+      </ThemedView>
+      <ThemedView>
+        <TextButton
+          title="Check for update"
+          onPress={() => checkForUpdateAsync()}
+        />
+        {updatesInfo.isUpdateAvailable && (
+          <TextButton
+            title="Download update"
+            onPress={() => fetchUpdateAsync()}
+          />
+        )}
+        {updatesInfo.isUpdatePending && (
+          <TextButton title="Launch update" onPress={() => reloadAsync()} />
+        )}
       </ThemedView>
     </ThemedView>
   );
