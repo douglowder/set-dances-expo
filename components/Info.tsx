@@ -144,11 +144,8 @@ function Instructions() {
         <ThemedText style={styles.text}>
           Tunes can be selected from four lists; use the selector at the bottom
           to change to a different list. There are two lists for the hornpipe
-          tempo tunes, one for tempo range 100 - 120 bpm, the other for the
-          tempo range 75 - 85. The jig tempo tunes can be played at speeds from
-          60 - 80 bpm. Traditional hornpipe sets can be played at speeds from
-          110 - 160 bpm, and traditional jig sets can be played at speeds from
-          80 - 100 bpm.
+          tempo tunes, one for standard championship tempos (around 110 bpm),
+          the other for "slow" tempos (around 76 - 80 bpm).
         </ThemedText>
       </ThemedView>
       {Platform.OS === 'ios' && (
