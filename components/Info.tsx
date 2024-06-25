@@ -66,7 +66,6 @@ function About() {
         <ThemedText
           style={styles.textSmall}
         >{`Build number: ${Application.nativeBuildVersion}`}</ThemedText>
-        <ThemedText style={styles.textSmall}>&nbsp;</ThemedText>
         <ThemedText style={styles.textSmall}>{`Bundle ID: ${
           currentlyRunning.updateId ?? 'Not defined in dev mode'
         }`}</ThemedText>
@@ -135,6 +134,19 @@ function Instructions() {
         <ThemedText style={styles.text}>
           Press this to bring up a screen that will allow you to select a
           different dance tune.
+        </ThemedText>
+      </ThemedView>
+      <ThemedView style={styles.textContainer}>
+        <Ionicons size={30 * scale} name="repeat" style={styles.image} />
+        <ThemedText style={styles.text}>
+          Press this to turn on/off repeat play (music will automatically
+          restart when finished).
+        </ThemedText>
+      </ThemedView>
+      <ThemedView style={styles.textContainer}>
+        <Ionicons size={30 * scale} name="play-back" style={styles.image} />
+        <ThemedText style={styles.text}>
+          Press this to rewind the track back to the beginning.
         </ThemedText>
       </ThemedView>
       {!Platform.isTV && (
