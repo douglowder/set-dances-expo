@@ -230,20 +230,15 @@ export default function Index() {
           <View style={{ flex: 1 }} />
           <TVFocusGuideView
             autoFocus
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: 120 * scale,
-              width: '100%',
-            }}
+            style={[styles.centerButtonContainer, { minHeight: 120 * scale }]}
           >
             <CircularButton
               size={75 * scale}
               onPress={handleRewind}
-              iconName="caret-back"
+              iconName="play-back"
               alt="Rewind"
             />
+            <View style={{ flex: 1 }} />
             <CircularButton
               size={100 * scale}
               onPress={handlePlayPause}
@@ -251,6 +246,7 @@ export default function Index() {
               alt={isPlaying ? 'Pause' : 'Play'}
               onPlayPause={handlePlayPause}
             />
+            <View style={{ flex: 1 }} />
             <CircularButton
               size={60 * scale}
               iconName="search"
