@@ -76,8 +76,8 @@
     "extra": {
       "updates": {
         "assetPatternsToBeBundled": [
-          "app/images/**/*.png",
-          "app/tv_icons/**/*.png"
+          "assets/images/**/*.png",
+          "assets/tv_icons/**/*.png"
         ]
       },
       "router": {
