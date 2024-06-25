@@ -6,7 +6,7 @@ import {
   DrawerActions,
   ThemeProvider,
 } from '@react-navigation/native';
-import { useNavigation } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import { Platform, Pressable, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -16,6 +16,7 @@ export default function PhoneLayout() {
   const colorScheme = useColorScheme();
   const { scale } = useScale();
   const navigation = useNavigation();
+  const router = useRouter();
 
   const headerTintColor = (colorScheme === 'dark' ? DarkTheme : DefaultTheme)
     .colors.text;
@@ -27,18 +28,48 @@ export default function PhoneLayout() {
           <Drawer
             screenOptions={{
               swipeEnabled: false,
-              headerLeft: (props) =>
-                Platform.isTV ? null : (
+              headerLeft: (props) => (
+                <Pressable
+                  onPress={() =>
+                    navigation.dispatch(DrawerActions.toggleDrawer)
+                  }
+                >
+                  {({ pressed, focused }) => {
+                    return (
+                      <Ionicons
+                        size={40 * scale}
+                        name="menu"
+                        style={{
+                          width: 40 * scale,
+                          height: 40 * scale,
+                          margin: 20 * scale,
+                          color: props.tintColor,
+                          opacity: pressed || focused ? 0.6 : 1.0,
+                        }}
+                      />
+                    );
+                  }}
+                </Pressable>
+              ),
+            }}
+          >
+            <Drawer.Screen
+              name="index"
+              options={{
+                headerTransparent: true,
+                headerStyle: {
+                  height: 100 * scale,
+                },
+                headerTintColor: 'white',
+                headerRight: (props) => (
                   <Pressable
-                    onPress={() =>
-                      navigation.dispatch(DrawerActions.toggleDrawer)
-                    }
+                    onPress={() => router.push('/(info)/instructions')}
                   >
                     {({ pressed, focused }) => {
                       return (
                         <Ionicons
                           size={40 * scale}
-                          name="menu"
+                          name="information-circle"
                           style={{
                             width: 40 * scale,
                             height: 40 * scale,
@@ -51,16 +82,6 @@ export default function PhoneLayout() {
                     }}
                   </Pressable>
                 ),
-            }}
-          >
-            <Drawer.Screen
-              name="index"
-              options={{
-                headerTransparent: true,
-                headerStyle: {
-                  height: 100 * scale,
-                },
-                headerTintColor: 'white',
                 drawerLabel: 'Home',
                 drawerLabelStyle: {
                   fontSize: 25 * scale,

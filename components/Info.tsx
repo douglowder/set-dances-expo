@@ -129,13 +129,15 @@ function Instructions() {
           speed.
         </ThemedText>
       </ThemedView>
-      <ThemedView style={styles.textContainer}>
-        <Ionicons size={30 * scale} name="search" style={styles.image} />
-        <ThemedText style={styles.text}>
-          Press this to bring up a screen that will allow you to select a
-          different dance tune.
-        </ThemedText>
-      </ThemedView>
+      {Platform.isTV && (
+        <ThemedView style={styles.textContainer}>
+          <Ionicons size={30 * scale} name="search" style={styles.image} />
+          <ThemedText style={styles.text}>
+            Press this to bring up a screen that will allow you to select a
+            different dance tune.
+          </ThemedText>
+        </ThemedView>
+      )}
       <ThemedView style={styles.textContainer}>
         <Ionicons size={30 * scale} name="repeat" style={styles.image} />
         <ThemedText style={styles.text}>

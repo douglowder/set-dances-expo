@@ -188,8 +188,7 @@ export default function Index() {
   };
 
   const handleInfo = () => {
-    router.push(`/(info)/instructions
-    `);
+    router.push(`/(info)/instructions`);
   };
 
   const handleSpeedChange = async (tune: Tune, newSpeed: number) => {
@@ -207,24 +206,27 @@ export default function Index() {
         <View style={styles.safeAreaContainer}>
           <View style={{ height: 60 * scale }} />
           <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
-            <CircularButton
-              iconName="repeat"
-              alt="Toggle repeat"
-              color={repeat ? '#00ffff' : 'white'}
-              onPress={() => setRepeat(!repeat)}
-              size={50 * scale}
-            />
+            {Platform.isTV && (
+              <CircularButton
+                size={60 * scale}
+                iconName="search"
+                alt="Select"
+                onPress={handleSelect}
+              />
+            )}
             <View style={{ flex: 1 }} />
             <Text style={[styles.title, { fontFamily: 'Zapfino' }]}>
               Set Dances
             </Text>
             <View style={{ flex: 1 }} />
-            <CircularButton
-              onPress={handleInfo}
-              alt="Info"
-              iconName="information-circle"
-              size={50 * scale}
-            />
+            {Platform.isTV && (
+              <CircularButton
+                onPress={handleInfo}
+                alt="Info"
+                iconName="information-circle"
+                size={60 * scale}
+              />
+            )}
           </TVFocusGuideView>
           <Text style={styles.tuneTitle}>{tune?.name ?? ''}</Text>
           <View style={{ flex: 1 }} />
@@ -248,10 +250,11 @@ export default function Index() {
             />
             <View style={{ flex: 1 }} />
             <CircularButton
-              size={60 * scale}
-              iconName="search"
-              alt="Select"
-              onPress={handleSelect}
+              iconName="repeat"
+              alt="Toggle repeat"
+              color={repeat ? '#00ffff' : 'white'}
+              onPress={() => setRepeat(!repeat)}
+              size={75 * scale}
             />
           </TVFocusGuideView>
           <View style={{ flex: 1 }} />
