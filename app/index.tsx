@@ -223,7 +223,7 @@ export default function Index() {
               <CircularButton
                 onPress={handleInfo}
                 alt="Info"
-                iconName="information-circle"
+                iconName="help-circle-outline"
                 size={60 * scale}
               />
             )}

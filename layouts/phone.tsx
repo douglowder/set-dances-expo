@@ -39,6 +39,7 @@ export default function PhoneLayout() {
                       <Ionicons
                         size={40 * scale}
                         name="menu"
+                        aria-label="Menu"
                         style={{
                           width: 40 * scale,
                           height: 40 * scale,
@@ -69,7 +70,8 @@ export default function PhoneLayout() {
                       return (
                         <Ionicons
                           size={40 * scale}
-                          name="information-circle"
+                          name="help-circle-outline"
+                          aria-label="Help"
                           style={{
                             width: 40 * scale,
                             height: 40 * scale,
@@ -109,8 +111,8 @@ export default function PhoneLayout() {
             <Drawer.Screen
               name="(info)"
               options={{
-                drawerLabel: 'Info',
-                title: 'Info',
+                drawerLabel: 'Help',
+                title: '',
                 headerTitleStyle: {
                   fontSize: 25 * scale,
                 },

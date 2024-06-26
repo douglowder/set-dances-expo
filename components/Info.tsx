@@ -155,8 +155,8 @@ function Instructions() {
         <ThemedView style={styles.textContainer}>
           <Ionicons size={30 * scale} name="menu" style={styles.image} />
           <ThemedText style={styles.text}>
-            Use the menu to navigate between the main screen, the tune selection
-            screen, and this info screen.
+            Use the menu to switch between the main screen, the tune selection
+            screen, and this help screen.
           </ThemedText>
         </ThemedView>
       )}
