@@ -8,7 +8,7 @@ import {
 } from '@react-navigation/native';
 import { useNavigation, useRouter } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
-import { Platform, Pressable, useColorScheme } from 'react-native';
+import { Pressable, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
