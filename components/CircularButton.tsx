@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { forwardRef, useState } from 'react';
 import {
   Pressable,
@@ -15,7 +16,8 @@ import Animated, {
 
 type CircularButtonProps = PressableProps & {
   size: number;
-  iconName?: any;
+  iconName: any;
+  iconType?: 'MaterialIcons' | 'Ionicons';
   alt: string;
   color?: string;
   onPlayPause?: () => void;
@@ -26,6 +28,7 @@ export const CircularButton = forwardRef(
     const [focused, setFocused] = useState(false);
     const [pressed, setPressed] = useState(false);
     const { alt, size, iconName, onPress, color } = props;
+    const iconType = props?.iconType ?? 'Ionicons';
 
     useTVEventHandler((event) => {
       if (props?.onPlayPause) {
@@ -80,7 +83,18 @@ export const CircularButton = forwardRef(
             $animatedStyle,
           ]}
         >
-          {iconName && (
+          {iconType === 'MaterialIcons' && (
+            <MaterialIcons
+              size={size}
+              name={iconName}
+              color={color ?? 'white'}
+              style={{
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            />
+          )}
+          {iconType === 'Ionicons' && (
             <Ionicons
               size={size}
               name={iconName}

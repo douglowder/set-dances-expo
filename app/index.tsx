@@ -263,12 +263,13 @@ export default function Index() {
               <CircularButton
                 onPress={() =>
                   sound?.setPositionAsync(
-                    (progressValue.value - 0.1) * duration,
+                    progressValue.value * duration - 10000,
                   )
                 }
                 alt="Jog back"
                 size={60 * scale}
-                iconName="caret-back"
+                iconType="MaterialIcons"
+                iconName="replay-10"
               />
             )}
             <Slider
@@ -290,12 +291,13 @@ export default function Index() {
               <CircularButton
                 onPress={() =>
                   sound?.setPositionAsync(
-                    (progressValue.value + 0.1) * duration,
+                    progressValue.value * duration + 10000,
                   )
                 }
                 alt="Jog forward"
                 size={60 * scale}
-                iconName="caret-forward"
+                iconType="MaterialIcons"
+                iconName="forward-10"
               />
             )}
           </TVFocusGuideView>
