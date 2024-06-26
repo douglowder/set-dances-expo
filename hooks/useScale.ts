@@ -5,7 +5,7 @@ export function useScale() {
   const scale = Math.max(width, height) / 1000;
   const aspectRatio = Math.max(width, height) / Math.min(width, height);
   const landscape = width > height;
-  const tall = !landscape && aspectRatio > 2;
+  const tall = !landscape && aspectRatio > 1.7; // includes phone portrait but not ipad portrait
   return {
     height,
     width,
