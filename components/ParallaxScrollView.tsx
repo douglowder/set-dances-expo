@@ -9,10 +9,12 @@ import {
 import { ThemedView } from '@/components/ThemedView';
 import { useScale } from '@/hooks/useScale';
 
-export default function ParallaxScrollView({ children }: PropsWithChildren) {
+type Props = PropsWithChildren & { tvScroll?: boolean };
+
+export default function ParallaxScrollView({ tvScroll, children }: Props) {
   const styles = useParallaxScrollViewStyles();
 
-  if (Platform.isTV && Platform.OS === 'ios') {
+  if (Platform.isTV && Platform.OS === 'ios' && tvScroll) {
     return (
       <ThemedView style={styles.container}>
         <TVTextScrollView>

@@ -30,7 +30,7 @@ export default function Info({ tabName }: { tabName: InfoTabNames }) {
         style={[styles.container, styles.safeAreaContainer]}
       >
         {landscape ? (
-          <ParallaxScrollView key="landscapeView">
+          <ParallaxScrollView tvScroll key="landscapeView">
             {tabName === 'Instructions' && <Instructions />}
             {tabName === 'About' && <About />}
             {tabName === 'Thanks' && <Thanks />}
