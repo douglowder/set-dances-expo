@@ -124,8 +124,8 @@ function Instructions() {
       <ThemedView style={styles.textContainer}>
         <Ionicons size={30 * scale} name="play" style={styles.image} />
         <ThemedText style={styles.text}>
-          Press this to play/pause the music. You can use the slider to move to
-          a different part of the tune, and the up and down arrows to adjust the
+          Use this to play/pause the music. You can use the slider to move to a
+          different part of the tune, and the up and down arrows to adjust the
           speed.
         </ThemedText>
       </ThemedView>
@@ -133,7 +133,7 @@ function Instructions() {
         <ThemedView style={styles.textContainer}>
           <Ionicons size={30 * scale} name="search" style={styles.image} />
           <ThemedText style={styles.text}>
-            Press this to bring up a screen that will allow you to select a
+            Use this to bring up a screen that will allow you to select a
             different dance tune.
           </ThemedText>
         </ThemedView>
@@ -141,14 +141,14 @@ function Instructions() {
       <ThemedView style={styles.textContainer}>
         <Ionicons size={30 * scale} name="repeat" style={styles.image} />
         <ThemedText style={styles.text}>
-          Press this to turn on/off repeat play (music will automatically
-          restart when finished).
+          Use this to turn on/off repeat play (music will automatically restart
+          when finished).
         </ThemedText>
       </ThemedView>
       <ThemedView style={styles.textContainer}>
         <Ionicons size={30 * scale} name="play-back" style={styles.image} />
         <ThemedText style={styles.text}>
-          Press this to rewind the track back to the beginning.
+          Use this to rewind the track back to the beginning.
         </ThemedText>
       </ThemedView>
       {!Platform.isTV && (
@@ -172,12 +172,17 @@ function Instructions() {
         <ThemedView style={styles.textContainer}>
           <Image
             source={require('@/assets/images/airplay-route-picker.png')}
-            style={{ width: 30, height: 30, margin: 10 }}
+            style={{
+              width: 30 * scale,
+              height: 30 * scale,
+              marginRight: 10 * scale,
+              marginTop: 10 * scale,
+            }}
           />
           <ThemedText style={styles.text}>
-            Pressing this button will bring up a list of available Airplay and
-            Bluetooth devices to which the audio can be sent. The button will
-            change to a cyan color when AirPlay is active.
+            This control will bring up a list of available Airplay and Bluetooth
+            devices to which the audio can be sent. It will change to a cyan
+            color when AirPlay is active.
           </ThemedText>
         </ThemedView>
       )}
