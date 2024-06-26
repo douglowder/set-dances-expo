@@ -17,3 +17,80 @@ index 96fe7d1..bccccfa 100644
          // $FlowFixMe[incompatible-exact]
          onLongPress && onLongPress(evt);
        }
+diff --git a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
+index 2a83673..7fb46cc 100644
+--- a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
++++ b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
+@@ -1008,28 +1008,28 @@ static void RCTSendScrollEventForNativeAnimations_DEPRECATED(UIScrollView *scrol
+ - (void)swipedUp
+ {
+     CGFloat newOffset = self.scrollView.contentOffset.y - [self swipeVerticalInterval];
+-    NSLog(@"Swiped up to %f", newOffset);
++    // NSLog(@"Swiped up to %f", newOffset);
+     [self swipeVerticalScrollToOffset:newOffset];
+ }
+ 
+ - (void)swipedDown
+ {
+     CGFloat newOffset = self.scrollView.contentOffset.y + [self swipeVerticalInterval];
+-    NSLog(@"Swiped down to %f", newOffset);
++    // NSLog(@"Swiped down to %f", newOffset);
+     [self swipeVerticalScrollToOffset:newOffset];
+ }
+ 
+ - (void)swipedLeft
+ {
+     CGFloat newOffset = self.scrollView.contentOffset.x - [self swipeHorizontalInterval];
+-    NSLog(@"Swiped left to %f", newOffset);
++    // NSLog(@"Swiped left to %f", newOffset);
+     [self swipeHorizontalScrollToOffset:newOffset];
+ }
+ 
+ - (void)swipedRight
+ {
+     CGFloat newOffset = self.scrollView.contentOffset.x + [self swipeHorizontalInterval];
+-    NSLog(@"Swiped right to %f", newOffset);
++    // NSLog(@"Swiped right to %f", newOffset);
+     [self swipeHorizontalScrollToOffset:newOffset];
+ }
+ 
+diff --git a/node_modules/react-native/React/Views/ScrollView/RCTScrollView.m b/node_modules/react-native/React/Views/ScrollView/RCTScrollView.m
+index 3ff2753..04f148b 100644
+--- a/node_modules/react-native/React/Views/ScrollView/RCTScrollView.m
++++ b/node_modules/react-native/React/Views/ScrollView/RCTScrollView.m
+@@ -1154,7 +1154,7 @@ RCT_SCROLL_EVENT_HANDLER(scrollViewDidScrollToTop, onScrollToTop)
+     }
+ 
+     CGFloat newOffset = self.scrollView.contentOffset.y - [self swipeVerticalInterval];
+-    NSLog(@"Swiped up to %f", newOffset);
++    // NSLog(@"Swiped up to %f", newOffset);
+     [self scrollToVerticalOffset:newOffset];
+ }
+ 
+@@ -1165,7 +1165,7 @@ RCT_SCROLL_EVENT_HANDLER(scrollViewDidScrollToTop, onScrollToTop)
+     }
+ 
+     CGFloat newOffset = self.scrollView.contentOffset.y + [self swipeVerticalInterval];
+-    NSLog(@"Swiped down to %f", newOffset);
++    // NSLog(@"Swiped down to %f", newOffset);
+     [self scrollToVerticalOffset:newOffset];
+ }
+ 
+@@ -1176,7 +1176,7 @@ RCT_SCROLL_EVENT_HANDLER(scrollViewDidScrollToTop, onScrollToTop)
+     }
+ 
+     CGFloat newOffset = self.scrollView.contentOffset.x - [self swipeHorizontalInterval];
+-    NSLog(@"Swiped left to %f", newOffset);
++    // NSLog(@"Swiped left to %f", newOffset);
+     [self scrollToHorizontalOffset:newOffset];
+ }
+ 
+@@ -1187,7 +1187,7 @@ RCT_SCROLL_EVENT_HANDLER(scrollViewDidScrollToTop, onScrollToTop)
+     }
+ 
+     CGFloat newOffset = self.scrollView.contentOffset.x + [self swipeHorizontalInterval];
+-    NSLog(@"Swiped right to %f", newOffset);
++    // NSLog(@"Swiped right to %f", newOffset);
+     [self scrollToHorizontalOffset:newOffset];
+ }
+ 
