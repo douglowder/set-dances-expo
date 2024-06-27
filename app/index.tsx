@@ -259,19 +259,15 @@ export default function Index() {
           </TVFocusGuideView>
           <View style={{ flex: 1 }} />
           <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
-            {Platform.isTV && (
-              <CircularButton
-                onPress={() =>
-                  sound?.setPositionAsync(
-                    progressValue.value * duration - 10000,
-                  )
-                }
-                alt="Jog back"
-                size={60 * scale}
-                iconType="MaterialIcons"
-                iconName="replay-10"
-              />
-            )}
+            <CircularButton
+              onPress={() =>
+                sound?.setPositionAsync(progressValue.value * duration - 10000)
+              }
+              alt="Jog back"
+              size={Platform.isTV ? 60 * scale : 40 * scale}
+              iconType="MaterialIcons"
+              iconName="replay-10"
+            />
             <Slider
               style={styles.progressContainer}
               progress={progressValue}
@@ -287,19 +283,15 @@ export default function Index() {
                 sound?.setPositionAsync(value * duration);
               }}
             />
-            {Platform.isTV && (
-              <CircularButton
-                onPress={() =>
-                  sound?.setPositionAsync(
-                    progressValue.value * duration + 10000,
-                  )
-                }
-                alt="Jog forward"
-                size={60 * scale}
-                iconType="MaterialIcons"
-                iconName="forward-10"
-              />
-            )}
+            <CircularButton
+              onPress={() =>
+                sound?.setPositionAsync(progressValue.value * duration + 10000)
+              }
+              alt="Jog forward"
+              size={Platform.isTV ? 60 * scale : 40 * scale}
+              iconType="MaterialIcons"
+              iconName="forward-10"
+            />
           </TVFocusGuideView>
           {tune && (
             <TVFocusGuideView
