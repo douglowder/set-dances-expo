@@ -103,9 +103,14 @@ export default function Index() {
   useFocusEffect(
     useCallback(() => {
       return () => {
-        // Pause sound if another screen (tune select or info) is focused
-        sound?.pauseAsync();
-        setIsPlaying(false);
+        const handleAsync = async () => {
+          // Pause sound if another screen (tune select or info) is focused
+          await sound?.pauseAsync();
+          // Rewind also
+          await sound?.setPositionAsync(0);
+          setIsPlaying(false);
+        };
+        handleAsync();
       };
     }, [sound]),
   );
