@@ -34,7 +34,7 @@
     },
     "name": "Set Dances",
     "slug": "set-dances",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -52,9 +52,6 @@
     "ios": {
       "userInterfaceStyle": "automatic",
       "supportsTablet": true,
-      "entitlements": {
-        "aps-environment": "development"
-      },
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
           {
