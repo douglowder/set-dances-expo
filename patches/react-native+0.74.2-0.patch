@@ -17,19 +17,6 @@ index 96fe7d1..bccccfa 100644
          // $FlowFixMe[incompatible-exact]
          onLongPress && onLongPress(evt);
        }
-diff --git a/node_modules/react-native/scripts/cocoapods/utils.rb b/node_modules/react-native/scripts/cocoapods/utils.rb
-index f224ab9..8d86373 100644
---- a/node_modules/react-native/scripts/cocoapods/utils.rb
-+++ b/node_modules/react-native/scripts/cocoapods/utils.rb
-@@ -618,7 +618,7 @@ class ReactNativePodsUtils
-             "React-RCTImage",
-             "React-RCTLinking",
-             "React-RCTNetwork",
--            "React-RCTPushNotification",
-+            # "React-RCTPushNotification",
-             "React-RCTSettings",
-             "React-RCTText",
-             "React-RCTTest",
 diff --git a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
 index 2a83673..7fb46cc 100644
 --- a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
