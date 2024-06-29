@@ -15,12 +15,14 @@ const isTV = process.env.EXPO_TV === '1';
 
 const isProduction = process.env.PRODUCTION === '1';
 
+console.log(`isProduction=${isProduction}, isTV=${isTV}`);
+
 let credentialsPath = 'credentials_phone.json';
 
-if (isProduction) {
-  credentialsPath = isTV ? 'credentials_app_store_tv.json' : 'credentials_tv.json';
+if (isTV) {
+  credentialsPath = isProduction ? 'credentials_app_store_tv.json' : 'credentials_tv.json';
 } else {
-  credentialsPath = isTV ? 'credentials_tv.json' : 'credentials_phone.json';
+  credentialsPath = isProduction ? 'credentials_app_store_phone.json' : 'credentials_phone.json';
 }
 
 const credentialsJsonSourcePath = path.join(
@@ -33,7 +35,7 @@ const credentialsJsonDestPath = path.join(root, 'credentials.json');
 fs.copyFileSync(credentialsJsonSourcePath, credentialsJsonDestPath);
 
 console.log(
-  `${path.basename(credentialsJsonSourcePath)} copied to ${path.basename(
+  `${credentialsPath} copied to ${path.basename(
     credentialsJsonDestPath,
   )}`,
 );
