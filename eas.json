@@ -63,7 +63,14 @@
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "ios": {
+        "credentialsSource": "local",
+        "simulator": false
+      },
+      "env": {
+        "EXPO_NO_APNS": "1"
+      }
     },
     "production:tv": {
       "extends": "production",
@@ -72,6 +79,7 @@
         "simulator": false
       },
       "env": {
+        "EXPO_NO_APNS": "1",
         "EXPO_TV": "1"
       },
       "channel": "production"
