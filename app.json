@@ -1,6 +1,7 @@
 {
   "expo": {
     "plugins": [
+      "@douglowder/expo-no-apns",
       [
         "@react-native-tvos/config-tv",
         {

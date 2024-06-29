@@ -856,6 +856,10 @@
   dependencies:
     react-native "npm:react-native-tvos@0.74.1-0"
 
+"@douglowder/expo-no-apns@./dependencies/douglowder-expo-no-apns-0.0.1.tgz":
+  version "0.0.1"
+  resolved "./dependencies/douglowder-expo-no-apns-0.0.1.tgz#870b64cb72ffb52ac4b29113cdcb906750dcf936"
+
 "@egjs/hammerjs@^2.0.17":
   version "2.0.17"
   resolved "https://registry.yarnpkg.com/@egjs/hammerjs/-/hammerjs-2.0.17.tgz#5dc02af75a6a06e4c2db0202cae38c9263895124"
