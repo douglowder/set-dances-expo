@@ -65,7 +65,6 @@
       "autoIncrement": true,
       "channel": "production",
       "ios": {
-        "credentialsSource": "local",
         "simulator": false
       },
       "env": {
