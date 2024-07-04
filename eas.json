@@ -33,10 +33,6 @@
       "ios": {
         "simulator": true
       },
-      "android": {
-        "buildType": "apk",
-        "withoutCredentials": true
-      },
       "channel": "preview"
     },
     "preview:device": {
@@ -66,6 +62,10 @@
       "channel": "production",
       "ios": {
         "simulator": false
+      },
+      "android": {
+        "buildType": "apk",
+        "withoutCredentials": true
       },
       "env": {
         "EXPO_NO_APNS": "1"
