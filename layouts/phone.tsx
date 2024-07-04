@@ -18,13 +18,14 @@ export default function PhoneLayout() {
   const navigation = useNavigation();
   const router = useRouter();
 
-  const headerTintColor = (colorScheme === 'dark' ? DarkTheme : DefaultTheme)
-    .colors.text;
+  const theme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
+  const headerTintColor = theme.colors.text;
+  const backgroundColor = theme.colors.background;
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={theme}>
+        <GestureHandlerRootView style={{ flex: 1, backgroundColor }}>
           <Drawer
             screenOptions={{
               swipeEnabled: false,

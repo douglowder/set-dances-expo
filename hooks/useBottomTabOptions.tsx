@@ -7,6 +7,7 @@ import {
 } from '@react-navigation/bottom-tabs';
 
 import { Platform, Pressable, useColorScheme } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TabBarButton = (props: BottomTabBarButtonProps) => {
   const style: any = props.style ?? {};
@@ -38,14 +39,23 @@ export function useBottomTabOptions(): BottomTabNavigationOptions {
   const colors = Colors[colorScheme ?? 'light'];
   const textStyles = useTextStyles();
   const { scale } = useScale();
+  const marginBottom = Platform.isTV ? -30 * scale : 0;
+  const paddingBottom =
+    Platform.OS === 'android' && !Platform.isTV ? 30 * scale : 0;
+  const borderTopWidth = Platform.isTV ? 0 : 2 * scale;
   return {
     tabBarActiveTintColor: colors.tint,
     tabBarStyle: {
       height: textStyles.title.lineHeight * 2,
-      marginBottom: Platform.isTV ? -30 * scale : 0 * scale,
-      borderTopWidth: Platform.isTV ? 0 : 2 * scale,
+      marginBottom,
+      paddingBottom,
+      borderTopWidth,
       borderTopColor: colors.tint,
       backgroundColor: colors.background,
+    },
+    tabBarItemStyle: {
+      justifyContent: 'center',
+      alignContent: 'center',
     },
     tabBarLabelStyle: [
       textStyles.default,

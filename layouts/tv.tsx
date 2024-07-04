@@ -13,14 +13,15 @@ import { CircularButton } from '@/components/CircularButton';
 
 export default function TVLayout() {
   const colorScheme = useColorScheme();
-  const headerTintColor = (colorScheme === 'dark' ? DarkTheme : DefaultTheme)
-    .colors.text;
+  const theme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
+  const headerTintColor = theme.colors.text;
+  const backgroundColor = theme.colors.background;
   const { scale } = useScale();
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <GestureHandlerRootView>
+      <ThemeProvider value={theme}>
+        <GestureHandlerRootView style={{ flex: 1, backgroundColor }}>
           <Stack
             screenOptions={{
               headerLeft: (props) => {
