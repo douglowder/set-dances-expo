@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { StyleSheet, Pressable } from 'react-native';
+import { StyleSheet, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/ThemedText';
@@ -59,11 +59,13 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
         }}
         onPress={() => handleRowSelect(item)}
       >
-        {({ pressed }) => (
+        {({ pressed, focused }) => (
           <ThemedView style={styles.textContainer}>
             <ThemedText
               style={
-                isSameTune || pressed ? styles.textHighlighted : styles.text
+                isSameTune || pressed || (Platform.OS === 'android' && focused)
+                  ? styles.textHighlighted
+                  : styles.text
               }
             >
               {itemLabel({ item })}

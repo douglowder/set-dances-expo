@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { forwardRef, useState } from 'react';
 import {
+  Platform,
   Pressable,
   PressableProps,
   ViewStyle,
@@ -40,11 +41,14 @@ export const CircularButton = forwardRef(
 
     const $animatedStyle: ViewStyle = useAnimatedStyle(
       () => ({
-        opacity: withTiming<number>(pressed ? 0.6 : 1.0, {
-          duration: 300,
-          easing: Easing.circle,
-          reduceMotion: ReduceMotion.Always,
-        }),
+        opacity: withTiming<number>(
+          pressed || (Platform.OS === 'android' && focused) ? 0.6 : 1.0,
+          {
+            duration: 300,
+            easing: Easing.circle,
+            reduceMotion: ReduceMotion.Always,
+          },
+        ),
       }),
       [pressed, focused],
     );

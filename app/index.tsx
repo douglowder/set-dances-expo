@@ -64,7 +64,7 @@ export default function Index() {
           interruptionModeIOS: InterruptionModeIOS.DuckOthers,
           interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
           shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: true,
+          playThroughEarpieceAndroid: false,
         });
         savedTune = await fetchTuneSettingAsync();
         savedSpeed = (await fetchSavedSpeedAsync()) ?? 0;
@@ -331,8 +331,8 @@ export default function Index() {
                 size={60 * scale}
                 iconName="caret-up"
               />
-              {!tall && <View style={{ flex: 1 }} />}
-              {!tall && (
+              {!tall && Platform.OS === 'ios' && <View style={{ flex: 1 }} />}
+              {!tall && Platform.OS === 'ios' && (
                 <RoutePicker
                   style={[styles.airplayButton, { marginLeft: 50 * scale }]}
                   tintColor="white"
@@ -341,7 +341,7 @@ export default function Index() {
               )}
             </TVFocusGuideView>
           )}
-          {tall && (
+          {tall && Platform.OS === 'ios' && (
             <RoutePicker
               style={styles.airplayButton}
               tintColor="white"
