@@ -220,9 +220,7 @@ export default function Index() {
               />
             )}
             <View style={{ flex: 1 }} />
-            <Text style={[styles.title, { fontFamily: 'Zapfino' }]}>
-              Set Dances
-            </Text>
+            <Text style={styles.appName}>Set Dances</Text>
             <View style={{ flex: 1 }} />
             {Platform.isTV && (
               <CircularButton
@@ -379,6 +377,16 @@ const useIndexStyles = function () {
       justifyContent: 'center',
       alignItems: 'center',
       backgroundColor: 'transparent',
+    },
+    appName: {
+      fontFamily: Platform.select({
+        ios: 'Zapfino',
+        android: 'zapfino',
+      }),
+      color: 'white',
+      fontSize: 30 * scale,
+      textAlignVertical: 'center',
+      marginBottom: -15 * scale,
     },
     title: {
       color: 'white',

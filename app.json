@@ -28,6 +28,14 @@
           }
         }
       ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/zapfino.ttf"
+          ]
+        }
+      ],
       "expo-router"
     ],
     "experiments": {
