@@ -18,7 +18,7 @@
     "preset": "jest-expo"
   },
   "dependencies": {
-    "@douglowder/expo-av-route-picker-view": "^0.0.3",
+    "@douglowder/expo-av-route-picker-view": "^0.0.5",
     "@douglowder/expo-no-apns": "./dependencies/douglowder-expo-no-apns-0.0.1.tgz",
     "@expo/vector-icons": "^14.0.0",
     "@react-native-async-storage/async-storage": "1.23.1",
