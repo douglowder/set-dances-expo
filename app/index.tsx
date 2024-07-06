@@ -209,8 +209,22 @@ export default function Index() {
         style={styles.backgroundImage}
       >
         <View style={styles.safeAreaContainer}>
-          <View style={{ height: 60 * scale }} />
-          <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
+          <View
+            style={{
+              height:
+                landscape && Platform.OS === 'android' ? 5 * scale : 60 * scale,
+            }}
+          />
+          <TVFocusGuideView
+            autoFocus
+            style={[
+              styles.centerButtonContainer,
+              {
+                marginBottom:
+                  landscape && Platform.OS === 'android' ? -80 * scale : 0,
+              },
+            ]}
+          >
             {Platform.isTV && (
               <CircularButton
                 size={60 * scale}
