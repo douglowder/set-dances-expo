@@ -5,6 +5,7 @@
       [
         "@react-native-tvos/config-tv",
         {
+          "androidTVIcon": "./assets/images/icon.png",
           "androidTVBanner": "./assets/tv_icons/icon-400x240.png",
           "appleTVImages": {
             "icon": "./assets/tv_icons/icon-1280x768.png",
@@ -61,6 +62,9 @@
     "ios": {
       "userInterfaceStyle": "automatic",
       "supportsTablet": true,
+      "entitlements": {
+        "aps-environment": "development"
+      },
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
           {

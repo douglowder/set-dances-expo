@@ -43,7 +43,7 @@
     "expo-web-browser": "~13.0.3",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "react-native": "npm:react-native-tvos@0.74.3-0",
+    "react-native": "npm:react-native-tvos@latest",
     "react-native-awesome-slider": "^2.5.3",
     "react-native-gesture-handler": "~2.16.1",
     "react-native-reanimated": "~3.10.1",
@@ -53,7 +53,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.24.7",
-    "@react-native-tvos/config-tv": "^0.0.10",
+    "@react-native-tvos/config-tv": "^0.0.11",
     "@types/fbemitter": "^2.0.35",
     "@types/jest": "^29.5.12",
     "@types/react": "~18.2.79",
