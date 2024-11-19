@@ -19,17 +19,6 @@
         }
       ],
       [
-        "expo-build-properties",
-        {
-          "ios": {
-            "newArchEnabled": false
-          },
-          "android": {
-            "newArchEnabled": false
-          }
-        }
-      ],
-      [
         "expo-font",
         {
           "fonts": [
@@ -45,6 +34,7 @@
     "name": "Set Dances",
     "slug": "set-dances",
     "version": "2.0.1",
+    "newArchEnabled": true,
     "runtimeVersion": {
       "policy": "appVersion"
     },
