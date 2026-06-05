@@ -3,10 +3,10 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   DarkTheme,
   DefaultTheme,
-  DrawerActions,
   ThemeProvider,
-} from '@react-navigation/native';
-import { useNavigation, useRouter } from 'expo-router';
+  useNavigation,
+  useRouter,
+} from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import { Pressable, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -15,7 +15,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 export default function PhoneLayout() {
   const colorScheme = useColorScheme();
   const { scale } = useScale();
-  const navigation = useNavigation();
+  const navigation = useNavigation<{ toggleDrawer: () => void }>();
   const router = useRouter();
 
   const theme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
@@ -30,11 +30,7 @@ export default function PhoneLayout() {
             screenOptions={{
               swipeEnabled: false,
               headerLeft: (props) => (
-                <Pressable
-                  onPress={() =>
-                    navigation.dispatch(DrawerActions.toggleDrawer)
-                  }
-                >
+                <Pressable onPress={() => navigation.toggleDrawer()}>
                   {({ pressed, focused }) => {
                     return (
                       <Ionicons

@@ -1,10 +1,10 @@
 import { Colors } from '@/constants/Colors';
 import { useScale } from '@/hooks/useScale';
 import { useTextStyles } from '@/hooks/useTextStyles';
-import {
+import type {
   BottomTabNavigationOptions,
   BottomTabBarButtonProps,
-} from '@react-navigation/bottom-tabs';
+} from 'expo-router/js-tabs';
 
 import { Platform, Pressable, useColorScheme } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

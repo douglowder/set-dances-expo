@@ -1,9 +1,10 @@
 import {
   DarkTheme,
   DefaultTheme,
+  Stack,
   ThemeProvider,
-} from '@react-navigation/native';
-import { Stack, router } from 'expo-router';
+  router,
+} from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Platform, useColorScheme } from 'react-native';
