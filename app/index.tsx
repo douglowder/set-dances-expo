@@ -67,7 +67,7 @@ export default function Index() {
           updateInterval: 1000,
         });
         newPlayer.shouldCorrectPitch = false;
-        newPlayer.playbackRate = savedSpeed / (savedTune.defaultSpeed || 1);
+        newPlayer.setPlaybackRate(savedSpeed / (savedTune.defaultSpeed || 1));
         newPlayer.addListener('playbackStatusUpdate', (status) => {
           if (status.isLoaded) {
             setDuration(status.duration);
