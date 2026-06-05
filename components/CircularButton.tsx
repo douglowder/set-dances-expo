@@ -26,8 +26,6 @@ type CircularButtonProps = PressableProps & {
 
 export const CircularButton = forwardRef(
   (props: CircularButtonProps, ref: any) => {
-    const [focused, setFocused] = useState(false);
-    const [pressed, setPressed] = useState(false);
     const { alt, size, iconName, onPress, color } = props;
     const iconType = props?.iconType ?? 'Ionicons';
 
@@ -38,20 +36,6 @@ export const CircularButton = forwardRef(
         }
       }
     });
-
-    const $animatedStyle: ViewStyle = useAnimatedStyle(
-      () => ({
-        opacity: withTiming<number>(
-          pressed || (Platform.OS === 'android' && focused) ? 0.6 : 1.0,
-          {
-            duration: 300,
-            easing: Easing.circle,
-            reduceMotion: ReduceMotion.Always,
-          },
-        ),
-      }),
-      [pressed, focused],
-    );
 
     return (
       <Pressable
@@ -66,50 +50,57 @@ export const CircularButton = forwardRef(
         accessibilityLabel={alt}
         accessibilityRole="button"
         onPress={onPress}
-        onPressIn={() => setPressed(true)}
-        onPressOut={() => setPressed(false)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         style={{
           justifyContent: 'center',
           alignItems: 'center',
         }}
       >
-        <Animated.View
-          style={[
-            {
-              width: size,
-              height: size,
-              justifyContent: 'center',
-              alignItems: 'center',
-              padding: 0,
-            },
-            $animatedStyle,
-          ]}
-        >
-          {iconType === 'MaterialIcons' && (
-            <MaterialIcons
-              size={size}
-              name={iconName}
-              color={color ?? 'white'}
-              style={{
+        {({ pressed, focused }) => (
+          <Animated.View
+            style={[
+              {
+                width: size,
+                height: size,
                 justifyContent: 'center',
                 alignItems: 'center',
-              }}
-            />
-          )}
-          {iconType === 'Ionicons' && (
-            <Ionicons
-              size={size}
-              name={iconName}
-              color={color ?? 'white'}
-              style={{
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}
-            />
-          )}
-        </Animated.View>
+                padding: 0,
+              },
+              {
+                opacity: withTiming<number>(
+                  pressed || (Platform.OS === 'android' && focused) ? 0.6 : 1.0,
+                  {
+                    duration: 2000,
+                    easing: Easing.circle,
+                    reduceMotion: ReduceMotion.Always,
+                  },
+                ),
+              },
+            ]}
+          >
+            {iconType === 'MaterialIcons' && (
+              <MaterialIcons
+                size={size}
+                name={iconName}
+                color={color ?? 'white'}
+                style={{
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              />
+            )}
+            {iconType === 'Ionicons' && (
+              <Ionicons
+                size={size}
+                name={iconName}
+                color={color ?? 'white'}
+                style={{
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              />
+            )}
+          </Animated.View>
+        )}
       </Pressable>
     );
   },
