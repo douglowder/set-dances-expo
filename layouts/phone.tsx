@@ -4,7 +4,6 @@ import {
   DarkTheme,
   DefaultTheme,
   ThemeProvider,
-  useNavigation,
   useRouter,
 } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
@@ -15,7 +14,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 export default function PhoneLayout() {
   const colorScheme = useColorScheme();
   const { scale } = useScale();
-  const navigation = useNavigation<{ toggleDrawer: () => void }>();
   const router = useRouter();
 
   const theme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
@@ -27,7 +25,7 @@ export default function PhoneLayout() {
       <ThemeProvider value={theme}>
         <GestureHandlerRootView style={{ flex: 1, backgroundColor }}>
           <Drawer
-            screenOptions={{
+            screenOptions={({ navigation }) => ({
               swipeEnabled: false,
               headerLeft: (props) => (
                 <Pressable onPress={() => navigation.toggleDrawer()}>
@@ -49,7 +47,7 @@ export default function PhoneLayout() {
                   }}
                 </Pressable>
               ),
-            }}
+            })}
           >
             <Drawer.Screen
               name="index"
