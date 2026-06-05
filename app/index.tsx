@@ -70,10 +70,9 @@ export default function Index() {
         newPlayer.playbackRate = savedSpeed / (savedTune.defaultSpeed || 1);
         newPlayer.addListener('playbackStatusUpdate', (status) => {
           if (status.isLoaded) {
-            const f = fractionCompleteFromStatus(status);
             setDuration(status.duration);
-            progressValue.value = f;
-            if (f > 0.99) {
+            progressValue.value = fractionCompleteFromStatus(status);
+            if (status.didJustFinish) {
               setFinished(true);
             }
           }
