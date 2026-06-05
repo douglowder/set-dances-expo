@@ -26,7 +26,12 @@
           ]
         }
       ],
-      "expo-router"
+      "expo-router",
+      "expo-build-properties",
+      "expo-image",
+      "expo-splash-screen",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
@@ -34,7 +39,6 @@
     "name": "Set Dances",
     "slug": "set-dances",
     "version": "2.0.1",
-    "newArchEnabled": true,
     "runtimeVersion": {
       "policy": "appVersion"
     },
