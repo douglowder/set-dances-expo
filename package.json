@@ -26,7 +26,7 @@
     "@react-navigation/drawer": "^7.0.5",
     "expo": "^56.0.9",
     "expo-application": "~56.0.3",
-    "expo-av": "~15.0.1",
+    "expo-audio": "~56.0.11",
     "expo-build-properties": "~56.0.17",
     "expo-constants": "~56.0.17",
     "expo-dev-client": "~56.0.19",

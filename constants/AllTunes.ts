@@ -1,4 +1,4 @@
-import { AVPlaybackSource } from 'expo-av';
+import { AudioSource } from 'expo-audio';
 
 export type TuneType = 'hp' | 'jig' | 'slowhp' | 'tradhp' | 'tradjig';
 
@@ -6,7 +6,7 @@ export type Tune = {
   key: string;
   type: TuneType;
   name: string;
-  value: AVPlaybackSource;
+  value: AudioSource;
   defaultSpeed: number;
   minSpeed: number;
   maxSpeed: number;

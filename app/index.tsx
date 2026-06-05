@@ -1,13 +1,13 @@
 import { useScale } from '@/hooks/useScale';
 import {
-  AVPlaybackStatusSuccess,
-  Audio,
-  InterruptionModeAndroid,
-  InterruptionModeIOS,
-} from 'expo-av';
+  type AudioPlayer,
+  type AudioStatus,
+  createAudioPlayer,
+  setAudioModeAsync,
+} from 'expo-audio';
 import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSharedValue } from 'react-native-reanimated';
 import {
   StyleSheet,
@@ -31,17 +31,15 @@ import {
 } from '@/utils/TuneSettings';
 import { addTuneChangeListener } from '@/utils/TuneChangeEmitter';
 
-const fractionCompleteFromStatus = (status: AVPlaybackStatusSuccess) =>
-  status.positionMillis !== undefined && status.durationMillis !== undefined
-    ? status.positionMillis / status.durationMillis
-    : 0;
+const fractionCompleteFromStatus = (status: AudioStatus) =>
+  status.duration > 0 ? status.currentTime / status.duration : 0;
 
 export default function Index() {
   const { scale, landscape, tall } = useScale();
   const styles = useIndexStyles();
 
   const [isPlaying, setIsPlaying] = useState(false);
-  const [sound, setSound] = useState<Audio.Sound | undefined>(undefined);
+  const playerRef = useRef<AudioPlayer | undefined>(undefined);
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [tune, setTune] = useState<Tune | undefined>(undefined);
@@ -54,44 +52,37 @@ export default function Index() {
 
   const initialize = useCallback(() => {
     const handleAsync = async () => {
-      let newSound;
+      let newPlayer: AudioPlayer | undefined;
       let savedTune;
       let savedSpeed: number = 0;
       try {
-        Audio.setAudioModeAsync({
-          staysActiveInBackground: true,
-          playsInSilentModeIOS: true,
-          interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false,
+        await setAudioModeAsync({
+          shouldPlayInBackground: true,
+          playsInSilentMode: true,
+          interruptionMode: 'duckOthers',
         });
         savedTune = await fetchTuneSettingAsync();
         savedSpeed = (await fetchSavedSpeedAsync()) ?? 0;
-        const { sound: _sound } = await Audio.Sound.createAsync(
-          savedTune.value,
-          {
-            progressUpdateIntervalMillis: 1000,
-            rate: savedSpeed / (savedTune?.defaultSpeed ?? 0),
-          },
-          (status) => {
-            if (status.isLoaded) {
-              const successStatus =
-                status as unknown as AVPlaybackStatusSuccess;
-              const f = fractionCompleteFromStatus(successStatus);
-              setDuration(successStatus.durationMillis ?? 0);
-              progressValue.value = f;
-              if (f > 0.99) {
-                setFinished(true);
-              }
+        newPlayer = createAudioPlayer(savedTune.value, {
+          updateInterval: 1000,
+        });
+        newPlayer.shouldCorrectPitch = false;
+        newPlayer.playbackRate = savedSpeed / (savedTune.defaultSpeed || 1);
+        newPlayer.addListener('playbackStatusUpdate', (status) => {
+          if (status.isLoaded) {
+            const f = fractionCompleteFromStatus(status);
+            setDuration(status.duration);
+            progressValue.value = f;
+            if (f > 0.99) {
+              setFinished(true);
             }
-          },
-        );
-        newSound = _sound;
+          }
+        });
       } catch (error) {
         console.error(error);
       }
-      setSound(newSound);
+      playerRef.current?.remove();
+      playerRef.current = newPlayer;
       progressValue.value = 0;
       setTune(savedTune);
       setSpeed(savedSpeed);
@@ -103,16 +94,16 @@ export default function Index() {
   useFocusEffect(
     useCallback(() => {
       return () => {
-        const handleAsync = async () => {
-          // Pause sound if another screen (tune select or info) is focused
-          await sound?.pauseAsync();
-          // Rewind also
-          await sound?.setPositionAsync(0);
-          setIsPlaying(false);
-        };
-        handleAsync();
+        // Pause and rewind if another screen (tune select or info) is focused
+        const player = playerRef.current;
+        if (!player) {
+          return;
+        }
+        player.pause();
+        player.seekTo(0);
+        setIsPlaying(false);
       };
-    }, [sound]),
+    }, []),
   );
 
   useEffect(() => {
@@ -122,71 +113,56 @@ export default function Index() {
   }, [initialize, tune]);
 
   useEffect(() => {
-    if (sound && finished) {
-      sound?.setPositionAsync(0).then(() => {
+    return () => {
+      playerRef.current?.remove();
+      playerRef.current = undefined;
+    };
+  }, []);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (player && finished) {
+      player.seekTo(0).then(() => {
         setFinished(false);
         if (repeat) {
-          sound?.playAsync();
+          player.play();
         } else {
-          sound?.pauseAsync();
+          player.pause();
           setIsPlaying(false);
         }
       });
     }
-  }, [repeat, finished, sound]);
+  }, [repeat, finished]);
 
   addTuneChangeListener(() => {
     setTune(undefined);
   });
 
   const handleRewind = () => {
-    if (!sound) {
-      return;
-    }
-    sound.setPositionAsync(0).catch((error) => {
+    playerRef.current?.seekTo(0).catch((error) => {
       console.warn(error);
     });
   };
 
   const handlePlayPause = () => {
-    if (!sound) {
+    const player = playerRef.current;
+    if (!player) {
       setIsPlaying(false);
       return;
     }
     if (isPlaying) {
-      sound
-        .pauseAsync()
-        .then(() => {
-          setIsPlaying(false);
-        })
-        .catch((error) => {
-          setIsPlaying(false);
-          console.warn(error);
-        });
+      player.pause();
+      setIsPlaying(false);
     } else {
-      sound
-        .playAsync()
-        .then(() => {
-          setIsPlaying(true);
-        })
-        .catch((error) => {
-          setIsPlaying(false);
-          console.warn(error);
-        });
+      player.play();
+      setIsPlaying(true);
     }
   };
 
   const handleSelect = () => {
     if (isPlaying) {
-      sound
-        ?.pauseAsync()
-        .then(() => {
-          setIsPlaying(false);
-        })
-        .catch((error) => {
-          setIsPlaying(false);
-          console.warn(error);
-        });
+      playerRef.current?.pause();
+      setIsPlaying(false);
     }
     const tab = tune?.type.startsWith('trad') ? 'trad' : tune?.type ?? 'hp';
     router.push(`/(tunes)/${tab}`);
@@ -197,7 +173,7 @@ export default function Index() {
   };
 
   const handleSpeedChange = async (tune: Tune, newSpeed: number) => {
-    await sound?.setRateAsync(newSpeed / (tune?.defaultSpeed ?? 0), false);
+    playerRef.current?.setPlaybackRate(newSpeed / (tune?.defaultSpeed || 1));
     await storeSavedSpeedAsync(tune, newSpeed);
     setSpeed(newSpeed);
   };
@@ -278,7 +254,9 @@ export default function Index() {
           <TVFocusGuideView autoFocus style={styles.centerButtonContainer}>
             <CircularButton
               onPress={() =>
-                sound?.setPositionAsync(progressValue.value * duration - 10000)
+                playerRef.current?.seekTo(
+                  Math.max(0, progressValue.value * duration - 10),
+                )
               }
               alt="Jog back"
               size={Platform.isTV ? 60 * scale : 40 * scale}
@@ -297,12 +275,14 @@ export default function Index() {
                 minimumTrackTintColor: 'blue',
               }}
               onSlidingComplete={(value) => {
-                sound?.setPositionAsync(value * duration);
+                playerRef.current?.seekTo(value * duration);
               }}
             />
             <CircularButton
               onPress={() =>
-                sound?.setPositionAsync(progressValue.value * duration + 10000)
+                playerRef.current?.seekTo(
+                  Math.min(duration, progressValue.value * duration + 10),
+                )
               }
               alt="Jog forward"
               size={Platform.isTV ? 60 * scale : 40 * scale}

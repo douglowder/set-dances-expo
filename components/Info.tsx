@@ -11,7 +11,7 @@ import { useThemeColor } from '@/hooks/useThemeColor';
 
 import { version as expoVersion } from 'expo/package.json';
 import { version as expoRouterVersion } from 'expo-router/package.json';
-import { version as expoAVVersion } from 'expo-av/package.json';
+import { version as expoAudioVersion } from 'expo-audio/package.json';
 import { version as reactNativeVersion } from 'react-native/package.json';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useUpdates } from 'expo-updates';
@@ -84,7 +84,7 @@ function About() {
         >{`expo-router ${expoRouterVersion}`}</ThemedText>
         <ThemedText
           style={styles.textSmall}
-        >{`expo-av ${expoAVVersion}`}</ThemedText>
+        >{`expo-audio ${expoAudioVersion}`}</ThemedText>
       </ThemedView>
       <ThemedView>
         <ThemedText type="defaultSemiBold" style={styles.text}>
