@@ -1,17 +1,14 @@
-import { EventEmitter as JsEventEmitter } from 'fbemitter';
+import { EventEmitter } from 'expo-modules-core';
 
-let _jsEventEmitter: JsEventEmitter | null = null;
-function _getJsEventEmitter(): JsEventEmitter {
-  if (!_jsEventEmitter) {
-    _jsEventEmitter = new JsEventEmitter();
-  }
-  return _jsEventEmitter;
-}
-
-export const addTuneChangeListener = (listener: () => void) => {
-  return _getJsEventEmitter().addListener('tuneChangeEvent', listener);
+type TuneChangeEvents = {
+  tuneChange: () => void;
 };
 
+const emitter = new EventEmitter<TuneChangeEvents>();
+
+export const addTuneChangeListener = (listener: () => void) =>
+  emitter.addListener('tuneChange', listener);
+
 export const emitTuneChangeEvent = () => {
-  _getJsEventEmitter().emit('tuneChangeEvent');
+  emitter.emit('tuneChange');
 };

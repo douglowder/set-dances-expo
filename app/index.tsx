@@ -133,9 +133,12 @@ export default function Index() {
     }
   }, [repeat, finished]);
 
-  addTuneChangeListener(() => {
-    setTune(undefined);
-  });
+  useEffect(() => {
+    const subscription = addTuneChangeListener(() => {
+      setTune(undefined);
+    });
+    return () => subscription.remove();
+  }, []);
 
   const handleRewind = () => {
     playerRef.current?.seekTo(0).catch((error) => {
