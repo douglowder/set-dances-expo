@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { forwardRef, useState } from 'react';
 import {
+  type ColorValue,
   Platform,
   Pressable,
   PressableProps,
@@ -20,7 +21,7 @@ type CircularButtonProps = PressableProps & {
   iconName: any;
   iconType?: 'MaterialIcons' | 'Ionicons';
   alt: string;
-  color?: string;
+  color?: ColorValue;
   onPlayPause?: () => void;
 };
 

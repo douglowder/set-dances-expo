@@ -163,7 +163,11 @@ export default function Index() {
       playerRef.current?.pause();
       setIsPlaying(false);
     }
-    const tab = tune?.type.startsWith('trad') ? 'trad' : tune?.type ?? 'hp';
+    let tab: 'hp' | 'jig' | 'slowhp' | 'trad' = 'hp';
+    if (tune) {
+      tab =
+        tune.type === 'tradhp' || tune.type === 'tradjig' ? 'trad' : tune.type;
+    }
     router.push(`/(tunes)/${tab}`);
   };
 
