@@ -6,15 +6,17 @@ import type {
   BottomTabBarButtonProps,
 } from 'expo-router/js-tabs';
 
-import { Platform, Pressable, useColorScheme } from 'react-native';
+import type { Ref } from 'react';
+import { Platform, Pressable, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const TabBarButton = (props: BottomTabBarButtonProps) => {
+const TabBarButton = ({ ref, ...props }: BottomTabBarButtonProps) => {
   const style: any = props.style ?? {};
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
+  const colorScheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const colors = Colors[colorScheme];
   return (
     <Pressable
+      ref={ref as Ref<View>}
       tvParallaxProperties={{
         enabled: true,
         magnification: 1.2,
@@ -35,8 +37,8 @@ const TabBarButton = (props: BottomTabBarButtonProps) => {
 };
 
 export function useBottomTabOptions(): BottomTabNavigationOptions {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
+  const colorScheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const colors = Colors[colorScheme];
   const textStyles = useTextStyles();
   const { scale } = useScale();
   const marginBottom = Platform.isTV ? -30 * scale : 0;
