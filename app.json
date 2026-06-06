@@ -21,13 +21,18 @@
       [
         "expo-font",
         {
-          "fonts": [
-            "./assets/fonts/zapfino.ttf"
-          ]
+          "fonts": ["./assets/fonts/zapfino.ttf"]
         }
       ],
       "expo-router",
-      "expo-build-properties",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "buildReactNativeFromSource": true
+          }
+        }
+      ],
       "expo-image",
       "expo-splash-screen",
       "expo-status-bar",
@@ -70,16 +75,12 @@
         "NSPrivacyAccessedAPITypes": [
           {
             "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
-            "NSPrivacyAccessedAPITypeReasons": [
-              "CA92.1"
-            ]
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
           }
         ]
       },
       "infoPlist": {
-        "UIBackgroundModes": [
-          "audio"
-        ],
+        "UIBackgroundModes": ["audio"],
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.douglowder.Set-Dances"

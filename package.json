@@ -6,13 +6,13 @@
     "postinstall": "patch-package",
     "start": "expo start",
     "android": "expo run:android",
-    "ios": "expo run:ios",
+    "ios": "EXPO_USE_PRECOMPILED_MODULES=0 expo run:ios",
     "web": "expo start --web",
     "reset-project": "./scripts/reset-project.js",
     "prepare-credentials": "./scripts/prepare-credentials.js",
     "lint": "expo lint",
-    "prebuild": "expo prebuild --clean",
-    "prebuild:tv": "EXPO_TV=1 expo prebuild --clean"
+    "prebuild": "EXPO_USE_PRECOMPILED_MODULES=0 expo prebuild --clean",
+    "prebuild:tv": "EXPO_USE_PRECOMPILED_MODULES=0 EXPO_TV=1 expo prebuild --clean"
   },
   "dependencies": {
     "@douglowder/expo-av-route-picker-view": "^0.0.5",
