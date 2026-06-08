@@ -50,7 +50,7 @@
     },
     "name": "Set Dances",
     "slug": "set-dances",
-    "version": "2.0.1",
+    "version": "2.1.0",
     "runtimeVersion": {
       "policy": "appVersion"
     },
