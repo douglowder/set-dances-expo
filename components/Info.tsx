@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ParallaxScrollView from '@/components/ParallaxScrollView';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { useMarkInteractive } from '@/hooks/useMarkInteractive';
 import { useScale } from '@/hooks/useScale';
 import { useThemeColor } from '@/hooks/useThemeColor';
 
@@ -21,6 +22,8 @@ type InfoTabNames = 'About' | 'Instructions' | 'Thanks';
 export default function Info({ tabName }: { tabName: InfoTabNames }) {
   const styles = useHomeScreenStyles();
   const { landscape } = useScale();
+
+  useMarkInteractive();
   // If the page was reloaded or navigated to directly, then the modal should be presented as
   // a full screen page. You may need to change the UI to account for this.
   return (

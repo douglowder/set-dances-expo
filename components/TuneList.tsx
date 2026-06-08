@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { useMarkInteractive } from '@/hooks/useMarkInteractive';
 import { useScale } from '@/hooks/useScale';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { Tune, TuneType, AllTunes } from '@/constants/AllTunes';
@@ -20,6 +21,8 @@ import { FlatList } from 'react-native-gesture-handler';
 export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
   const styles = useTuneListStyles();
   const { landscape } = useScale();
+
+  useMarkInteractive();
 
   const tuneTypeSet = new Set(tuneTypes);
 

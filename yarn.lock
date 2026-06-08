@@ -3624,6 +3624,13 @@ event-target-shim@^5.0.0:
   resolved "https://registry.yarnpkg.com/event-target-shim/-/event-target-shim-5.0.1.tgz#5d4d3ebdf9583d63a5333ce2deb7480ab2b05789"
   integrity sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==
 
+expo-app-metrics@~56.0.17:
+  version "56.0.17"
+  resolved "https://registry.yarnpkg.com/expo-app-metrics/-/expo-app-metrics-56.0.17.tgz#294beb634e1de7af52e7c8656adcad05314705ba"
+  integrity sha512-WaJ7Kk+tImEgWc9GRxuPasWl2UW+3ND0IA7b+7GF+Ml9aT5sE7fXrflONMxebeY8TKBQo7M/xOzXawgItbxsfQ==
+  dependencies:
+    expo-updates-interface "~56.0.1"
+
 expo-application@~56.0.3:
   version "56.0.3"
   resolved "https://registry.yarnpkg.com/expo-application/-/expo-application-56.0.3.tgz#ec3f39fb0016fd5b7d93f6b2bfbe0581e7628292"
@@ -3767,6 +3774,14 @@ expo-modules-jsi@~56.0.8:
   version "56.0.8"
   resolved "https://registry.yarnpkg.com/expo-modules-jsi/-/expo-modules-jsi-56.0.8.tgz#c5bd6b29d0e586840cbe4d051da68d9a8789c419"
   integrity sha512-tXqFU1MHrf7Ctq+Pw0qOeIPDFl1W51p9nRRZy9vVUn4GNuAk1Av0vrj0SGLvcxJvDf3aGwSzr8o8dgUsX5sG0g==
+
+expo-observe@~56.0.19:
+  version "56.0.19"
+  resolved "https://registry.yarnpkg.com/expo-observe/-/expo-observe-56.0.19.tgz#41453cdd450bafbd28c25d32180900061c2c4f63"
+  integrity sha512-0hC1UvcRqpzRbVd37rUj0DCF2OgJlrNQAynlwLGFmIvpmKayeS9taHxvown4JLlzPYYq4mi11gLmSmcttsFWRg==
+  dependencies:
+    expo-app-metrics "~56.0.17"
+    expo-eas-client "~56.0.0"
 
 expo-router@~56.2.9:
   version "56.2.9"

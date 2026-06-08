@@ -1,4 +1,5 @@
 import { useScale } from '@/hooks/useScale';
+import { useMarkInteractive } from '@/hooks/useMarkInteractive';
 import {
   type AudioPlayer,
   type AudioStatus,
@@ -45,6 +46,8 @@ export default function Index() {
   const [tune, setTune] = useState<Tune | undefined>(undefined);
   const [repeat, setRepeat] = useState(false);
   const [finished, setFinished] = useState(false);
+
+  useMarkInteractive(tune !== undefined);
 
   const progressValue = useSharedValue(0);
   const minProgressValue = useSharedValue(0);
