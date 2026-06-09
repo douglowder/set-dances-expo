@@ -1,5 +1,5 @@
 diff --git a/node_modules/expo-observe/ios/Observability.swift b/node_modules/expo-observe/ios/Observability.swift
-index 1a5b5ff..78487a4 100644
+index 1a5b5ff..d126b22 100644
 --- a/node_modules/expo-observe/ios/Observability.swift
 +++ b/node_modules/expo-observe/ios/Observability.swift
 @@ -31,11 +31,12 @@ internal struct ObservabilityManager {
@@ -7,12 +7,12 @@ index 1a5b5ff..78487a4 100644
      }
      guard !pendingMetrics.isEmpty, let endpointUrl = metricsEndpointUrl else {
 -      observeLogger.debug("[EAS Observe] No new metrics to dispatch")
-+      observeLogger.info("[EAS Observe] No new metrics to dispatch")
++      observeLogger.warn("[EAS Observe] No new metrics to dispatch")
        return
      }
      let highestId = pendingMetrics.last?.id ?? cursor
      if !shouldDispatch {
-+      observeLogger.info("[EAS Observe] shouldDispatch = \(shouldDispatch)")
++      observeLogger.warn("[EAS Observe] shouldDispatch = \(shouldDispatch)")
        ObserveUserDefaults.lastDispatchedMetricId = highestId
        return
      }
@@ -21,7 +21,7 @@ index 1a5b5ff..78487a4 100644
      }
      guard !pendingLogs.isEmpty, let endpointUrl = logsEndpointUrl else {
 -      observeLogger.debug("[EAS Observe] No new logs to dispatch")
-+      observeLogger.info("[EAS Observe] No new logs to dispatch")
++      observeLogger.warn("[EAS Observe] No new logs to dispatch")
        return
      }
      let highestId = pendingLogs.last?.id ?? cursor
@@ -36,7 +36,7 @@ index 1a5b5ff..78487a4 100644
 -    print(try body.toJSONString(.prettyPrinted))
 -    #endif
 +    let bodyString = try body.toJSONString(.prettyPrinted)
-+    observeLogger.info("[EAS Observe] Sending the request to \(endpointUrl) with body: \(bodyString)")
++    observeLogger.warn("[EAS Observe] Sending the request to \(endpointUrl) with body: \(bodyString)")
  
      let (responseData, urlResponse) = try await URLSession.shared.data(for: request)
  
@@ -45,7 +45,7 @@ index 1a5b5ff..78487a4 100644
        return false
      }
 -    observeLogger.debug("[EAS Observe] Server responded successfully with \(urlResponse.statusCode) status code and data: \(String(data: responseData, encoding: .utf8) ?? "<unreadable>")")
-+    observeLogger.info("[EAS Observe] Server responded successfully with \(urlResponse.statusCode) status code and data: \(String(data: responseData, encoding: .utf8) ?? "<unreadable>")")
++    observeLogger.warn("[EAS Observe] Server responded successfully with \(urlResponse.statusCode) status code and data: \(String(data: responseData, encoding: .utf8) ?? "<unreadable>")")
      return true
    }
  
