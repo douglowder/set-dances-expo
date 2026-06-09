@@ -65,7 +65,6 @@ export default function TVLayout() {
                 },
               }}
             />
-            <Stack.Screen name="+not-found" />
           </Stack>
         </GestureHandlerRootView>
       </ThemeProvider>
