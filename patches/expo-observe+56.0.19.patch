@@ -1,0 +1,126 @@
+diff --git a/node_modules/expo-observe/ios/Observability.swift b/node_modules/expo-observe/ios/Observability.swift
+index 1a5b5ff..78487a4 100644
+--- a/node_modules/expo-observe/ios/Observability.swift
++++ b/node_modules/expo-observe/ios/Observability.swift
+@@ -31,11 +31,12 @@ internal struct ObservabilityManager {
+       return
+     }
+     guard !pendingMetrics.isEmpty, let endpointUrl = metricsEndpointUrl else {
+-      observeLogger.debug("[EAS Observe] No new metrics to dispatch")
++      observeLogger.info("[EAS Observe] No new metrics to dispatch")
+       return
+     }
+     let highestId = pendingMetrics.last?.id ?? cursor
+     if !shouldDispatch {
++      observeLogger.info("[EAS Observe] shouldDispatch = \(shouldDispatch)")
+       ObserveUserDefaults.lastDispatchedMetricId = highestId
+       return
+     }
+@@ -83,7 +84,7 @@ internal struct ObservabilityManager {
+       return
+     }
+     guard !pendingLogs.isEmpty, let endpointUrl = logsEndpointUrl else {
+-      observeLogger.debug("[EAS Observe] No new logs to dispatch")
++      observeLogger.info("[EAS Observe] No new logs to dispatch")
+       return
+     }
+     let highestId = pendingLogs.last?.id ?? cursor
+@@ -154,12 +155,8 @@ internal struct ObservabilityManager {
+     request.allHTTPHeaderFields = ["Content-Type": "application/json"]
+     request.httpBody = try body.toJSONData([])
+ 
+-    #if DEBUG
+-    observeLogger.debug("[EAS Observe] Sending the request to \(endpointUrl) with body:")
+-    // Use `print` so the JSON can be copied without including the log level emojis. Wrapped in
+-    // `#if DEBUG` so release builds don't pay for a second pretty-printed encode of the payload.
+-    print(try body.toJSONString(.prettyPrinted))
+-    #endif
++    let bodyString = try body.toJSONString(.prettyPrinted)
++    observeLogger.info("[EAS Observe] Sending the request to \(endpointUrl) with body: \(bodyString)")
+ 
+     let (responseData, urlResponse) = try await URLSession.shared.data(for: request)
+ 
+@@ -170,7 +167,7 @@ internal struct ObservabilityManager {
+       observeLogger.warn("[EAS Observe] Server responded with \(urlResponse.statusCode) status code and data: \(String(data: responseData, encoding: .utf8) ?? "<unreadable>")")
+       return false
+     }
+-    observeLogger.debug("[EAS Observe] Server responded successfully with \(urlResponse.statusCode) status code and data: \(String(data: responseData, encoding: .utf8) ?? "<unreadable>")")
++    observeLogger.info("[EAS Observe] Server responded successfully with \(urlResponse.statusCode) status code and data: \(String(data: responseData, encoding: .utf8) ?? "<unreadable>")")
+     return true
+   }
+ 
+diff --git a/node_modules/expo-observe/ios/ObserveAppDelegateSubscriber.swift b/node_modules/expo-observe/ios/ObserveAppDelegateSubscriber.swift
+index d6aa6a7..0a1ab4b 100644
+--- a/node_modules/expo-observe/ios/ObserveAppDelegateSubscriber.swift
++++ b/node_modules/expo-observe/ios/ObserveAppDelegateSubscriber.swift
+@@ -5,12 +5,14 @@ import ExpoAppMetrics
+ 
+ public class ObserveAppDelegateSubscriber: ExpoAppDelegateSubscriber {
+   public func applicationWillResignActive(_ application: UIApplication) {
++    observeLogger.info("[EAS Observe] applicationWillResignActive — triggering dispatch")
+     AppMetricsActor.isolated {
+       await ObservabilityManager.dispatch()
+     }
+   }
+ 
+   public func applicationWillTerminate(_ application: UIApplication) {
++    observeLogger.info("[EAS Observe] applicationWillTerminate — triggering dispatch")
+     AppMetricsActor.isolated {
+       await ObservabilityManager.dispatch()
+     }
+diff --git a/node_modules/expo-observe/ios/OpenTelemetry.swift b/node_modules/expo-observe/ios/OpenTelemetry.swift
+index 6080f5d..cc823fa 100644
+--- a/node_modules/expo-observe/ios/OpenTelemetry.swift
++++ b/node_modules/expo-observe/ios/OpenTelemetry.swift
+@@ -201,6 +201,14 @@ let metricNameMap = [
+   "navigation/cold_ttr": "expo.navigation.cold_ttr",
+   "navigation/warm_ttr": "expo.navigation.warm_ttr",
+   "navigation/tti": "expo.navigation.tti",
++
++  // Additional metrics needed for TV
++  /*
++  "session/duration": "expo.session.duration",
++  "memory/physical": "expo.memory.physical",
++  "memory/allocated": "expo.memory.allocated",
++  "memory/available": "expo.memory.available",
++   */
+ ]
+ 
+ nonisolated(unsafe) let formatter = ISO8601DateFormatter()
+@@ -218,7 +226,7 @@ extension Event.Metric {
+     return nsFromISOString(self.timestamp)
+   }
+ 
+-  func toOTMetric() -> OTMetric {
++  func toOTMetric() -> OTMetric? {
+     var attributes: [OTAttribute] = [
+       OTAttribute(key: "session.id", rawValue: sessionId)
+     ]
+@@ -232,10 +240,16 @@ extension Event.Metric {
+       attributes.append(OTAttribute(key: "expo.custom_params", rawValue: customParamsString))
+     }
+ 
+-    let lookupKey = "\(self.category ?? "unknown")/\(self.name)"
++    guard let category = self.category else {
++      return nil
++    }
++    let lookupKey = "\(category)/\(self.name)"
++    guard let metricName = metricNameMap[lookupKey] else {
++      return nil
++    }
+     return OTMetric(
+       unit: "s",
+-      name: metricNameMap[lookupKey] ?? "expo.unknown.\(self.name)",
++      name: metricName,
+       gauge: OTGauge(dataPoints: [
+         OTDataPoint(
+           timeUnixNano: nsFromISODateString(),
+@@ -412,7 +426,7 @@ extension Event {
+       scopeMetrics: [
+         OTScopeMetrics(
+           scope: OTScope(name: "expo-observe", version: ObserveVersions.clientVersion),
+-          metrics: self.metrics.map{ $0.toOTMetric() }
++          metrics: self.metrics.compactMap{ $0.toOTMetric() }
+         )
+       ],
+       schemaUrl: semConvSchemaUrl
