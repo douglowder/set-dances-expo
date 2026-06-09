@@ -7,6 +7,9 @@ import { Platform } from 'react-native';
 // @generated marker), so edits here are preserved across syncs.
 Observe.configure({
   integrations: { 'expo-router': true },
+  environment: 'production',
+  dispatchingEnabled: true,
+  dispatchInDebug: true,
 });
 
 function RootLayout() {
