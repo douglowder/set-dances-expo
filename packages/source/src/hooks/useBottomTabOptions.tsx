@@ -41,13 +41,13 @@ export function useBottomTabOptions(): BottomTabNavigationOptions {
   const colors = Colors[colorScheme];
   const textStyles = useTextStyles();
   const { scale } = useScale();
-  const marginBottom = Platform.isTV ? -30 * scale : 0;
+  const marginBottom = 0;
   const paddingBottom = Platform.isTV ? 0 : 30 * scale;
   const borderTopWidth = Platform.isTV ? 0 : 2 * scale;
   return {
     tabBarActiveTintColor: colors.tint,
     tabBarStyle: {
-      height: textStyles.title.lineHeight * 2,
+      height: textStyles.title.lineHeight * 2.5,
       marginBottom,
       paddingBottom,
       borderTopWidth,

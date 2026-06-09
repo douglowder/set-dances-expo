@@ -45,10 +45,10 @@ export default function TVLayout() {
                 headerTitle: 'Select a tune',
                 headerTintColor,
                 contentStyle: {
-                  width: '90%',
+                  width: '100%',
                   alignSelf: 'center',
                   marginTop: Platform.isTV ? 0 : 50 * scale,
-                  marginBottom: 50 * scale,
+                  marginBottom: 0 * scale,
                 },
               }}
             />
@@ -58,10 +58,10 @@ export default function TVLayout() {
                 headerTitle: 'Info',
                 headerTintColor,
                 contentStyle: {
-                  width: '90%',
+                  width: '100%',
                   alignSelf: 'center',
                   marginTop: Platform.isTV ? 0 : 50 * scale,
-                  marginBottom: 50 * scale,
+                  marginBottom: 0 * scale,
                 },
               }}
             />

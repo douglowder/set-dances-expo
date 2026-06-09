@@ -225,7 +225,7 @@ const useHomeScreenStyles = function () {
   const backgroundColor = useThemeColor({}, 'tint');
   const iconColor = useThemeColor({}, 'icon');
   const color = useThemeColor({}, 'background');
-  const { bottom } = useSafeAreaInsets();
+  // const { bottom } = useSafeAreaInsets();
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -234,7 +234,7 @@ const useHomeScreenStyles = function () {
       alignItems: 'center',
     },
     safeAreaContainer: {
-      marginBottom: bottom,
+      marginBottom: 5 * scale,
     },
     textContainer: {
       flexDirection: 'row',

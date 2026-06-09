@@ -117,7 +117,7 @@ const useTuneListStyles = function () {
   const tintColor = useThemeColor({}, 'tint');
   const textColor = useThemeColor({}, 'text');
   const backgroundColor = useThemeColor({}, 'background');
-  const { bottom } = useSafeAreaInsets();
+  // const { bottom } = useSafeAreaInsets();
 
   return StyleSheet.create({
     container: {
@@ -127,7 +127,7 @@ const useTuneListStyles = function () {
       alignItems: 'center',
     },
     safeAreaContainer: {
-      marginBottom: bottom,
+      marginBottom: 5 * scale,
     },
     list: {
       flex: 1,
