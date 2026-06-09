@@ -1,51 +1,15 @@
 {
   "name": "set-dances",
-  "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "2.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "postinstall": "patch-package",
-    "start": "expo start",
-    "android": "expo run:android",
-    "ios": "EXPO_USE_PRECOMPILED_MODULES=0 expo run:ios",
-    "web": "expo start --web",
-    "reset-project": "./scripts/reset-project.js",
-    "prepare-credentials": "./scripts/prepare-credentials.js",
-    "lint": "expo lint",
-    "prebuild": "EXPO_USE_PRECOMPILED_MODULES=0 expo prebuild --clean",
-    "prebuild:tv": "EXPO_USE_PRECOMPILED_MODULES=0 EXPO_TV=1 expo prebuild --clean"
-  },
-  "dependencies": {
-    "@douglowder/expo-av-route-picker-view": "^0.0.5",
-    "@douglowder/expo-no-apns": "./dependencies/douglowder-expo-no-apns-0.0.1.tgz",
-    "@expo/vector-icons": "^15.0.2",
-    "@react-native-async-storage/async-storage": "2.2.0",
-    "@react-navigation/drawer": "^7.0.5",
-    "expo": "^56.0.9",
-    "expo-application": "~56.0.3",
-    "expo-audio": "~56.0.11",
-    "expo-build-properties": "~56.0.17",
-    "expo-constants": "~56.0.17",
-    "expo-dev-client": "~56.0.19",
-    "expo-font": "~56.0.5",
-    "expo-image": "~56.0.10",
-    "expo-linking": "~56.0.13",
-    "expo-observe": "~56.0.19",
-    "expo-router": "~56.2.9",
-    "expo-splash-screen": "~56.0.10",
-    "expo-status-bar": "~56.0.4",
-    "expo-system-ui": "~56.0.5",
-    "expo-updates": "~56.0.18",
-    "expo-web-browser": "~56.0.5",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-native": "npm:react-native-tvos@0.85-stable",
-    "react-native-awesome-slider": "^2.5.3",
-    "react-native-gesture-handler": "~2.31.1",
-    "react-native-reanimated": "4.3.1",
-    "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "4.25.2",
-    "react-native-web": "^0.21.2",
-    "react-native-worklets": "0.8.3"
+    "sync-routes": "node ./scripts/sync-routes.js",
+    "lint": "expo lint"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
@@ -57,6 +21,5 @@
     "patch-package": "^8.0.0",
     "postinstall-postinstall": "^2.1.0",
     "typescript": "~6.0.3"
-  },
-  "private": true
+  }
 }

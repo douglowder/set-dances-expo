@@ -1,0 +1,100 @@
+{
+  "expo": {
+    "plugins": [
+      [
+        "@react-native-tvos/config-tv",
+        {
+          "androidTVIcon": "../../packages/source/assets/images/icon.png",
+          "androidTVBanner": "../../packages/source/assets/tv_icons/icon-400x240.png",
+          "appleTVImages": {
+            "icon": "../../packages/source/assets/tv_icons/icon-1280x768.png",
+            "iconSmall": "../../packages/source/assets/tv_icons/icon-400x240.png",
+            "iconSmall2x": "../../packages/source/assets/tv_icons/icon-800x480.png",
+            "topShelf": "../../packages/source/assets/tv_icons/icon-1920x720.png",
+            "topShelf2x": "../../packages/source/assets/tv_icons/icon-3840x1440.png",
+            "topShelfWide": "../../packages/source/assets/tv_icons/icon-2320x720.png",
+            "topShelfWide2x": "../../packages/source/assets/tv_icons/icon-4640x1440.png"
+          }
+        }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": ["../../packages/source/assets/fonts/zapfino.ttf"]
+        }
+      ],
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "buildReactNativeFromSource": true
+          }
+        }
+      ],
+      "expo-image",
+      "expo-splash-screen",
+      "expo-status-bar",
+      "expo-web-browser",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "enableBackgroundPlayback": true
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "name": "Set Dances TV",
+    "slug": "set-dances-tv",
+    "version": "2.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "scheme": "set-dances-tv",
+    "icon": "../../packages/source/assets/images/icon.png",
+    "splash": {
+      "image": "../../packages/source/assets/images/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#3099b8"
+    },
+    "android": {
+      "userInterfaceStyle": "automatic",
+      "package": "com.douglowder.setdances.tv"
+    },
+    "ios": {
+      "userInterfaceStyle": "automatic",
+      "supportsTablet": true,
+      "entitlements": {
+        "aps-environment": "development"
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          }
+        ]
+      },
+      "infoPlist": {
+        "UIBackgroundModes": ["audio"],
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.douglowder.Set-Dances.tv"
+    },
+    "extra": {
+      "updates": {
+        "assetPatternsToBeBundled": [
+          "../../packages/source/assets/images/**/*.png",
+          "../../packages/source/assets/tv_icons/**/*.png"
+        ]
+      },
+      "router": {
+        "origin": false
+      }
+    },
+    "owner": "douglowder_setdances"
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "cli": {
+    "version": ">= 3.15.1",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "extends": "production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "withoutCredentials": true,
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "ios": {
+        "buildConfiguration": "Debug",
+        "simulator": true
+      },
+      "channel": "development"
+    },
+    "development:device": {
+      "extends": "development",
+      "developmentClient": true,
+      "ios": {
+        "credentialsSource": "local",
+        "simulator": false
+      },
+      "channel": "development"
+    },
+    "preview": {
+      "extends": "production",
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      },
+      "channel": "preview"
+    },
+    "preview:device": {
+      "extends": "preview",
+      "ios": {
+        "credentialsSource": "local",
+        "simulator": false
+      },
+      "channel": "preview"
+    },
+    "preview:tv": {
+      "extends": "preview",
+      "env": {
+        "EXPO_TV": "1"
+      },
+      "channel": "preview"
+    },
+    "preview:device:tv": {
+      "extends": "preview:device",
+      "env": {
+        "EXPO_TV": "1"
+      },
+      "channel": "preview"
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "ios": {
+        "simulator": false
+      },
+      "android": {
+        "buildType": "apk",
+        "withoutCredentials": true
+      },
+      "env": {
+        "EXPO_NO_APNS": "1"
+      }
+    },
+    "production:tv": {
+      "extends": "production",
+      "ios": {
+        "credentialsSource": "local",
+        "simulator": false
+      },
+      "env": {
+        "EXPO_NO_APNS": "1",
+        "EXPO_TV": "1"
+      },
+      "channel": "production"
+    }
+  },
+  "submit": {
+    "production": {},
+    "production:tv": {}
+  }
+}
