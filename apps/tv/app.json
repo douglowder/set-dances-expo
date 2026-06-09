@@ -20,7 +20,9 @@
       [
         "expo-font",
         {
-          "fonts": ["../../packages/source/assets/fonts/zapfino.ttf"]
+          "fonts": [
+            "../../packages/source/assets/fonts/zapfino.ttf"
+          ]
         }
       ],
       "expo-router",
@@ -62,7 +64,17 @@
     },
     "android": {
       "userInterfaceStyle": "automatic",
-      "package": "com.douglowder.setdances.tv"
+      "package": "com.douglowder.setdances",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "ios": {
       "userInterfaceStyle": "automatic",
@@ -74,15 +86,26 @@
         "NSPrivacyAccessedAPITypes": [
           {
             "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
-            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
           }
         ]
       },
       "infoPlist": {
-        "UIBackgroundModes": ["audio"],
+        "UIBackgroundModes": [
+          "audio",
+          "audio"
+        ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "bundleIdentifier": "com.douglowder.Set-Dances.tv"
+      "bundleIdentifier": "com.douglowder.Set-Dances"
     },
     "extra": {
       "updates": {
@@ -93,8 +116,14 @@
       },
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "bfa3fee9-3c30-4ef9-b4df-65f6cb73aebb"
       }
     },
-    "owner": "douglowder_setdances"
+    "owner": "douglowder_setdances",
+    "updates": {
+      "url": "https://u.expo.dev/bfa3fee9-3c30-4ef9-b4df-65f6cb73aebb"
+    }
   }
 }
