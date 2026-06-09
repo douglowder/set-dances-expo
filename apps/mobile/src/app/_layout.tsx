@@ -1,5 +1,7 @@
+import TVLayout from '@/layouts/tv';
 import PhoneLayout from '@/layouts/phone';
 import { Observe, ObserveRoot } from 'expo-observe';
+import { Platform } from 'react-native';
 
 // App-specific root layout. Not managed by scripts/sync-routes.js (no
 // @generated marker), so edits here are preserved across syncs.
@@ -8,7 +10,7 @@ Observe.configure({
 });
 
 function RootLayout() {
-  return <PhoneLayout />;
+  return Platform.isTV ? <TVLayout /> : <PhoneLayout />;
 }
 
 export default ObserveRoot.wrap(RootLayout);
