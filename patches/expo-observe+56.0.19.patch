@@ -1,5 +1,5 @@
 diff --git a/node_modules/expo-observe/ios/Observability.swift b/node_modules/expo-observe/ios/Observability.swift
-index 1a5b5ff..6b7f1c7 100644
+index 1a5b5ff..e7a4fba 100644
 --- a/node_modules/expo-observe/ios/Observability.swift
 +++ b/node_modules/expo-observe/ios/Observability.swift
 @@ -1,6 +1,7 @@
@@ -10,15 +10,44 @@ index 1a5b5ff..6b7f1c7 100644
  
  @AppMetricsActor
  internal struct ObservabilityManager {
-@@ -9,6 +10,7 @@ internal struct ObservabilityManager {
+@@ -9,6 +10,36 @@ internal struct ObservabilityManager {
    private static var logsEndpointUrl: URL? = nil
    private static var projectId: String? = nil
    private static var useOpenTelemetry = false
 +  private static let customLogger: os.Logger = Logger(subsystem: "Observe", category: "expo-observe")
++
++  /**
++   Interval between periodic dispatches while the app stays foregrounded. The AppDelegate only
++   flushes on resign-active / terminate, which a long-running app (e.g. an Apple TV app left on for
++   hours) may rarely hit — without this, in-session metrics like navigation events never leave the
++   device until the app is backgrounded.
++   */
++  static let dispatchInterval: TimeInterval = 60 // 1 minute
++
++  private static var periodicDispatchStarted = false
++
++  /**
++   Starts a repeating dispatch loop on `AppMetricsActor` so a long-running process flushes pending
++   metrics and logs without waiting for resign-active. `Task.sleep` releases the actor between
++   passes, and `dispatch()` no-ops until the endpoint is configured, so this is safe to start at
++   launch. Idempotent: a second call is a no-op.
++   */
++  internal nonisolated static func startPeriodicDispatch() {
++    AppMetricsActor.isolated {
++      if periodicDispatchStarted {
++        return
++      }
++      periodicDispatchStarted = true
++      while !Task.isCancelled {
++        try? await Task.sleep(nanoseconds: UInt64(dispatchInterval) * 1_000_000_000)
++        await dispatch()
++      }
++    }
++  }
  
    internal static func dispatch() async {
      // Compute once and reuse for both signals — `shouldDispatch()` reads the persisted config, the
-@@ -27,15 +29,16 @@ internal struct ObservabilityManager {
+@@ -27,15 +58,16 @@ internal struct ObservabilityManager {
      do {
        pendingMetrics = try AppMetrics.getMetrics(afterId: cursor)
      } catch {
@@ -37,7 +66,7 @@ index 1a5b5ff..6b7f1c7 100644
        ObserveUserDefaults.lastDispatchedMetricId = highestId
        return
      }
-@@ -43,7 +46,7 @@ internal struct ObservabilityManager {
+@@ -43,7 +75,7 @@ internal struct ObservabilityManager {
      do {
        events = try buildEvents(forMetrics: pendingMetrics)
      } catch {
@@ -46,7 +75,7 @@ index 1a5b5ff..6b7f1c7 100644
        return
      }
      if events.isEmpty {
-@@ -63,7 +66,7 @@ internal struct ObservabilityManager {
+@@ -63,7 +95,7 @@ internal struct ObservabilityManager {
          ObserveUserDefaults.lastDispatchedMetricId = highestId
        }
      } catch {
@@ -55,7 +84,7 @@ index 1a5b5ff..6b7f1c7 100644
      }
    }
  
-@@ -79,11 +82,11 @@ internal struct ObservabilityManager {
+@@ -79,11 +111,11 @@ internal struct ObservabilityManager {
      do {
        pendingLogs = try AppMetrics.getLogs(afterId: cursor)
      } catch {
@@ -69,7 +98,7 @@ index 1a5b5ff..6b7f1c7 100644
        return
      }
      let highestId = pendingLogs.last?.id ?? cursor
-@@ -95,7 +98,7 @@ internal struct ObservabilityManager {
+@@ -95,7 +127,7 @@ internal struct ObservabilityManager {
      do {
        events = try buildEvents(forLogs: pendingLogs)
      } catch {
@@ -78,7 +107,7 @@ index 1a5b5ff..6b7f1c7 100644
        return
      }
      let resourceLogs = events.compactMap { event -> OTResourceLogs? in
-@@ -115,7 +118,7 @@ internal struct ObservabilityManager {
+@@ -115,7 +147,7 @@ internal struct ObservabilityManager {
          ObserveUserDefaults.lastDispatchedLogId = highestId
        }
      } catch {
@@ -87,7 +116,7 @@ index 1a5b5ff..6b7f1c7 100644
      }
    }
  
-@@ -154,12 +157,8 @@ internal struct ObservabilityManager {
+@@ -154,12 +186,8 @@ internal struct ObservabilityManager {
      request.allHTTPHeaderFields = ["Content-Type": "application/json"]
      request.httpBody = try body.toJSONData([])
  
@@ -102,7 +131,7 @@ index 1a5b5ff..6b7f1c7 100644
  
      let (responseData, urlResponse) = try await URLSession.shared.data(for: request)
  
-@@ -167,10 +166,10 @@ internal struct ObservabilityManager {
+@@ -167,10 +195,10 @@ internal struct ObservabilityManager {
        return false
      }
      guard (200...299).contains(urlResponse.statusCode) else {
@@ -115,7 +144,7 @@ index 1a5b5ff..6b7f1c7 100644
      return true
    }
  
-@@ -179,7 +178,7 @@ internal struct ObservabilityManager {
+@@ -179,7 +207,7 @@ internal struct ObservabilityManager {
      let urlString = urlString ?? defaultUrl
  
      guard let url = URL(string: urlString) else {
@@ -125,12 +154,27 @@ index 1a5b5ff..6b7f1c7 100644
      }
      AppMetricsActor.isolated {
 diff --git a/node_modules/expo-observe/ios/ObserveAppDelegateSubscriber.swift b/node_modules/expo-observe/ios/ObserveAppDelegateSubscriber.swift
-index d6aa6a7..0a1ab4b 100644
+index d6aa6a7..5ffb282 100644
 --- a/node_modules/expo-observe/ios/ObserveAppDelegateSubscriber.swift
 +++ b/node_modules/expo-observe/ios/ObserveAppDelegateSubscriber.swift
-@@ -5,12 +5,14 @@ import ExpoAppMetrics
+@@ -4,13 +4,29 @@ import ExpoModulesCore
+ import ExpoAppMetrics
  
  public class ObserveAppDelegateSubscriber: ExpoAppDelegateSubscriber {
++  public func application(
++    _ application: UIApplication,
++    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
++  ) -> Bool {
++    // Long-running tvOS apps may rarely resign active, so the resign-active/terminate flushes below
++    // aren't enough — start a periodic dispatch so in-session metrics (navigation, etc.) are sent.
++    // Implementation is platform-agnostic; only this call is gated.
++    #if os(tvOS)
++    observeLogger.info("[EAS Observe] didFinishLaunching — starting periodic dispatch (tvOS)")
++    ObservabilityManager.startPeriodicDispatch()
++    #endif
++    return true
++  }
++
    public func applicationWillResignActive(_ application: UIApplication) {
 +    observeLogger.info("[EAS Observe] applicationWillResignActive — triggering dispatch")
      AppMetricsActor.isolated {
