@@ -21,7 +21,10 @@ module.exports = [
       'import/resolver': {
         typescript: {
           alwaysTryTypes: true,
-          project: [path.join(__dirname, 'apps/*/tsconfig.json')],
+          project: [
+            path.join(__dirname, 'apps/*/tsconfig.json'),
+            path.join(__dirname, 'packages/*/tsconfig.json'),
+          ],
         },
         node: { extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'] },
       },
