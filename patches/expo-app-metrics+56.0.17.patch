@@ -1,0 +1,20 @@
+diff --git a/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift b/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
+index 5cb1733..3bea43e 100644
+--- a/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
++++ b/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
+@@ -49,9 +49,15 @@ final class MetricsDatabase: Sendable {
+   }
+ 
+   private static func defaultDirectoryUrl() throws -> URL {
++    #if os(tvOS)
++    return try FileManager.default
++      .url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
++      .appendingPathComponent("ExpoAppMetrics")
++    #else
+     return try FileManager.default
+       .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+       .appendingPathComponent("ExpoAppMetrics")
++    #endif
+   }
+ 
+   /**
