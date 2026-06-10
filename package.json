@@ -16,7 +16,7 @@
     "@react-native-tvos/config-tv": "^0.1.6",
     "@types/react": "~19.2.14",
     "@types/react-test-renderer": "^18.0.7",
-    "eslint": "^8.57.0",
+    "eslint": "^9",
     "eslint-config-expo": "~56.0.4",
     "patch-package": "^8.0.0",
     "postinstall-postinstall": "^2.1.0",
