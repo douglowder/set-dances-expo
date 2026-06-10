@@ -8,7 +8,6 @@ import type {
 
 import type { Ref } from 'react';
 import { Platform, Pressable, useColorScheme, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TabBarButton = ({ ref, ...props }: BottomTabBarButtonProps) => {
   const style: any = props.style ?? {};

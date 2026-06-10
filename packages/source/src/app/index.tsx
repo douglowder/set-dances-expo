@@ -74,6 +74,10 @@ export default function Index() {
         newPlayer.addListener('playbackStatusUpdate', (status) => {
           if (status.isLoaded) {
             setDuration(status.duration);
+            // Reanimated shared values are meant to be mutated via `.value`
+            // (including from JS-thread callbacks); the react-compiler
+            // immutability rule doesn't model that.
+            // eslint-disable-next-line react-hooks/immutability
             progressValue.value = fractionCompleteFromStatus(status);
             if (status.didJustFinish) {
               setFinished(true);

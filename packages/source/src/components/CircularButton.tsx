@@ -1,18 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { forwardRef, useState } from 'react';
+import { forwardRef } from 'react';
 import {
   type ColorValue,
   Platform,
   Pressable,
   PressableProps,
-  ViewStyle,
   useTVEventHandler,
 } from 'react-native';
 import Animated, {
   Easing,
   ReduceMotion,
-  useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated';
 

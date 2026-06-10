@@ -1,7 +1,6 @@
 import { Image } from 'expo-image';
 import * as Application from 'expo-application';
 import { StyleSheet, Platform, TVFocusGuideView } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ParallaxScrollView from '@/components/ParallaxScrollView';
 import { ThemedText } from '@/components/ThemedText';
@@ -102,8 +101,8 @@ function About() {
       <ThemedView>
         <ThemedText style={styles.textSmall}>&nbsp;</ThemedText>
         <ThemedText style={styles.textSmall}>
-          "The Vanishing Lake" is included by kind permission of the composer,
-          Francis Ward. "The Charlady" is included by kind permission of the
+          &quot;The Vanishing Lake&quot; is included by kind permission of the composer,
+          Francis Ward. &quot;The Charlady&quot; is included by kind permission of the
           composer, Michael Fitzpatrick. All other compositions are traditional
           and in the public domain. All tracks were performed by Douglas Lowder
           on acoustic fiddle and electronic instruments.
@@ -168,7 +167,7 @@ function Instructions() {
           Tunes can be selected from four lists; use the selector at the bottom
           to change to a different list. There are two lists for the hornpipe
           tempo tunes, one for standard championship tempos (around 110 bpm),
-          the other for "slow" tempos (around 76 - 80 bpm).
+          the other for &quot;slow&quot; tempos (around 76 - 80 bpm).
         </ThemedText>
       </ThemedView>
       {Platform.OS === 'ios' && (
