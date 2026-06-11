@@ -28,7 +28,7 @@ export default function TVLayout() {
               headerLeft: (props) => {
                 return (
                   <CircularButton
-                    onPress={() => router.replace('/')}
+                    onPress={() => router.dismissTo('/')}
                     size={40 * scale}
                     alt="Home"
                     iconName="caret-back-sharp"

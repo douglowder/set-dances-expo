@@ -41,7 +41,14 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
       await storeTuneSettingAsync(item);
       await storeSavedSpeedAsync(item, item.defaultSpeed);
       emitTuneChangeEvent();
-      router.navigate('/');
+      // TV root is a Stack: navigate('/') pushes a duplicate index because RN's NAVIGATE only
+      // reuses the currently focused route, not one deeper in the stack — so pop back to home
+      // instead. Phone root is a Drawer with no back stack, where navigate switches correctly.
+      if (Platform.isTV) {
+        router.dismissTo('/');
+      } else {
+        router.navigate('/');
+      }
     };
     handleAsync();
   };
