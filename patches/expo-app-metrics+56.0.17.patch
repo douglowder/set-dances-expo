@@ -1,8 +1,245 @@
+diff --git a/node_modules/expo-app-metrics/ios/AppMetrics.swift b/node_modules/expo-app-metrics/ios/AppMetrics.swift
+index a1fb1f7..1457533 100644
+--- a/node_modules/expo-app-metrics/ios/AppMetrics.swift
++++ b/node_modules/expo-app-metrics/ios/AppMetrics.swift
+@@ -91,6 +91,19 @@ public struct AppMetrics {
+     return try database?.getMaxLogId() ?? nil
+   }
+ 
++  /**
++   Configures the periodic cleanup loop on the metrics database. Passing a positive number of
++   seconds starts the loop (on its first call) and tells it to keep metric/log rows from the last
++   `retentionSeconds` while tidying dead inactive session rows older than the same cutoff.
++   Subsequent calls update the retention window in place — the next pass uses the new value. Passing
++   nil or zero leaves the loop idle (no-ops at each wake). Driven by
++   `Observe.configure({ scheduledCleanupRetentionWindow })`.
++   */
++  @AppMetricsActor
++  public static func setCleanupRetentionSeconds(_ retentionSeconds: TimeInterval?) {
++    database?.setCleanupRetentionSeconds(retentionSeconds)
++  }
++
+   // MARK: - Environment
+ 
+   @AppMetricsActor
+@@ -134,7 +147,7 @@ public struct AppMetrics {
+   internal static func startNewForegroundSession() {
+     AppMetricsActor.isolated {
+       if let foregroundSession = Self.foregroundSession {
+-        log.warn("[AppMetrics] New foreground session started while one was already active. Stopping the old session.")
++        logger.warn("[AppMetrics] New foreground session started while one was already active. Stopping the old session.")
+         foregroundSession.stop()
+       }
+       foregroundSession = ForegroundSession()
+diff --git a/node_modules/expo-app-metrics/ios/AppMetricsAppDelegateSubscriber.swift b/node_modules/expo-app-metrics/ios/AppMetricsAppDelegateSubscriber.swift
+index edf3604..bcdbd23 100644
+--- a/node_modules/expo-app-metrics/ios/AppMetricsAppDelegateSubscriber.swift
++++ b/node_modules/expo-app-metrics/ios/AppMetricsAppDelegateSubscriber.swift
+@@ -3,8 +3,14 @@ import ExpoModulesCore
+ public class AppMetricsAppDelegateSubscriber: ExpoAppDelegateSubscriber {
+   public func appDelegateWillBeginInitialization() {
+     AppMetrics.mainSession.appStartupMonitor.markMain()
++    // Install the URLSessionTask swizzles synchronously before any app code (RN included) issues
++    // its first network request. Doing this on the `AppMetricsActor` would defer it past that
++    // point, so it stays inline here. `install()` is idempotent — subsequent app-delegate calls
++    // are no-ops.
++    NetworkRequestTaskSwizzling.install()
+     AppMetricsActor.isolated {
+       NetworkPathMonitor.shared.start()
++      NetworkRequestMonitor.shared.start()
+     }
+   }
+ 
+diff --git a/node_modules/expo-app-metrics/ios/AppMetricsModule.swift b/node_modules/expo-app-metrics/ios/AppMetricsModule.swift
+index 6f2a002..fc2f507 100644
+--- a/node_modules/expo-app-metrics/ios/AppMetricsModule.swift
++++ b/node_modules/expo-app-metrics/ios/AppMetricsModule.swift
+@@ -1,3 +1,4 @@
++import Foundation
+ import ExpoModulesCore
+ import EXUpdatesInterface
+ 
+@@ -33,6 +34,8 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
+       )
+     }
+ 
++    // TODO(@ubax): move `logEvent` onto the Session shared object so logs are recorded via a
++    // session handle (like `addMetric`), instead of writing to `mainSession` directly here.
+     Function("logEvent") { (name: String, options: LogEventOptions?) in
+       guard let validatedName = validateEventName(name) else {
+         return
+@@ -75,10 +78,11 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
+       // no-op
+     }
+ 
+-    AsyncFunction("getAllSessions") { () -> [StoredSession] in
++    // Debug-only: the inactive (ended) sessions
++    AsyncFunction("getInactiveSessions") { () -> [StoredSession] in
+       return try await AppMetricsActor.isolated {
+         return try AppMetrics.database?
+-          .getAllSessionsWithChildren()
++          .getInactiveSessionsWithChildren()
+           .map { StoredSession(from: $0) } ?? []
+       }.value
+     }
+@@ -90,16 +94,44 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
+       }.value
+     }
+ 
+-    AsyncFunction("getMainSession") { () -> StoredSession? in
+-      return try await AppMetricsActor.isolated {
+-        let mainSessionId = AppMetrics.mainSession.id
+-        guard let row = try AppMetrics.database?
+-          .getAllSessionsWithChildren()
+-          .first(where: { $0.session.id == mainSessionId }) else {
+-          return nil
+-        }
+-        return StoredSession(from: row)
+-      }.value
++    // Synchronous and never nil: the main session is the process-lifetime singleton, always
++    // available. It's a `SharedObject`, so returning the same instance hands JS the identical shared
++    // object on every call (`getMainSession() === getMainSession()`).
++    Function("getMainSession") { () -> Session in
++      return AppMetrics.mainSession
++    }
++
++    // Returns the current foreground session, or `nil` when the app is not in the foreground.
++    // Reads the actor-isolated `foregroundSession`, so it's async. The instance is the shared object
++    // itself, so JS gets the same object while the session is current and a new one after it rotates.
++    AsyncFunction("getForegroundSession") { () -> Session? in
++      return try await AppMetricsActor.isolated { AppMetrics.foregroundSession }.value
++    }
++
++    Class("Session", Session.self) {
++      Property("id") { $0.id }
++      Property("type") { $0.type.rawValue }
++      Property("startDate") { $0.startDate.ISO8601Format() }
++
++      AsyncFunction("isActive") { (session: Session) -> Bool in
++        return try await AppMetricsActor.isolated { session.isActive }.value
++      }
++
++      AsyncFunction("getEndDate") { (session: Session) -> String? in
++        return try await AppMetricsActor.isolated { session.endDate?.ISO8601Format() }.value
++      }
++
++      AsyncFunction("getMetrics") { (session: Session) -> [Metric] in
++        return try await AppMetricsActor.isolated { try session.getMetrics() }.value
++      }
++
++      AsyncFunction("getLogs") { (session: Session) -> [LogRecord] in
++        return try await AppMetricsActor.isolated { try session.getLogs() }.value
++      }
++
++      AsyncFunction("addMetric") { (session: Session, input: SessionMetricInput) in
++        try await AppMetricsActor.isolated { try session.addMetric(input) }.value
++      }
+     }
+ 
+     Function("simulateCrashReport") {
+@@ -117,6 +149,16 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
+       case .stackOverflow: CrashTriggers.stackOverflow()
+       }
+     }
++
++    Class(NetworkRequestObserver.self) {
++      Constructor { (filter: NetworkRequestFilter?) in
++        return NetworkRequestObserver(filter: filter)
++      }
++
++      Function("setFilter") { (observer: NetworkRequestObserver, filter: NetworkRequestFilter?) in
++        observer.setFilter(filter)
++      }
++    }
+   }
+ 
+   public func updatesStateDidChange(_ event: [String : Any]) {
+@@ -129,6 +171,16 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
+   }
+ }
+ 
++// Loads a session and its children from the database and wraps it as a `StoredSession`,
++// returning `nil` when the database is unavailable or the session no longer exists.
++@AppMetricsActor
++private func storedSession(id: String) throws -> StoredSession? {
++  guard let row = try AppMetrics.database?.getSessionWithChildren(id: id) else {
++    return nil
++  }
++  return StoredSession(from: row)
++}
++
+ struct MetricAttributes: Record {
+   @Field var routeName: String?
+   @Field var params: [String: Any]?
+diff --git a/node_modules/expo-app-metrics/ios/AppStartup/AppStartupMarkers.swift b/node_modules/expo-app-metrics/ios/AppStartup/AppStartupMarkers.swift
+index 35c1689..0f60d19 100644
+--- a/node_modules/expo-app-metrics/ios/AppStartup/AppStartupMarkers.swift
++++ b/node_modules/expo-app-metrics/ios/AppStartup/AppStartupMarkers.swift
+@@ -1,3 +1,5 @@
++import Foundation
++
+ final class AppStartupMarkers: Sendable {
+   let loadTime: TimeInterval = AppLoadTimeProvider.getLoadTime()
+ 
+@@ -7,6 +9,14 @@ final class AppStartupMarkers: Sendable {
+   @AppMetricsActor
+   var finishedLaunching: TimeInterval?
+ 
++  /**
++   Wall-clock companion to `finishedLaunching`. `NetworkRequest.timings.fetchStart` uses `Date`
++   (not `CACurrentMediaTime`) so summarizing requests over the launch window needs an anchor in
++   the same domain.
++   */
++  @AppMetricsActor
++  var finishedLaunchingDate: Date?
++
+   @AppMetricsActor
+   var timeToFirstRender: TimeInterval?
+ 
+diff --git a/node_modules/expo-app-metrics/ios/AppStartup/AppStartupMonitoring.swift b/node_modules/expo-app-metrics/ios/AppStartup/AppStartupMonitoring.swift
+index a4aa47f..121950a 100644
+--- a/node_modules/expo-app-metrics/ios/AppStartup/AppStartupMonitoring.swift
++++ b/node_modules/expo-app-metrics/ios/AppStartup/AppStartupMonitoring.swift
+@@ -42,12 +42,14 @@ final class AppStartupMonitoring: MetricReporter, @unchecked Sendable {
+       return
+     }
+     let currentTime = CACurrentMediaTime()
++    let currentDate = Date()
+ 
+     AppMetricsActor.isolated { [self] in
+       if startupState != .launching {
+         return
+       }
+       markers.finishedLaunching = currentTime
++      markers.finishedLaunchingDate = currentDate
+ 
+       // Start tracking frame metrics from this point so the data
+       // matches the TTI window (finishedLaunching → markInteractive).
+@@ -105,11 +107,18 @@ final class AppStartupMonitoring: MetricReporter, @unchecked Sendable {
+         let frameMetrics = frameMetricsRecorder.stop()
+         let deviceState = await DeviceConditions.deviceState()
+         let networkPath = await NetworkPathMonitor.shared.waitForFirstPath()
++        let networkRequests: NetworkRequestSummary? = {
++          guard let anchor = markers.finishedLaunchingDate else {
++            return nil
++          }
++          return NetworkRequestMonitor.shared.summarize(start: anchor, end: Date())
++        }()
+         let mergedParams = MetricParamsBuilder.build(
+           userParams: params,
+           frameMetrics: frameMetrics,
+           deviceState: deviceState,
+-          networkPath: networkPath
++          networkPath: networkPath,
++          networkRequests: networkRequests
+         )
+         let metric = Metric(
+           category: .appStartup,
 diff --git a/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift b/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
-index 5cb1733..9f83d5f 100644
+index 5cb1733..c60efe6 100644
 --- a/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
 +++ b/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
-@@ -18,10 +18,18 @@ final class MetricsDatabase: Sendable {
+@@ -18,10 +18,31 @@ final class MetricsDatabase: Sendable {
    static let currentSchemaVersion = 3
  
    /**
@@ -12,17 +249,30 @@ index 5cb1733..9f83d5f 100644
    static let sessionRetention: TimeInterval = 7 * 24 * 60 * 60 // 7 days
  
 +  /**
-+   How often the periodic cleanup runs while the process is alive, so a long-running app
-+   (e.g. an Apple TV app left on for days) prunes metric/log rows and inactive sessions older than
-+   the retention window without waiting for the next launch. Currently only started on tvOS (see
-+   `init`); the implementation is platform-agnostic so it can be enabled elsewhere (e.g. macOS) later.
++   How often the periodic cleanup runs while the process is alive once
++   `setCleanupRetentionSeconds(_:)` has been called with a positive value. Not exposed through
++   `Observe.configure(...)` — the JS surface only configures the retention window — but writable
++   internally so tests can drive the loop without waiting for the production interval to elapse.
 +   */
-+  static let cleanupInterval: TimeInterval = 60 * 60 // 1 hour
++  @AppMetricsActor
++  static var cleanupInterval: TimeInterval = 60 * 60 // 1 hour
++
++  /**
++   Retention window (in seconds) for the periodic cleanup loop. `nil` (the default) means the loop
++   is a no-op; set via `setCleanupRetentionSeconds(_:)` from `Observe.configure(...)`. Stored on the
++   class rather than the instance so the loop can outlive any single `MetricsDatabase` while still
++   reading the latest configured value at each wake.
++   */
++  @AppMetricsActor
++  static var cleanupRetentionSeconds: TimeInterval?
++
++  @AppMetricsActor
++  private static var periodicCleanupStarted = false
 +
    let database: SQLiteDatabase
  
    let fileUrl: URL
-@@ -49,9 +57,15 @@ final class MetricsDatabase: Sendable {
+@@ -49,9 +70,15 @@ final class MetricsDatabase: Sendable {
    }
  
    private static func defaultDirectoryUrl() throws -> URL {
@@ -38,39 +288,51 @@ index 5cb1733..9f83d5f 100644
    }
  
    /**
-@@ -64,6 +78,9 @@ final class MetricsDatabase: Sendable {
-     try createSchemaIfNeeded()
-     scheduleDeactivateOrphanedSessions()
-     schedulePruneExpiredSessions()
-+    #if os(tvOS)
-+    schedulePeriodicCleanup()
-+    #endif
-   }
- 
-   /**
-@@ -112,6 +129,35 @@ final class MetricsDatabase: Sendable {
+@@ -112,6 +139,57 @@ final class MetricsDatabase: Sendable {
      }
    }
  
 +  /**
++   Sets the retention window (in seconds) used by the periodic cleanup loop. Passing a positive
++   value starts the loop on its first non-nil call. A subsequent call updates the window in place;
++   the next pass reads the new value. Passing `nil` (or `0`) leaves any in-flight wake to no-op
++   and keeps the loop idle until a positive value arrives. Driven by
++   `Observe.configure({ scheduledCleanupRetentionWindow })`.
++   */
++  @AppMetricsActor
++  func setCleanupRetentionSeconds(_ seconds: TimeInterval?) {
++    Self.cleanupRetentionSeconds = seconds
++    if !Self.periodicCleanupStarted, let seconds, seconds > 0 {
++      Self.periodicCleanupStarted = true
++      schedulePeriodicCleanup()
++    }
++  }
++
++  /**
 +   Runs a repeating cleanup loop on `AppMetricsActor` for the lifetime of the database, so a
-+   long-running process prunes retention-expired sessions and trims oversized tables without
-+   relying on the next `init`. `Task.sleep` releases the actor between passes, so inserts and
-+   dispatch reads aren't blocked; `weak self` lets a discarded database end the loop on its next
++   long-running process prunes retention-expired rows without relying on the next `init`. Each
++   wake reads `Self.cleanupRetentionSeconds`, so a `configure(...)` change takes effect on the next
++   pass; the loop quietly no-ops while the value is `nil` or non-positive. `Task.sleep` releases
++   the actor between passes, and `weak self` lets a discarded database end the loop on its next
 +   wake.
 +   */
 +  private func schedulePeriodicCleanup() {
 +    AppMetricsActor.isolated { [weak self] in
 +      while !Task.isCancelled {
-+        try? await Task.sleep(nanoseconds: UInt64(Self.cleanupInterval) * 1_000_000_000)
++        // Compute nanoseconds *before* the UInt64 cast so sub-second intervals (used by tests)
++        // survive the conversion — `UInt64(0.05) * 1_000_000_000` would otherwise be zero.
++        try? await Task.sleep(nanoseconds: UInt64(Self.cleanupInterval * 1_000_000_000))
 +        guard let self else {
 +          return
 +        }
-+        let cutoff = Date.now.addingTimeInterval(-Self.sessionRetention).ISO8601Format()
++        guard let retention = Self.cleanupRetentionSeconds, retention > 0 else {
++          continue
++        }
++        let cutoff = Date.now.addingTimeInterval(-retention).ISO8601Format()
 +        do {
 +          // Prune metric/log ROWS by timestamp — bounds a long-lived active session without
 +          // deleting it — then tidy dead inactive session rows. Deliberately not `cleanupSessions`,
-+          // which deletes regardless of isActive and would drop the live session once it outlives
++          // which deletes regardless of `isActive` and would drop the live session once it outlives
 +          // the window.
 +          try self.cleanupMetricsAndLogs(olderThan: cutoff)
 +          try self.cleanupInactiveSessions(olderThan: cutoff)
@@ -84,15 +346,72 @@ index 5cb1733..9f83d5f 100644
    /**
     Opens a connection at `fileUrl`. If the existing database was written by a different schema
     version than this build understands, the file (plus WAL/shm sidecars) is deleted and a fresh
-@@ -405,6 +451,49 @@ final class MetricsDatabase: Sendable {
+@@ -301,23 +379,46 @@ final class MetricsDatabase: Sendable {
+     }
+   }
+ 
++  /**
++   Returns the `main` sessions — newest first — for crash-report attribution. Crashes from past
++   launches (delivered by MetricKit on a later launch) are matched against these.
++   */
++  @AppMetricsActor
++  func getMainSessions() throws -> [SessionRow] {
++    return try collectSessions(
++      sql: "SELECT \(sessionColumns) FROM sessions WHERE type = 'main' ORDER BY startTimestamp DESC"
++    )
++  }
++
++  /**
++   Returns the inactive (ended) sessions along with their metrics, logs, and crash report — newest
++   first. Backs the debug-only `getInactiveSessions` JS API.
++   */
+   @AppMetricsActor
+-  func getAllSessions() throws -> [SessionRow] {
+-    return try collectSessions(sql: "SELECT \(sessionColumns) FROM sessions ORDER BY startTimestamp DESC")
++  func getInactiveSessionsWithChildren() throws -> [SessionWithChildren] {
++    return try getInactiveSessions().compactMap { try getSessionWithChildren(id: $0.id) }
+   }
+ 
+   /**
+-   Returns every session along with its metrics, logs, and crash report — newest first. Used by the
+-   JS-facing read APIs and (filtered down) by the dispatch path.
++   Returns a single session along with its metrics, logs, and crash report, or `nil` if no session
++   with that id exists.
+    */
+   @AppMetricsActor
+-  func getAllSessionsWithChildren() throws -> [SessionWithChildren] {
+-    return try getAllSessions().map { session in
+-      let metrics = try getMetrics(sessionId: session.id)
+-      let logs = try getLogs(sessionId: session.id)
+-      let crash = try getCrashReport(sessionId: session.id)
+-      return SessionWithChildren(session: session, metrics: metrics, logs: logs, crashReportJSON: crash)
++  func getSessionWithChildren(id: String) throws -> SessionWithChildren? {
++    guard let session = try getSession(id: id) else {
++      return nil
+     }
++    let metrics = try getMetrics(sessionId: session.id)
++    let logs = try getLogs(sessionId: session.id)
++    let crash = try getCrashReport(sessionId: session.id)
++    return SessionWithChildren(session: session, metrics: metrics, logs: logs, crashReportJSON: crash)
++  }
++
++  @AppMetricsActor
++  func getInactiveSessions() throws -> [SessionRow] {
++    return try collectSessions(
++      sql: "SELECT \(sessionColumns) FROM sessions WHERE isActive = 0 ORDER BY startTimestamp DESC"
++    )
+   }
+ 
+   /**
+@@ -405,6 +506,49 @@ final class MetricsDatabase: Sendable {
      }
    }
  
 +  /**
 +   Deletes metric and log rows older than `cutoff` (an ISO-8601 timestamp), independent of which
 +   session they belong to. Unlike pruning whole sessions, this bounds the growth of a single
-+   long-lived session (e.g. an Apple TV app left running) without deleting the active session row,
-+   and keys on the `timestamp` column so it behaves identically regardless of primary-key type.
++   long-lived session (e.g. a TV app left running) without deleting the active session row, and
++   keys on the `timestamp` column so behavior is identical regardless of primary-key type.
 +   */
 +  @AppMetricsActor
 +  func cleanupMetricsAndLogs(olderThan cutoff: String) throws {
@@ -134,3 +453,2752 @@ index 5cb1733..9f83d5f 100644
    // MARK: - Metrics
  
    /**
+diff --git a/node_modules/expo-app-metrics/ios/MetricKitSubscriber.swift b/node_modules/expo-app-metrics/ios/MetricKitSubscriber.swift
+index d30868e..cb97e31 100644
+--- a/node_modules/expo-app-metrics/ios/MetricKitSubscriber.swift
++++ b/node_modules/expo-app-metrics/ios/MetricKitSubscriber.swift
+@@ -41,7 +41,7 @@ final class MetricKitSubscriber: NSObject, MXMetricManagerSubscriber, Sendable {
+     AppMetricsActor.isolated {
+       let mainSessions: [SessionRow]
+       do {
+-        mainSessions = try AppMetrics.database?.getAllSessions().filter { $0.type == Session.SessionType.main.rawValue } ?? []
++        mainSessions = try AppMetrics.database?.getMainSessions() ?? []
+       } catch {
+         logger.warn("[AppMetrics] Failed to load main sessions for crash attribution: \(error.localizedDescription)")
+         return
+diff --git a/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequest.swift b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequest.swift
+new file mode 100644
+index 0000000..d46837f
+--- /dev/null
++++ b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequest.swift
+@@ -0,0 +1,224 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++import Foundation
++
++/**
++ A `Sendable` snapshot of a single HTTP request observed by `NetworkRequestTaskSwizzling`.
++
++ The shape is intentionally close to `URLSessionTaskTransactionMetrics` so we can plumb individual
++ timing phases into telemetry later without redesigning the type. Until the metrics pipeline is
++ wired up, this is what gets handed to `NetworkRequestObserverDelegate` callers.
++
++ The URL is recorded verbatim — including the query string — because callers asked for it. Any
++ redaction (tokens in query parameters, auth headers, etc.) is the responsibility of whatever
++ downstream layer converts these snapshots into stored metrics.
++ */
++public struct NetworkRequest: Sendable, Equatable, Identifiable {
++  /** Stable identifier for this observation. Generated by the protocol class. */
++  public let id: UUID
++
++  /** Request URL as supplied to `URLSession`. May include query parameters and fragments. */
++  public let url: URL
++
++  /** HTTP method (`GET`, `POST`, …). Defaults to `GET` if `URLRequest.httpMethod` was nil. */
++  public let method: String
++
++  /** Response status code, or `nil` if the request failed before headers were received. */
++  public let statusCode: Int?
++
++  /**
++   Negotiated wire protocol — `http/1.1`, `h2`, `h3` — as reported by
++   `URLSessionTaskTransactionMetrics.networkProtocolName`. `nil` for cache hits or when the OS
++   didn't report one.
++   */
++  public let networkProtocol: String?
++
++  /** Number of bytes sent on the wire for the request (headers + body). */
++  public let requestBytesSent: Int64?
++
++  /** Number of bytes received on the wire for the response (headers + body). */
++  public let responseBytesReceived: Int64?
++
++  /** Phase-by-phase timings pulled from the most recent (post-redirect) transaction. */
++  public let timings: Timings
++
++  /**
++   Short human-readable error description if the task completed with an error. We keep this as a
++   string rather than carrying `NSError` so the type stays `Sendable` and serializable.
++   */
++  public let errorDescription: String?
++
++  /**
++   Ordered list of redirect hops that preceded the final response. Empty when the task returned
++   directly. Each entry describes one hop: `fromUrl` is the URL that returned the redirect,
++   `statusCode` is the 3xx code it returned, and `toUrl` is where the redirect pointed. For a
++   complete chain the first entry's `fromUrl` equals the parent event's `url`, and the last
++   entry's `toUrl` is where the request actually landed.
++   */
++  public let redirects: [Redirect]
++
++  public struct Redirect: Sendable, Equatable {
++    /** The URL that returned the redirect. */
++    public let fromUrl: URL
++    /** The URL the request was redirected to. */
++    public let toUrl: URL
++    /** The 3xx status code returned by `fromUrl` that caused this hop. */
++    public let statusCode: Int
++  }
++
++  public struct Timings: Sendable, Equatable {
++    /** When the task was started (`URLSessionTaskTransactionMetrics.fetchStartDate`). */
++    public let fetchStart: Date?
++
++    /** When DNS resolution began. `nil` if the host was resolved from cache or the connection was reused. */
++    public let domainLookupStart: Date?
++    public let domainLookupEnd: Date?
++
++    /** When the TCP connection began. `nil` if a connection was reused. */
++    public let connectStart: Date?
++    public let connectEnd: Date?
++
++    /** TLS handshake window. `nil` for cleartext or reused connections. */
++    public let secureConnectionStart: Date?
++    public let secureConnectionEnd: Date?
++
++    /** When the request line began being sent. */
++    public let requestStart: Date?
++    public let requestEnd: Date?
++
++    /** When the first byte of the response arrived (TTFB). */
++    public let responseStart: Date?
++    public let responseEnd: Date?
++
++    /**
++     Total wall-clock duration of the task. Convenience: callers don't have to subtract
++     `fetchStart` from `responseEnd` themselves, and we can populate this even when the
++     individual phases are `nil` (cache hits, errors before headers).
++     */
++    public let totalDuration: TimeInterval
++  }
++}
++
++/**
++ Lightweight snapshot emitted when a request begins, before any response or timing data exists.
++ Shares its `id` with the corresponding completion-time `NetworkRequest`, so JS subscribers can
++ correlate the two events.
++ */
++public struct NetworkRequestStarted: Sendable, Equatable, Identifiable {
++  public let id: UUID
++  public let url: URL
++  public let method: String
++  public let startedAt: Date
++}
++
++extension NetworkRequest {
++  /**
++   Builds a snapshot from the data we have at task completion. The metrics argument may be `nil`
++   for cache-only responses or in tests; in that case, callers fall back to wall-clock timestamps
++   on the request/response pair.
++
++   `taskBytesSent` / `taskBytesReceived` are the task's wall-clock byte counters
++   (`URLSessionTask.countOfBytesSent` / `countOfBytesReceived`). Pass `nil` when no task is
++   available (tests). They're used as a fallback when `metrics`'s per-transaction counters are
++   zero — see the body for the cache-hit / Simulator quirks that hit that case.
++   */
++  static func from(
++    id: UUID,
++    request: URLRequest,
++    response: HTTPURLResponse?,
++    taskBytesSent: Int64?,
++    taskBytesReceived: Int64?,
++    metrics: URLSessionTaskMetrics?,
++    fallbackStart: Date,
++    fallbackEnd: Date,
++    error: Error?
++  ) -> NetworkRequest {
++    let url = request.url ?? URL(string: "about:blank")!
++    let method = request.httpMethod ?? "GET"
++
++    // We use the last transaction so that redirects don't drop us back to the first hop. If a
++    // future need arises to surface per-hop timing, expose `metrics.transactionMetrics` here.
++    let transaction = metrics?.transactionMetrics.last
++
++    let timings = NetworkRequest.Timings(
++      fetchStart: transaction?.fetchStartDate ?? fallbackStart,
++      domainLookupStart: transaction?.domainLookupStartDate,
++      domainLookupEnd: transaction?.domainLookupEndDate,
++      connectStart: transaction?.connectStartDate,
++      connectEnd: transaction?.connectEndDate,
++      secureConnectionStart: transaction?.secureConnectionStartDate,
++      secureConnectionEnd: transaction?.secureConnectionEndDate,
++      requestStart: transaction?.requestStartDate,
++      requestEnd: transaction?.requestEndDate,
++      responseStart: transaction?.responseStartDate,
++      responseEnd: transaction?.responseEndDate ?? fallbackEnd,
++      totalDuration: metrics?.taskInterval.duration ?? fallbackEnd.timeIntervalSince(fallbackStart)
++    )
++
++    // Prefer the transaction's header+body split when it reports non-zero, fall back to the task's
++    // wall-clock counters otherwise. The transaction counters are 0 in two real cases:
++    // (1) cache hits — `resourceFetchType == .localCache`, no wire traffic occurred;
++    // (2) iOS Simulator — Apple's socket-level instrumentation isn't always wired up there, so
++    //     the counters return 0 even when the request actually moved bytes. `task.countOfBytesSent/
++    //     Received` is wall-clock accurate in both environments.
++    let requestBytesSent: Int64? = {
++      if let transaction {
++        let fromTransaction = transaction.countOfRequestHeaderBytesSent + transaction.countOfRequestBodyBytesSent
++        if fromTransaction > 0 {
++          return fromTransaction
++        }
++      }
++      return taskBytesSent
++    }()
++    let responseBytesReceived: Int64? = {
++      if let transaction {
++        let fromTransaction = transaction.countOfResponseHeaderBytesReceived + transaction.countOfResponseBodyBytesReceived
++        if fromTransaction > 0 {
++          return fromTransaction
++        }
++      }
++      return taskBytesReceived
++    }()
++
++    // Each redirect entry pairs the 3xx status from one transaction with the URLs on either side
++    // of the hop: `fromUrl` is the URL we requested that returned the redirect, `toUrl` is the
++    // URL the redirect pointed to (which is the next transaction's request URL).
++    //
++    // `transactionMetrics` can contain non-redirect transactions too (HTTP/2 → HTTP/3 Alt-Svc
++    // upgrades, connection retries, HTTP → HTTPS upgrades), so we filter explicitly on 3xx
++    // status codes rather than assuming "everything before the last is a redirect."
++    let redirects: [Redirect] = {
++      guard let transactions = metrics?.transactionMetrics, transactions.count > 1 else {
++        return []
++      }
++      var result: [Redirect] = []
++      for index in 0..<(transactions.count - 1) {
++        let current = transactions[index]
++        let next = transactions[index + 1]
++        guard
++          let response = current.response as? HTTPURLResponse,
++          (300..<400).contains(response.statusCode),
++          let fromUrl = current.request.url,
++          let toUrl = next.request.url
++        else {
++          continue
++        }
++        result.append(Redirect(fromUrl: fromUrl, toUrl: toUrl, statusCode: response.statusCode))
++      }
++      return result
++    }()
++
++    return NetworkRequest(
++      id: id,
++      url: url,
++      method: method,
++      statusCode: response?.statusCode,
++      networkProtocol: transaction?.networkProtocolName,
++      requestBytesSent: requestBytesSent,
++      responseBytesReceived: responseBytesReceived,
++      timings: timings,
++      errorDescription: error.map { ($0 as NSError).localizedDescription },
++      redirects: redirects
++    )
++  }
++}
+diff --git a/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestFilter.swift b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestFilter.swift
+new file mode 100644
+index 0000000..860989a
+--- /dev/null
++++ b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestFilter.swift
+@@ -0,0 +1,47 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++import ExpoModulesCore
++import Foundation
++
++/// Declares which requests a `NetworkRequestObserver` emits events for. Mirrors the JS
++/// `NetworkRequestFilter` type.
++///
++/// Only attributes knowable the moment a request starts are supported (host and method), so the
++/// same predicate yields the same answer at start and at completion. That keeps the
++/// `requestStarted`/`requestCompleted` pair consistent: a request that matches always emits both, a
++/// request that doesn't matches neither.
++///
++/// Different fields combine with AND; entries within a field combine with OR. A field that is left
++/// unset places no constraint on its dimension, while a field set to an empty array allows nothing
++/// through it (an empty allow-list matches no value), so any empty field drops every request. A
++/// filter with no fields set matches every request, matching the no-filter default.
++public struct NetworkRequestFilter: Record, Sendable {
++  public init() {}
++
++  @Field
++  public var hosts: [String]?
++
++  @Field
++  public var methods: [String]?
++
++  /// Returns whether a request with the given URL and method passes this filter. Host and method
++  /// comparisons are case-insensitive. An unset (`nil`) field places no constraint on its
++  /// dimension; a field set to an empty array allows nothing through it.
++  public func matches(url: URL, method: String) -> Bool {
++    if let hosts {
++      let host = url.host?.lowercased()
++      let allowed = hosts.contains { $0.lowercased() == host }
++      if !allowed {
++        return false
++      }
++    }
++    if let methods {
++      let requestMethod = method.uppercased()
++      let allowed = methods.contains { $0.uppercased() == requestMethod }
++      if !allowed {
++        return false
++      }
++    }
++    return true
++  }
++}
+diff --git a/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestMonitor.swift b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestMonitor.swift
+new file mode 100644
+index 0000000..ed8b23d
+--- /dev/null
++++ b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestMonitor.swift
+@@ -0,0 +1,151 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++import Foundation
++
++/**
++ Receives notifications about HTTP requests observed by `NetworkRequestTaskSwizzling`. Both
++ methods have default no-op implementations so delegates can opt into either start- or
++ complete-time notifications without having to implement the other.
++ */
++public protocol NetworkRequestObserverDelegate: AnyObject, Sendable {
++  func onNetworkRequestStarted(_ request: NetworkRequestStarted)
++  func onNetworkRequestCompleted(_ request: NetworkRequest)
++
++  /// Whether this delegate wants events for a request with the given URL and method. Consulted by
++  /// the monitor before each fan-out call so a delegate's filter is evaluated before the payload is
++  /// built. Only the URL and method are passed because those are the only attributes available at
++  /// both start and completion, which keeps the started/completed decision consistent. The default
++  /// implementation accepts every request.
++  func shouldObserveRequest(url: URL, method: String) -> Bool
++}
++
++public extension NetworkRequestObserverDelegate {
++  func onNetworkRequestStarted(_ request: NetworkRequestStarted) {}
++  func onNetworkRequestCompleted(_ request: NetworkRequest) {}
++
++  func shouldObserveRequest(url: URL, method: String) -> Bool {
++    return true
++  }
++}
++
++/**
++ A singleton that aggregates `NetworkRequest` snapshots delivered by the URLSessionTask swizzles.
++
++ The monitor is the central seam between the swizzle layer (which observes individual tasks
++ complete) and whatever future layer routes those observations into telemetry. For now it keeps a
++ small in-memory ring buffer of recent requests (useful for debug surfaces and tests) and fans
++ each completion out to registered delegates.
++
++ Started eagerly at app launch (see `AppMetricsAppDelegateSubscriber.appDelegateWillBeginInitialization`)
++ so the swizzles run before React Native makes its first fetch.
++ */
++@AppMetricsActor
++public final class NetworkRequestMonitor: Sendable {
++  public static let shared = NetworkRequestMonitor()
++
++  /** Maximum number of recent requests retained for debug surfaces. */
++  private let recentCapacity = 200
++
++  private var recentRequests: [NetworkRequest] = []
++  private var delegates: [WeakDelegate] = []
++  private var started = false
++
++  /** Internal so tests can construct dedicated instances; production code uses `shared`. */
++  init() {}
++
++  /**
++   Confirms the URLSessionTask swizzles are installed. The app-delegate subscriber already
++   installs them synchronously at launch (before the first request); this re-asserts the install
++   for any path that reaches the monitor without going through the subscriber. Idempotent —
++   subsequent calls are no-ops.
++   */
++  func start() {
++    if started {
++      return
++    }
++    started = true
++    NetworkRequestTaskSwizzling.install()
++  }
++
++  /**
++   Most recently observed requests, oldest first. Bounded by `recentCapacity`. Intended for
++   debug surfaces; not for the dispatch path.
++   */
++  public var recent: [NetworkRequest] {
++    return recentRequests
++  }
++
++  /**
++   Folds the requests whose `timings.fetchStart` falls within `[start, end]` into a summary.
++   Used by the TTI metric to attach a per-launch network rollup. Bounded by the ring buffer:
++   under heavy network load the earliest requests in the window may have been evicted, in
++   which case the summary undercounts — acceptable for a TTI-attached signal.
++   */
++  func summarize(start: Date, end: Date) -> NetworkRequestSummary {
++    let inWindow = recentRequests.filter { request in
++      guard let fetchStart = request.timings.fetchStart else {
++        return false
++      }
++      return fetchStart >= start && fetchStart <= end
++    }
++    return NetworkRequestSummary.from(inWindow)
++  }
++
++  /**
++   Adds a delegate that will be notified for each completed request. Delegates are held weakly.
++   */
++  public func addDelegate(_ delegate: NetworkRequestObserverDelegate) {
++    pruneDelegates()
++    delegates.append(WeakDelegate(value: delegate))
++  }
++
++  public func removeDelegate(_ delegate: NetworkRequestObserverDelegate) {
++    delegates.removeAll { $0.value === delegate || $0.value == nil }
++  }
++
++  /**
++   Records a completed request: appends to the ring buffer and fans it out to delegates. Called
++   from `NetworkRequestTaskSwizzling.recordCompletion` (which fires from either the delegate proxy's
++   metrics callback or the `setState:` fallback) on the `AppMetricsActor`.
++   */
++  func record(_ request: NetworkRequest) {
++    recentRequests.append(request)
++    if recentRequests.count > recentCapacity {
++      recentRequests.removeFirst(recentRequests.count - recentCapacity)
++    }
++    pruneDelegates()
++    for entry in delegates {
++      guard let delegate = entry.value else {
++        continue
++      }
++      if delegate.shouldObserveRequest(url: request.url, method: request.method) {
++        delegate.onNetworkRequestCompleted(request)
++      }
++    }
++  }
++
++  /**
++   Records that a request has begun. No ring-buffer entry — the started snapshot is purely a
++   notification used to surface in-flight state to subscribers. The corresponding completion
++   event will arrive later with a matching `id`.
++   */
++  func recordStart(_ request: NetworkRequestStarted) {
++    pruneDelegates()
++    for entry in delegates {
++      guard let delegate = entry.value else {
++        continue
++      }
++      if delegate.shouldObserveRequest(url: request.url, method: request.method) {
++        delegate.onNetworkRequestStarted(request)
++      }
++    }
++  }
++
++  private func pruneDelegates() {
++    delegates.removeAll { $0.value == nil }
++  }
++
++  private struct WeakDelegate {
++    weak var value: NetworkRequestObserverDelegate?
++  }
++}
+diff --git a/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestObserver.swift b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestObserver.swift
+new file mode 100644
+index 0000000..1fc1c52
+--- /dev/null
++++ b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestObserver.swift
+@@ -0,0 +1,106 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++import ExpoModulesCore
++import Foundation
++
++/** Event names emitted by `NetworkRequestObserver`, matching the keys in the JS
++ `NetworkRequestObserverEvents` type. */
++let REQUEST_STARTED_EVENT = "requestStarted"
++let REQUEST_COMPLETED_EVENT = "requestCompleted"
++
++/**
++ JS-facing `SharedObject` that bridges per-instance subscriptions to the singleton
++ `NetworkRequestMonitor`. Each JS `new NetworkRequestObserver()` allocates one of these and
++ registers it as a delegate; the native instance is released when JS drops the reference, at
++ which point `sharedObjectWillRelease` removes the delegate registration.
++
++ The class only forwards events — it doesn't store request history. Use `NetworkRequestMonitor`'s
++ in-process API for that.
++ */
++public final class NetworkRequestObserver: SharedObject, NetworkRequestObserverDelegate, @unchecked Sendable {
++  /// The active filter, or `nil` to observe every request. Held in a `Mutex` so the read from the
++  /// monitor's fan-out (`shouldObserveRequest`) and the swap from `setFilter` are atomic: a
++  /// `setFilter` call never leaves a request evaluated under a half-applied filter.
++  private let filter = Mutex<NetworkRequestFilter?>(nil)
++
++  public init(filter: NetworkRequestFilter? = nil) {
++    super.init()
++    self.filter.withLock { $0 = filter }
++    AppMetricsActor.isolated { [weak self] in
++      guard let self else {
++        return
++      }
++      NetworkRequestMonitor.shared.addDelegate(self)
++    }
++  }
++
++  /// Replaces the active filter. Pass `nil` to observe every request. The swap is atomic: a request
++  /// mid-fan-out is evaluated against either the old or the new filter, never a mix.
++  public func setFilter(_ filter: NetworkRequestFilter?) {
++    self.filter.withLock { $0 = filter }
++  }
++
++  public override func sharedObjectWillRelease() {
++    // The monitor holds delegates weakly, but deregister explicitly so the slot doesn't linger
++    // until the next fan-out prunes it — matches the Android `sharedObjectDidRelease` cleanup.
++    AppMetricsActor.isolated { [weak self] in
++      guard let self else {
++        return
++      }
++      NetworkRequestMonitor.shared.removeDelegate(self)
++    }
++    super.sharedObjectWillRelease()
++  }
++
++  // MARK: - NetworkRequestObserverDelegate
++
++  public func onNetworkRequestStarted(_ request: NetworkRequestStarted) {
++    emit(event: REQUEST_STARTED_EVENT, payload: NetworkRequestObserver.startedPayload(for: request))
++  }
++
++  public func onNetworkRequestCompleted(_ request: NetworkRequest) {
++    emit(event: REQUEST_COMPLETED_EVENT, payload: NetworkRequestObserver.completedPayload(for: request))
++  }
++
++  public func shouldObserveRequest(url: URL, method: String) -> Bool {
++    guard let filter = filter.withLock({ $0 }) else {
++      return true
++    }
++    return filter.matches(url: url, method: method)
++  }
++
++  /** Internal so tests can assert the payload shape without going through `emit`, which needs a
++   live JS runtime. The keys here are part of the public JS contract — additions are safe but
++   renames are breaking. */
++  static func startedPayload(for request: NetworkRequestStarted) -> [String: Any?] {
++    return [
++      "id": request.id.uuidString,
++      "url": request.url.absoluteString,
++      "method": request.method,
++      "startedAt": request.startedAt.ISO8601Format()
++    ]
++  }
++
++  static func completedPayload(for request: NetworkRequest) -> [String: Any?] {
++    return [
++      "id": request.id.uuidString,
++      "url": request.url.absoluteString,
++      "method": request.method,
++      "statusCode": request.statusCode,
++      "networkProtocol": request.networkProtocol,
++      "requestBytesSent": request.requestBytesSent,
++      "responseBytesReceived": request.responseBytesReceived,
++      "errorDescription": request.errorDescription,
++      "startedAt": request.timings.fetchStart?.ISO8601Format(),
++      "completedAt": request.timings.responseEnd?.ISO8601Format(),
++      "totalDuration": request.timings.totalDuration,
++      "redirects": request.redirects.map {
++        return [
++          "fromUrl": $0.fromUrl.absoluteString,
++          "toUrl": $0.toUrl.absoluteString,
++          "statusCode": $0.statusCode
++        ]
++      }
++    ]
++  }
++}
+diff --git a/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestSummary.swift b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestSummary.swift
+new file mode 100644
+index 0000000..99f9423
+--- /dev/null
++++ b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestSummary.swift
+@@ -0,0 +1,108 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++import Foundation
++
++/**
++ An aggregate over a set of `NetworkRequest` snapshots. Designed to be flattened into a metric's
++ `params` map, so all fields are simple value types and the type itself stays `Sendable`.
++
++ The summary is intentionally small. Anything that would explode cardinality (per-URL p95s, full
++ request lists) belongs in a separate metric/table once we ship one — not on the TTI envelope.
++ */
++public struct NetworkRequestSummary: Sendable, Equatable {
++  /** Number of requests in the window. */
++  public let count: Int
++
++  /** Requests that errored or returned a non-2xx status. */
++  public let failed: Int
++
++  /** Sum of `responseBytesReceived` across all requests in the window. */
++  public let bytesReceived: Int64
++
++  /** Sum of `requestBytesSent` across all requests in the window. */
++  public let bytesSent: Int64
++
++  /** Sum of `timings.totalDuration` across all requests. Can exceed wall-clock when requests overlap. */
++  public let totalDuration: TimeInterval
++
++  /** Longest single request duration in the window, or `nil` if `count == 0`. */
++  public let slowestDuration: TimeInterval?
++
++  /** Host of the slowest request, or `nil` if the request had no resolvable host. */
++  public let slowestHost: String?
++
++  /** Convenience: returns `nil` when the summary is empty so callers can skip emitting fields. */
++  public var isEmpty: Bool {
++    return count == 0
++  }
++
++  static let empty = NetworkRequestSummary(
++    count: 0,
++    failed: 0,
++    bytesReceived: 0,
++    bytesSent: 0,
++    totalDuration: 0,
++    slowestDuration: nil,
++    slowestHost: nil
++  )
++
++  /**
++   Folds a sequence of `NetworkRequest` into a summary. The caller is responsible for filtering
++   the sequence to the desired window.
++   */
++  static func from(_ requests: [NetworkRequest]) -> NetworkRequestSummary {
++    if requests.isEmpty {
++      return .empty
++    }
++    var failed = 0
++    var bytesReceived: Int64 = 0
++    var bytesSent: Int64 = 0
++    var totalDuration: TimeInterval = 0
++    var slowest: NetworkRequest?
++
++    for request in requests {
++      if request.isFailed {
++        failed += 1
++      }
++      bytesReceived += request.responseBytesReceived ?? 0
++      bytesSent += request.requestBytesSent ?? 0
++      totalDuration += request.timings.totalDuration
++      if let current = slowest {
++        if request.timings.totalDuration > current.timings.totalDuration {
++          slowest = request
++        }
++      } else {
++        slowest = request
++      }
++    }
++
++    return NetworkRequestSummary(
++      count: requests.count,
++      failed: failed,
++      bytesReceived: bytesReceived,
++      bytesSent: bytesSent,
++      totalDuration: totalDuration,
++      slowestDuration: slowest?.timings.totalDuration,
++      slowestHost: slowest?.url.host
++    )
++  }
++}
++
++extension NetworkRequest {
++  /**
++   A request is treated as failed if it errored, or returned a 4xx (client error) or 5xx (server
++   error) status. 1xx (informational), 2xx (success), and 3xx (redirection — usually followed
++   transparently by URLSession, but the unfollowed case is still a successful response from the
++   origin's perspective) are not failures. A missing status code (the request failed before
++   headers arrived) counts as failed.
++   */
++  var isFailed: Bool {
++    if errorDescription != nil {
++      return true
++    }
++    guard let statusCode else {
++      return true
++    }
++    return statusCode >= 400
++  }
++}
+diff --git a/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestTaskSwizzling.swift b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestTaskSwizzling.swift
+new file mode 100644
+index 0000000..6ab19b5
+--- /dev/null
++++ b/node_modules/expo-app-metrics/ios/NetworkRequests/NetworkRequestTaskSwizzling.swift
+@@ -0,0 +1,638 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++import Foundation
++import ObjectiveC
++import ExpoModulesCore
++
++/**
++ Process-wide observation of every `URLSessionTask` that runs on any `URLSession` the app creates.
++
++ ## Why method swizzling instead of `URLProtocol`
++
++ An earlier draft of this module used a `URLProtocol` subclass plus configuration swizzling. That
++ has a fundamental flaw: a `URLProtocol` only sees the `URLRequest`, not the originating
++ `URLSession`. To actually run the request we replayed it through a singleton inner session,
++ which silently dropped per-session state — cookies, proxy, TLS settings, `httpAdditionalHeaders`,
++ cache policy — and broke the very isolation guarantees ephemeral sessions are picked for.
++
++ The established observability SDKs (Sentry, Datadog, Bugsnag, New Relic) all converged on method
++ swizzling at the `URLSessionTask` level. We do the same here.
++
++ ## What we swizzle
++
++ Two methods on `__NSCFLocalSessionTask`, the private concrete class that backs every public
++ `URLSessionTask` on iOS 12+. The class name has been stable across iOS versions; the same
++ approach is used in production by Datadog and Bugsnag.
++
++ 1. **`-resume`** — fires once per task at start time. We attach an `ObservationContext` to the
++    task via `objc_setAssociatedObject` so observation state travels with it across delegate
++    callbacks and threads, and emit `requestStarted`.
++
++ 2. **`-setState:`** — fires on every state transition. On `.completed` we read `task.error`,
++    `task.response`, and the task's wall-clock byte counters, build a `NetworkRequest`
++    snapshot, and emit `requestCompleted`.
++
++ The `setState:` hook is the universal completion seam: it fires for tasks created with a
++ completion handler (no public delegate path), tasks running on `URLSession.shared` (Apple's
++ private delegate), and tasks awaited via `async`/`await`. Delegate-based completion handlers
++ alone would miss all three.
++
++ ## Per-phase metrics via delegate proxy
++
++ `URLSessionTaskMetrics` (redirect chain, DNS/connect/TLS timestamps) is only available through
++ `urlSession(_:task:didFinishCollecting:)`, which requires a session delegate. We swizzle
++ `+sessionWithConfiguration:delegate:delegateQueue:` to wrap the caller's delegate in a
++ `DelegateProxy` that captures metrics into the task's `ObservationContext` while forwarding
++ every other selector to the caller's original delegate via Objective-C method forwarding.
++
++ Tasks without a delegate (the shared session, completion-handler tasks) still get observed via
++ the `setState:` hook — they just won't carry per-phase metric detail.
++
++ ## Recursion safety
++
++ expo-observe sets `Expo-AppMetrics-Skip: 1` on outgoing telemetry uploads. The `resume` swizzle
++ checks for this header on `task.originalRequest` and skips attaching observation state. The
++ header is forwarded to the server as-is — it lands on o.expo.dev, which we control.
++
++ ## What we don't catch
++
++ - **WebSocket tasks.** `URLSessionWebSocketTask` extends `URLSessionTask` so the swizzles fire,
++   but websockets don't produce meaningful HTTP metrics. We skip them inside the `resume` hook.
++
++ ## Dev-launcher interop
++
++ When expo-dev-launcher's network inspector is active (`EX_DEV_CLIENT_NETWORK_INSPECTOR` debug
++ flag), `ExpoRequestInterceptorProtocol` runs every user-facing fetch through a replay on its
++ own private `URLSession`. The user-facing fetch produces two `__NSCFLocalSessionTask` instances:
++
++ - an **outer** task on the caller's `URLSession`, which fires `resume` first but whose metrics
++   are degraded (the URLProtocol short-circuits the real network).
++ - an **inner** task on dev-launcher's `URLSession`, which carries the real
++   `URLSessionTaskMetrics` (redirect chain, per-phase timings, byte splits).
++
++ We pair them up by request URL: the outer's `resume` creates an `ObservationContext` and adds
++ it to `pendingReplays`; the inner's `resume` (microseconds later) claims it via
++ `takePendingReplay`, attaches the same context to the inner task, and flags the outer's
++ setState/metrics paths to short-circuit. Recording happens once, from the inner task's
++ `didFinishCollectingMetrics:` callback, carrying the inner task's real metrics and the outer's
++ `requestStarted` event id. See `pendingReplays` for the data structure.
++ */
++enum NetworkRequestTaskSwizzling {
++  /**
++   Header name any caller can set to opt a request out of observation. Outgoing telemetry uploads
++   in expo-observe set this so they don't recursively observe themselves.
++
++   The header is forwarded to the destination verbatim — once a `URLSessionTask` is created we
++   can't safely mutate `originalRequest`, so we read it but don't strip it. The intended use is
++   on requests to endpoints we control (o.expo.dev); setting it on a request to a third party
++   leaks `Expo-AppMetrics-Skip: 1` to that host.
++
++   No `X-` prefix per RFC 6648. Callers that can't import this constant (expo-observe must not
++   depend on app-metrics internals) hardcode the same literal — keep the two in sync if this
++   ever changes.
++   */
++  static let internalHeaderName = "Expo-AppMetrics-Skip"
++
++  /**
++   Property key that expo-dev-launcher's `ExpoRequestInterceptorProtocol` stamps on the inner
++   request it creates when replaying a request through its own `URLSession` (dev mode only, gated
++   on `EX_DEV_CLIENT_NETWORK_INSPECTOR`).
++
++   When the dev-launcher inspector is active, every user-facing fetch produces two tasks:
++   - an **outer** task created against the user's `URLSession`, with no property — fires `resume`
++     first but the network never goes through it (the URLProtocol intercepts).
++   - an **inner** task on dev-launcher's private `URLSession`, carrying this property — does the
++     actual network work and carries the real `URLSessionTaskMetrics` (redirects, per-phase
++     timings, byte splits).
++
++   We want one observation per logical fetch, with the inner task's metrics. The resume swizzle
++   moves the outer's `ObservationContext` to the inner via `pendingReplays` (URL-keyed) so the
++   inner records into the same id the user-facing `requestStarted` event used. The outer task's
++   setState/metrics callbacks then short-circuit on `context.replayedByDevLauncher`.
++
++   The literal must match `REQUEST_ID` in
++   `packages/expo-modules-core/ios/DevTools/ExpoRequestInterceptorProtocol.swift`. The value
++   is internal to that file (no public symbol); duplicating the string is the same trick the
++   expo-observe header constant uses. Keep them in sync.
++   */
++  fileprivate static let devLauncherRequestIdKey = "ExpoRequestInterceptorProtocol.requestId"
++
++  /// Installs the swizzles. Idempotent — guarded by `installed` so repeat calls are no-ops.
++  static func install() {
++    state.withLock { installed in
++      if installed {
++        return
++      }
++      installed = true
++
++      installResumeSwizzle()
++      installSetStateSwizzle()
++      installSessionInitSwizzle()
++    }
++  }
++
++  // MARK: - State
++
++  private static let state = Mutex<Bool>(false)
++
++  /// Marker key used by `objc_setAssociatedObject` to attach an `ObservationContext` to a task.
++  /// The value is never read - only the pointer's identity matters - so the "mutable global"
++  /// concurrency warning is a false positive. `nonisolated(unsafe)` opts out of the check.
++  /// File-scope so the `DelegateProxy` in this file can reach it through `&observationContextKey`.
++  nonisolated(unsafe) fileprivate static var observationContextKey: UInt8 = 0
++
++  /// Captured pointers to the original IMPs of the methods we swizzled, so the replacement blocks
++  /// can call through to Apple's implementation. `Mutex` because the blocks fire on whatever
++  /// thread `URLSessionTask` is operating on.
++  private static let originalResumeImp = Mutex<IMP?>(nil)
++  private static let originalSetStateImp = Mutex<IMP?>(nil)
++  private static let originalSessionInitImp = Mutex<IMP?>(nil)
++
++  /**
++   How long the `setState:` fallback waits before recording. Tasks observed via the delegate
++   proxy record from `didFinishCollectingMetrics:` first (with metrics) and flip `recorded=true`;
++   the fallback that fires after this delay sees the flag and skips. Delegate-less sessions
++   (`URLSession.shared`, completion-handler tasks) never get a metrics callback, so the fallback
++   wins and records without metrics — degraded but better than nothing.
++
++   200ms is comfortably above the observed inter-callback latency on real devices (typically a
++   few ms). The cost is a small latency before the `requestCompleted` event fires for delegate-
++   less traffic; acceptable for a passive observer.
++   */
++  private static let setStateFallbackDelay: TimeInterval = 0.2
++
++  /// Outer-task `ObservationContext`s waiting for the corresponding dev-launcher inner replay
++  /// task to fire `resume`. Keyed by request URL because that's the only identifier shared
++  /// across the outer/inner pair (the inner request is a mutable copy of the outer and carries
++  /// a different `ExpoRequestInterceptorProtocol.requestId` that isn't visible from the outer
++  /// task's `originalRequest`).
++  ///
++  /// FIFO list per URL handles concurrent fetches to the same URL: the inner task that fires
++  /// first picks up the oldest entry. Entries are removed when claimed; any entry whose
++  /// `expiresAt` has passed (request denied by another URLProtocol, dev-launcher disabled
++  /// mid-flight, etc.) is pruned on the next access so the dictionary doesn't grow unbounded.
++  private static let pendingReplays = Mutex<[URL: [(context: ObservationContext, expiresAt: Date)]]>([:])
++
++  /// Maximum time we'll keep an unclaimed outer context in `pendingReplays`. Outer/inner
++  /// `resume` calls are typically microseconds apart; 5 seconds is well above the worst case
++  /// while still keeping the dictionary bounded.
++  private static let pendingReplayTimeout: TimeInterval = 5
++
++  // MARK: - resume() swizzle
++
++  private static func installResumeSwizzle() {
++    guard let taskClass = NSClassFromString("__NSCFLocalSessionTask") else {
++      return
++    }
++    let selector = #selector(URLSessionTask.resume)
++    guard let method = class_getInstanceMethod(taskClass, selector) else {
++      return
++    }
++    let block: @convention(block) (URLSessionTask) -> Void = { task in
++      observeStart(task)
++      if let imp = originalResumeImp.withLock({ $0 }) {
++        let fn = unsafeBitCast(imp, to: (@convention(c) (AnyObject, Selector) -> Void).self)
++        fn(task, selector)
++      }
++    }
++    let newImp = imp_implementationWithBlock(block as Any)
++    let original = method_setImplementation(method, newImp)
++    originalResumeImp.withLock { $0 = original }
++  }
++
++  /// Called from the swizzled `resume`. Handles three cases:
++  ///
++  /// 1. **Dev-launcher inner replay task** (carries `devLauncherRequestIdKey` on its request):
++  ///    we already created an `ObservationContext` for the outer task. Pull it out of
++  ///    `pendingReplays` by URL, attach it to the inner task, and flag the original as
++  ///    `replayedByDevLauncher` so the outer's setState/metrics callbacks short-circuit. No new
++  ///    `requestStarted` is emitted — the outer already did that.
++  ///
++  /// 2. **Outer task under dev-launcher** (no property, but dev-launcher's protocol is
++  ///    installed): create the context, emit `requestStarted`, attach to the outer task as
++  ///    usual — and also add to `pendingReplays` so the inner replay task can pick it up when
++  ///    it `resume`s.
++  ///
++  /// 3. **Regular task** (no property, no dev-launcher): create context, attach, emit started.
++  ///
++  /// Plus the early-exit cases: websockets, internal opt-out header, non-HTTP schemes, and the
++  /// idempotency check against double-attaching on a re-resumed task.
++  private static func observeStart(_ task: URLSessionTask) {
++    if task is URLSessionWebSocketTask {
++      return
++    }
++    // `originalRequest` is the request as the caller submitted it. `URLProtocol`-style
++    // observers see `currentRequest` post-redirect; we deliberately log the caller's intent.
++    guard let request = task.originalRequest else {
++      return
++    }
++    guard let scheme = request.url?.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
++      return
++    }
++    if request.value(forHTTPHeaderField: internalHeaderName) != nil {
++      return
++    }
++    // Idempotent: a second `resume` on the same task — including the internal re-resume that
++    // follows a 30x redirect — must not double-attach observation state.
++    if objc_getAssociatedObject(task, &observationContextKey) != nil {
++      return
++    }
++
++    // Dev-launcher inner replay task. Adopt the outer's context (so the snapshot keeps the same
++    // id as the user-facing `requestStarted` event) and let the inner drive recording from its
++    // `didFinishCollectingMetrics:` callback. The outer task's setState/metrics paths
++    // short-circuit on `context.replayedByDevLauncher`.
++    if URLProtocol.property(forKey: devLauncherRequestIdKey, in: request) != nil {
++      guard let url = request.url, let outerContext = takePendingReplay(for: url) else {
++        // No matching outer context (request opted out, fired before our swizzles installed,
++        // etc.). Don't observe — recording independently would still double-count.
++        return
++      }
++      outerContext.replayedByDevLauncher = true
++      objc_setAssociatedObject(task, &observationContextKey, outerContext, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
++      return
++    }
++
++    let context = ObservationContext(
++      id: UUID(),
++      request: request,
++      startDate: Date(),
++      outerUrl: request.url
++    )
++    objc_setAssociatedObject(task, &observationContextKey, context, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
++
++    // Always make the context discoverable by URL — if dev-launcher's interceptor protocol is
++    // in play, the inner replay task will claim it on its own `resume`. If not, the entry is
++    // removed when this request terminates (see `recordCompletion` → `removePendingReplay`).
++    // We considered gating this on a lazy `URLSessionConfiguration.default.protocolClasses`
++    // lookup but the lazy resolves on the first request, which may fire before dev-launcher
++    // registers its protocol — locking in the wrong answer for the lifetime of the process.
++    if let url = context.outerUrl {
++      addPendingReplay(context: context, for: url)
++    }
++
++    let started = NetworkRequestStarted(
++      id: context.id,
++      url: request.url ?? URL(string: "about:blank")!,
++      method: request.httpMethod ?? "GET",
++      startedAt: context.startDate
++    )
++    context.startNotification = AppMetricsActor.isolated {
++      NetworkRequestMonitor.shared.recordStart(started)
++    }
++  }
++
++  /// Adds an outer-task context to `pendingReplays` so the matching dev-launcher inner replay
++  /// task can pick it up. Prunes expired entries on the same URL key while we hold the lock.
++  private static func addPendingReplay(context: ObservationContext, for url: URL) {
++    let now = Date()
++    let expiresAt = now.addingTimeInterval(pendingReplayTimeout)
++    pendingReplays.withLock { pending in
++      var queue = pending[url] ?? []
++      queue.removeAll { $0.expiresAt < now }
++      queue.append((context, expiresAt))
++      pending[url] = queue
++    }
++  }
++
++  /// Removes and returns the oldest non-expired outer context for `url`, or `nil` if none.
++  /// Called from the inner replay task's `observeStart` to adopt the outer's context.
++  private static func takePendingReplay(for url: URL) -> ObservationContext? {
++    let now = Date()
++    return pendingReplays.withLock { pending in
++      guard var queue = pending[url] else {
++        return nil
++      }
++      queue.removeAll { $0.expiresAt < now }
++      guard !queue.isEmpty else {
++        pending[url] = nil
++        return nil
++      }
++      let head = queue.removeFirst()
++      pending[url] = queue.isEmpty ? nil : queue
++      return head.context
++    }
++  }
++
++  /// Removes `context` from `pendingReplays[url]` if it's still there. Called from
++  /// `recordCompletion` so production traffic (no dev-launcher inspector, no inner task ever
++  /// claims the entry) doesn't accumulate one parked `ObservationContext` per observed
++  /// request. No-op when the entry was already consumed by a `takePendingReplay`.
++  private static func removePendingReplay(context: ObservationContext, for url: URL) {
++    pendingReplays.withLock { pending in
++      guard var queue = pending[url] else {
++        return
++      }
++      queue.removeAll { $0.context === context }
++      pending[url] = queue.isEmpty ? nil : queue
++    }
++  }
++
++  // MARK: - setState: swizzle (fallback recording for delegate-less sessions)
++
++  /**
++   `__NSCFLocalSessionTask.setState:` fires on every state transition for every task in the
++   process. We use it as a fallback recorder for tasks whose session doesn't have our
++   `DelegateProxy` installed: `URLSession.shared`, sessions created via paths that bypassed our
++   session-init swizzle, and async/await consumers that go through Apple's internal delegate.
++
++   For delegate-based sessions the `DelegateProxy.urlSession(_:task:didFinishCollecting:)`
++   callback records first (with metrics) and flips `context.recorded`. This fallback fires later
++   and short-circuits on the flag. For delegate-less sessions metrics never arrive, the fallback
++   wins after `setStateFallbackDelay`, and the snapshot lands without per-phase metrics — same
++   degraded shape as a cache hit or an error before headers.
++   */
++  private static func installSetStateSwizzle() {
++    guard let taskClass = NSClassFromString("__NSCFLocalSessionTask") else {
++      return
++    }
++    let selector = NSSelectorFromString("setState:")
++    guard let method = class_getInstanceMethod(taskClass, selector) else {
++      return
++    }
++    // `URLSessionTask.State` is bridged to NSInteger. Apple uses 0=running, 1=suspended,
++    // 2=canceling, 3=completed.
++    let block: @convention(block) (URLSessionTask, Int) -> Void = { task, newState in
++      // Run the original first so URLSession's state machine progresses normally; our recording
++      // is deferred anyway so order here doesn't matter for correctness.
++      if let imp = originalSetStateImp.withLock({ $0 }) {
++        let fn = unsafeBitCast(
++          imp,
++          to: (@convention(c) (AnyObject, Selector, Int) -> Void).self
++        )
++        fn(task, selector, newState)
++      }
++      observeStateChange(task: task, newState: newState)
++    }
++    let newImp = imp_implementationWithBlock(block as Any)
++    let original = method_setImplementation(method, newImp)
++    originalSetStateImp.withLock { $0 = original }
++  }
++
++  private static let stateCompleted = URLSessionTask.State.completed.rawValue
++
++  private static func observeStateChange(task: URLSessionTask, newState: Int) {
++    // Only observe `.completed` — at `.canceling` time `task.error` is still `nil` (the
++    // `NSURLErrorCancelled` lands on `.completed`), so capturing the error here would race the
++    // metrics callback and snapshot a cancelled request as if it succeeded. Every task reaches
++    // `.completed` regardless, so this is strictly safer and carries the real error.
++    guard newState == stateCompleted else {
++      return
++    }
++    guard let context = objc_getAssociatedObject(task, &observationContextKey) as? ObservationContext else {
++      return
++    }
++    // Outer task under dev-launcher: the inner replay task will record from
++    // `didFinishCollectingMetrics:` with the real metrics chain. Skip the outer's fallback so we
++    // don't race the inner's recording. The inner task's setState fallback still runs (it has
++    // its own task identity); recordCompletion's `context.recorded` flag dedupes the two paths.
++    let isInnerReplayTask = task.originalRequest.flatMap {
++      URLProtocol.property(forKey: devLauncherRequestIdKey, in: $0)
++    } != nil
++    if context.replayedByDevLauncher && !isInnerReplayTask {
++      return
++    }
++    // Defer to let the delegate proxy's `didFinishCollectingMetrics:` win when present. The
++    // captured task and error are owned by the closure; if the task is deallocated before the
++    // closure fires, `task` would dangle — except `ObservationContext` is retained via the
++    // associated-object slot for the lifetime of the task, and the closure captures the task by
++    // strong reference. Both live until the closure runs.
++    let capturedError = task.error
++    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + setStateFallbackDelay) {
++      recordCompletion(task: task, context: context, error: capturedError)
++    }
++  }
++
++  /// Records a completion snapshot. Called from two paths:
++  ///
++  /// - `DelegateProxy.urlSession(_:task:didFinishCollecting:)` (preferred) — fires on the
++  ///   session's delegate queue after the task is fully complete and metrics are populated.
++  ///   The snapshot carries the full `URLSessionTaskMetrics` chain.
++  /// - The `setState:` fallback (`observeStateChange`) — fires `setStateFallbackDelay` after
++  ///   the state transition to `.completed`, used only for tasks whose session doesn't have
++  ///   our delegate proxy. The snapshot has no metrics; `NetworkRequest.from(...)` falls back
++  ///   to wall-clock timings.
++  ///
++  /// The check-set on `context.recorded` happens on `AppMetricsActor` to serialize the two
++  /// paths — without the actor hop, the metrics callback (on the session's delegate queue) and
++  /// the setState fallback (on a global queue) race on a plain `var Bool` and can both pass
++  /// the check, double-recording the request. The actor also serializes `pendingReplays`
++  /// cleanup so a context can't be claimed by an inner task while we're removing it.
++  fileprivate static func recordCompletion(task: URLSessionTask, context: ObservationContext, error: Error?) {
++    // Snapshot all task state on the calling thread — `URLSessionTask` isn't `Sendable`, so we
++    // can't reach `task.response` / `task.countOfBytes*` after the actor hop.
++    let response = task.response as? HTTPURLResponse
++    let bytesSent = task.countOfBytesSent
++    let bytesReceived = task.countOfBytesReceived
++    let metrics = context.metrics
++    let outerUrl = context.outerUrl
++
++    AppMetricsActor.isolated {
++      if context.recorded {
++        return
++      }
++      context.recorded = true
++      // Drain the pending-replay entry now that this request is terminal — `pendingReplays`
++      // would otherwise leak one context per request when dev-launcher is off (no inner task
++      // ever claims them). Safe to call when no entry exists.
++      if let outerUrl {
++        removePendingReplay(context: context, for: outerUrl)
++      }
++
++      let snapshot = NetworkRequest.from(
++        id: context.id,
++        request: context.request,
++        response: response,
++        taskBytesSent: bytesSent,
++        taskBytesReceived: bytesReceived,
++        metrics: metrics,
++        fallbackStart: context.startDate,
++        fallbackEnd: Date(),
++        error: error
++      )
++      _ = try? await context.startNotification?.value
++      NetworkRequestMonitor.shared.record(snapshot)
++    }
++  }
++
++  // MARK: - Session initializer swizzle (for URLSessionTaskMetrics)
++
++  /**
++   Swizzles `+[URLSession sessionWithConfiguration:delegate:delegateQueue:]` so we can wrap the
++   caller's delegate in a `DelegateProxy`. The proxy captures `didFinishCollecting` metrics into
++   the task's `ObservationContext` while forwarding every other selector to the original.
++
++   Sessions created without a delegate (and `URLSession.shared`) skip this path entirely — they
++   still get observed by `resume`/`setState:`, just without per-phase metrics.
++   */
++  private static func installSessionInitSwizzle() {
++    let target: AnyClass = URLSession.self
++    let selector = NSSelectorFromString("sessionWithConfiguration:delegate:delegateQueue:")
++    guard let method = class_getClassMethod(target, selector) else {
++      return
++    }
++    let block: @convention(block) (
++      AnyObject,
++      URLSessionConfiguration,
++      URLSessionDelegate?,
++      OperationQueue?
++    ) -> URLSession? = { cls, config, delegate, queue in
++      // Wrap whatever the caller passed (including nil) so we always see the metrics callback.
++      // Apple's docs say a nil delegate puts the session in "completion handler" mode; in that
++      // mode the metrics callback never fires anyway, but wrapping nil is still safe — the
++      // proxy responds only to the two selectors it handles.
++      let wrapped = DelegateProxy(wrapping: delegate)
++      guard let imp = originalSessionInitImp.withLock({ $0 }) else {
++        return nil
++      }
++      // The delegate slot in the IMP signature is `AnyObject?` rather than `URLSessionDelegate?`
++      // because `DelegateProxy` deliberately doesn't declare Swift `URLSessionDelegate` conformance
++      // (see the class doc for why). At the Obj-C ABI level the slot is `id<NSURLSessionDelegate>?`,
++      // which accepts any `NSObject` — `URLSession` only checks selector responses at runtime.
++      let fn = unsafeBitCast(
++        imp,
++        to: (@convention(c) (AnyObject, Selector, URLSessionConfiguration, AnyObject?, OperationQueue?) -> URLSession?).self
++      )
++      return fn(cls, selector, config, wrapped, queue)
++    }
++    let newImp = imp_implementationWithBlock(block as Any)
++    let original = method_setImplementation(method, newImp)
++    originalSessionInitImp.withLock { $0 = original }
++  }
++}
++
++// MARK: - ObservationContext
++
++/**
++ Per-task observation state. Stored on the task via `objc_setAssociatedObject` so it travels with
++ the task across delegate callbacks, redirects, and threads without us maintaining a separate
++ task→state map. Released automatically when the task or our slot is cleared.
++
++ `@unchecked Sendable` because we cross isolation boundaries by passing the context to
++ `AppMetricsActor` from `recordCompletion`. The mutable fields (`recorded`, `metrics`,
++ `replayedByDevLauncher`, `startNotification`) are written from at most two places each, and
++ the writes that matter for correctness — flipping `recorded`, updating the pending-replays
++ dictionary, building the snapshot — all run on `AppMetricsActor`. The early
++ `replayedByDevLauncher = true` write in `observeStart` happens on the resume thread before
++ any actor work picks the context up, so there's no read-write race in practice.
++ */
++fileprivate final class ObservationContext: @unchecked Sendable {
++  let id: UUID
++  let request: URLRequest
++  let startDate: Date
++  /// URL used as the `pendingReplays` key when this context was first enqueued, or `nil` if the
++  /// outer request had no URL (shouldn't happen for HTTP tasks but defended against). Kept
++  /// explicit so `recordCompletion` can drain the matching `pendingReplays` entry without
++  /// guessing — covers the production case where dev-launcher's inspector is off and no inner
++  /// task ever consumes the entry. Without this cleanup the dictionary would accumulate one
++  /// `ObservationContext` per observed request forever.
++  let outerUrl: URL?
++  /// `Task` that fans the `requestStarted` notification out on `AppMetricsActor`. The `setState:`
++  /// hook awaits it before recording completion so the two events can't arrive out of order.
++  var startNotification: Task<Void, Error>?
++  /// Captured by `DelegateProxy.urlSession(_:task:didFinishCollecting:)` when a session delegate
++  /// is present. `nil` for delegate-less sessions (including `URLSession.shared`); the snapshot
++  /// builder falls back to wall-clock timings in that case.
++  var metrics: URLSessionTaskMetrics?
++  /// Set to `true` once `recordCompletion` has emitted the snapshot for this context. Guards
++  /// against double-recording when both the metrics callback (on the session's delegate queue)
++  /// and the `setState:` fallback (on a global queue) reach `recordCompletion` for the same
++  /// task. The check-and-set runs on `AppMetricsActor` to serialize the two paths.
++  var recorded: Bool = false
++  /// `true` once this context has been claimed by a dev-launcher inner replay task. The outer
++  /// task's setState fallback and metrics callback short-circuit when this flips — the inner
++  /// task will record the snapshot from `didFinishCollectingMetrics:` with the real metrics
++  /// chain.
++  var replayedByDevLauncher: Bool = false
++
++  init(id: UUID, request: URLRequest, startDate: Date, outerUrl: URL?) {
++    self.id = id
++    self.request = request
++    self.startDate = startDate
++    self.outerUrl = outerUrl
++  }
++}
++
++// MARK: - DelegateProxy
++
++/**
++ `NSObject` subclass that captures `didFinishCollectingMetrics` for our observation context while
++ transparently forwarding every other selector to the caller's original delegate.
++
++ **Why we don't declare `URLSessionTaskDelegate` conformance in Swift.** `URLSession` introspects
++ its delegate via `conformsToProtocol:(URLSessionDataDelegate)`, `conformsToProtocol:(URLSessionDownloadDelegate)`,
++ etc., to decide which optional callbacks it should emit. If we conformed to `URLSessionTaskDelegate`
++ in Swift, the Obj-C runtime would advertise that conformance for the proxy unconditionally — even
++ when the wrapped delegate is actually a `URLSessionDataDelegate`. That could change which callbacks
++ fire and break the caller. We instead reflect the wrapped delegate's `responds(to:)` results, plus
++ `true` for the metrics selector we intercept. This is the same pattern Bugsnag's
++ `BSGURLSessionPerformanceProxy` uses.
++
++ The metrics callback is implemented as an `@objc` method so the Obj-C runtime can dispatch it via
++ `responds(to:)` without us declaring formal protocol conformance.
++ */
++private final class DelegateProxy: NSObject {
++  fileprivate let wrapped: URLSessionDelegate?
++
++  init(wrapping wrapped: URLSessionDelegate?) {
++    self.wrapped = wrapped
++    super.init()
++  }
++
++  private static let metricsSelector = NSSelectorFromString("URLSession:task:didFinishCollectingMetrics:")
++
++  override func responds(to aSelector: Selector!) -> Bool {
++    if aSelector == Self.metricsSelector {
++      return true
++    }
++    return wrapped?.responds(to: aSelector) ?? false
++  }
++
++  override func forwardingTarget(for aSelector: Selector!) -> Any? {
++    if aSelector == Self.metricsSelector {
++      return nil
++    }
++    if let wrapped, wrapped.responds(to: aSelector) {
++      return wrapped
++    }
++    return nil
++  }
++
++  /**
++   Canonical recording site. `didFinishCollectingMetrics:` is Apple's "task is fully done" signal
++   — by the time it fires, the last byte has been transferred and `task.error` / `task.response`
++   are stable. We capture metrics, record the snapshot, then forward to the wrapped delegate.
++
++   The explicit `@objc` selector matches Apple's mangling exactly. Without it Swift would emit
++   `urlSession:task:didFinishCollecting:` (the argument-label form), but `URLSession` dispatches
++   `URLSession:task:didFinishCollectingMetrics:`. We can't inherit the right name from a protocol
++   because we deliberately don't conform to `URLSessionTaskDelegate` in Swift (see class comment).
++
++   This mirrors Bugsnag's `BSGURLSessionPerformanceDelegate` approach. Sentry takes a different
++   path (record from `setState:` without metrics) and explicitly trades away redirect-chain
++   detail; we keep the chain by recording here.
++   */
++  @objc(URLSession:task:didFinishCollectingMetrics:)
++  func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
++    if let context = objc_getAssociatedObject(task, &NetworkRequestTaskSwizzling.observationContextKey) as? ObservationContext {
++      // The outer task under dev-launcher gets a degraded metrics callback (the URLProtocol
++      // short-circuits the real network). The inner replay task's callback is where the real
++      // chain lands. Skip the outer's metrics callback when its context was claimed by an inner
++      // task; the inner's own callback will record. The two tasks are told apart by the
++      // property dev-launcher stamps on the inner's request.
++      let isInnerReplayTask = task.originalRequest.flatMap {
++        URLProtocol.property(forKey: NetworkRequestTaskSwizzling.devLauncherRequestIdKey, in: $0)
++      } != nil
++      let skipDueToReplay = context.replayedByDevLauncher && !isInnerReplayTask
++      if !skipDueToReplay {
++        context.metrics = metrics
++        NetworkRequestTaskSwizzling.recordCompletion(task: task, context: context, error: task.error)
++      }
++    }
++    // After stashing the metrics and recording, forward to the wrapped delegate so it sees the
++    // callback too.
++    if let wrapped = wrapped as? URLSessionTaskDelegate {
++      wrapped.urlSession?(session, task: task, didFinishCollecting: metrics)
++    }
++  }
++}
+diff --git a/node_modules/expo-app-metrics/ios/Sessions/ForegroundSession.swift b/node_modules/expo-app-metrics/ios/Sessions/ForegroundSession.swift
+index 2807b80..4e99f9e 100644
+--- a/node_modules/expo-app-metrics/ios/Sessions/ForegroundSession.swift
++++ b/node_modules/expo-app-metrics/ios/Sessions/ForegroundSession.swift
+@@ -4,7 +4,7 @@
+  A new foreground session starts when the AppDelegate's `applicationDidBecomeActive` is called and
+  ends when `applicationDidEnterBackground` is called. Each app foregrounding creates a new session.
+  */
+-internal final class ForegroundSession: Session {
++internal final class ForegroundSession: Session, @unchecked Sendable {
+   init() {
+     super.init(type: .foreground)
+   }
+diff --git a/node_modules/expo-app-metrics/ios/Sessions/JsMetric.swift b/node_modules/expo-app-metrics/ios/Sessions/JsMetric.swift
+index f09f021..c3a12b9 100644
+--- a/node_modules/expo-app-metrics/ios/Sessions/JsMetric.swift
++++ b/node_modules/expo-app-metrics/ios/Sessions/JsMetric.swift
+@@ -28,3 +28,28 @@ struct JsMetric: Record {
+     )
+   }
+ }
++
++/**
++ Mirrors the TypeScript `MetricInput` type (`Metric` minus `sessionId`)
++ */
++struct SessionMetricInput: Record {
++  @Field var category: String = ""
++  @Field var name: String = ""
++  @Field var value: Double = 0
++  @Field var timestamp: String = Date.now.ISO8601Format()
++  @Field var routeName: String?
++  @Field var params: [String: Any]?
++
++  func toMetric(sessionId: String) -> Metric {
++    return Metric(
++      category: Metric.Category(rawValue: category),
++      name: name,
++      value: value,
++      timestamp: timestamp,
++      routeName: routeName,
++      updateId: nil,
++      params: params,
++      sessionId: sessionId
++    )
++  }
++}
+diff --git a/node_modules/expo-app-metrics/ios/Sessions/Session.swift b/node_modules/expo-app-metrics/ios/Sessions/Session.swift
+index c019822..2df8db8 100644
+--- a/node_modules/expo-app-metrics/ios/Sessions/Session.swift
++++ b/node_modules/expo-app-metrics/ios/Sessions/Session.swift
+@@ -1,9 +1,10 @@
+ import Foundation
++import ExpoModulesCore
+ 
+ /**
+  Session is a time frame during the app's lifetime that tracks various metrics from its start till its end.
+  */
+-public class Session: MetricsReceiver, @unchecked Sendable {
++public class Session: SharedObject, MetricsReceiver, @unchecked Sendable {
+   /**
+    Unique ID of the session in UUID v4 format.
+    */
+@@ -28,6 +29,7 @@ public class Session: MetricsReceiver, @unchecked Sendable {
+     self.id = UUID().uuidString
+     self.startDate = Date.now
+     self.type = type
++    super.init()
+ 
+     // The session-row INSERT is fire-and-forget on `AppMetricsActor`. Subsequent writes for this
+     // session (metrics, logs, `stop()`, crash reports) all go through the same actor, and tasks on
+@@ -56,6 +58,7 @@ public class Session: MetricsReceiver, @unchecked Sendable {
+     self.type = type
+     self.startDate = startDate
+     self.endDate = endDate
++    super.init()
+   }
+ 
+   /**
+@@ -122,12 +125,47 @@ public class Session: MetricsReceiver, @unchecked Sendable {
+ 
+   let memoryMeter = MemoryMonitoring()
+ 
++  // MARK: - Reading and recording session data
++
++  /**
++   Metrics recorded against this session, decoded from storage.
++   */
++  @AppMetricsActor
++  func getMetrics() throws -> [Metric] {
++    let rows = try AppMetrics.database?.getMetrics(sessionId: id) ?? []
++    return decodeMetrics(from: rows)
++  }
++
++  /**
++   Log records recorded against this session, decoded from storage.
++   */
++  @AppMetricsActor
++  func getLogs() throws -> [LogRecord] {
++    let rows = try AppMetrics.database?.getLogs(sessionId: id) ?? []
++    return decodeLogs(from: rows)
++  }
++
++  /**
++   Records a metric against this session. JS-facing: errors propagate so the caller's promise rejects.
++   */
++  @AppMetricsActor
++  func addMetric(_ input: SessionMetricInput) throws {
++    try insert(input.toMetric(sessionId: id))
++  }
++
++  // Persists a metric row for this session. Shared by the throwing JS path (`addMetric`) and the
++  // fire-and-forget native push path (`receiveMetric`), which differ only in error handling.
++  @AppMetricsActor
++  private func insert(_ metric: Metric) throws {
++    try AppMetrics.database?.insert(metric: MetricRow.from(metric: metric, sessionId: id))
++  }
++
+   // MARK: - MetricsReceiver
+ 
+   @AppMetricsActor
+   public func receiveMetric(_ metric: Metric) {
+     do {
+-      try AppMetrics.database?.insert(metric: MetricRow.from(metric: metric, sessionId: self.id))
++      try insert(metric)
+     } catch {
+       logger.warn("[AppMetrics] Failed to insert metric \"\(metric.getMetricKey())\" for session \(self.id): \(error.localizedDescription)")
+     }
+diff --git a/node_modules/expo-app-metrics/ios/Storage/StoredSession.swift b/node_modules/expo-app-metrics/ios/Storage/StoredSession.swift
+index 1886d79..bd96c5d 100644
+--- a/node_modules/expo-app-metrics/ios/Storage/StoredSession.swift
++++ b/node_modules/expo-app-metrics/ios/Storage/StoredSession.swift
+@@ -13,7 +13,6 @@ public struct StoredSession: Codable, Sendable {
+   public let type: Session.SessionType
+   public let startDate: String
+   public let endDate: String?
+-  public let isActive: Bool
+   public let environment: String?
+   public let app: AppInfo
+   public let device: DeviceInfo
+@@ -34,7 +33,6 @@ public struct StoredSession: Codable, Sendable {
+     self.type = Session.SessionType(rawValue: session.type) ?? .unknown
+     self.startDate = session.startTimestamp
+     self.endDate = session.endTimestamp
+-    self.isActive = session.isActive
+     self.environment = session.environment
+     self.languageTag = session.languageTag
+     self.app = AppInfo(
+@@ -58,28 +56,46 @@ public struct StoredSession: Codable, Sendable {
+       systemName: session.deviceOs ?? "",
+       systemVersion: session.deviceOsVersion ?? ""
+     )
+-    self.metrics = row.metrics.map { metric in
+-      return Metric(
+-        category: metric.category.flatMap { Metric.Category(rawValue: $0) },
+-        name: metric.name,
+-        value: metric.value,
+-        timestamp: metric.timestamp,
+-        routeName: metric.routeName,
+-        updateId: metric.updateId,
+-        params: decodeJSONDictionary(metric.params),
+-        sessionId: metric.sessionId
+-      )
+-    }
+-    self.logs = row.logs.map { log in
+-      return LogRecord(
+-        name: log.name,
+-        body: log.body,
+-        attributes: decodeJSONDictionary(log.attributes),
+-        droppedAttributesCount: log.droppedAttributesCount,
+-        severity: Severity(rawValue: log.severity) ?? .info,
+-        timestamp: log.timestamp
+-      )
+-    }
++    self.metrics = decodeMetrics(from: row.metrics)
++    self.logs = decodeLogs(from: row.logs)
+     self.crashReport = decodeFromJSONString(CrashReport.self, from: row.crashReportJSON)
+   }
+ }
++
++/**
++ Projects metric rows into the public `Metric` domain shape, decoding the JSON-encoded `params`
++ blob back into a dictionary. Shared by `StoredSession` and the `Session`/`DebugSession` shared
++ objects' lazy `getMetrics()` readers.
++ */
++func decodeMetrics(from rows: [MetricRow]) -> [Metric] {
++  return rows.map { metric in
++    return Metric(
++      category: metric.category.flatMap { Metric.Category(rawValue: $0) },
++      name: metric.name,
++      value: metric.value,
++      timestamp: metric.timestamp,
++      routeName: metric.routeName,
++      updateId: metric.updateId,
++      params: decodeJSONDictionary(metric.params),
++      sessionId: metric.sessionId
++    )
++  }
++}
++
++/**
++ Projects log rows into the public `LogRecord` domain shape, decoding the JSON-encoded `attributes`
++ blob back into a dictionary. Shared by `StoredSession` and the `Session`/`DebugSession` shared
++ objects' lazy `getLogs()` readers.
++ */
++func decodeLogs(from rows: [LogRow]) -> [LogRecord] {
++  return rows.map { log in
++    return LogRecord(
++      name: log.name,
++      body: log.body,
++      attributes: decodeJSONDictionary(log.attributes),
++      droppedAttributesCount: log.droppedAttributesCount,
++      severity: Severity(rawValue: log.severity) ?? .info,
++      timestamp: log.timestamp
++    )
++  }
++}
+diff --git a/node_modules/expo-app-metrics/ios/Tests/MetricParamsBuilderTests.swift b/node_modules/expo-app-metrics/ios/Tests/MetricParamsBuilderTests.swift
+index fb984cd..1cc38b7 100644
+--- a/node_modules/expo-app-metrics/ios/Tests/MetricParamsBuilderTests.swift
++++ b/node_modules/expo-app-metrics/ios/Tests/MetricParamsBuilderTests.swift
+@@ -113,6 +113,40 @@ struct MetricParamsBuilderTests {
+     #expect(params["expo.device.batteryCharging"] == nil)
+   }
+ 
++  @Test
++  func `omits network request keys when summary is nil`() {
++    let params = MetricParamsBuilder.build(userParams: ["tenant": "acme"])
++    #expect(params["expo.network.requests.count"] == nil)
++    #expect(params["expo.network.requests.slowestHost"] == nil)
++  }
++
++  @Test
++  func `omits network request keys when summary is empty`() {
++    let params = MetricParamsBuilder.build(networkRequests: .empty)
++    #expect(params["expo.network.requests.count"] == nil)
++  }
++
++  @Test
++  func `emits all network request keys when summary has data`() {
++    let summary = NetworkRequestSummary(
++      count: 4,
++      failed: 1,
++      bytesReceived: 12_000,
++      bytesSent: 800,
++      totalDuration: 1.4,
++      slowestDuration: 0.6,
++      slowestHost: "api.expo.dev"
++    )
++    let params = MetricParamsBuilder.build(networkRequests: summary)
++    #expect(params["expo.network.requests.count"] as? Int == 4)
++    #expect(params["expo.network.requests.failed"] as? Int == 1)
++    #expect(params["expo.network.requests.bytesReceived"] as? Int64 == 12_000)
++    #expect(params["expo.network.requests.bytesSent"] as? Int64 == 800)
++    #expect(params["expo.network.requests.totalDuration"] as? TimeInterval == 1.4)
++    #expect(params["expo.network.requests.slowestDuration"] as? TimeInterval == 0.6)
++    #expect(params["expo.network.requests.slowestHost"] as? String == "api.expo.dev")
++  }
++
+   @Test
+   func `framework-emitted device keys override user-supplied ones on collision`() {
+     let deviceState = DeviceState(
+diff --git a/node_modules/expo-app-metrics/ios/Tests/MetricsDatabaseTests.swift b/node_modules/expo-app-metrics/ios/Tests/MetricsDatabaseTests.swift
+index 3a5dab1..28a9d2e 100644
+--- a/node_modules/expo-app-metrics/ios/Tests/MetricsDatabaseTests.swift
++++ b/node_modules/expo-app-metrics/ios/Tests/MetricsDatabaseTests.swift
+@@ -176,16 +176,30 @@ struct MetricsDatabaseTests {
+   }
+ 
+   @Test
+-  func `getAllSessions returns rows ordered by start timestamp descending`() throws {
++  func `getInactiveSessions returns inactive rows ordered by start timestamp descending`() throws {
+     try withTemporaryDatabase { database in
+       try database.insert(session: makeSessionRow(id: "older", startTimestamp: "2026-05-01T00:00:00Z"))
+       try database.insert(session: makeSessionRow(id: "newer", startTimestamp: "2026-05-07T00:00:00Z"))
++      try database.updateSessionActiveStatus(id: "older", isActive: false, endTimestamp: nil)
++      try database.updateSessionActiveStatus(id: "newer", isActive: false, endTimestamp: nil)
+ 
+-      let rows = try database.getAllSessions()
++      let rows = try database.getInactiveSessions()
+       #expect(rows.map(\.id) == ["newer", "older"])
+     }
+   }
+ 
++  @Test
++  func `getInactiveSessions excludes active sessions`() throws {
++    try withTemporaryDatabase { database in
++      try database.insert(session: makeSessionRow(id: "active"))
++      try database.insert(session: makeSessionRow(id: "ended"))
++      try database.updateSessionActiveStatus(id: "ended", isActive: false, endTimestamp: nil)
++
++      let rows = try database.getInactiveSessions()
++      #expect(rows.map(\.id) == ["ended"])
++    }
++  }
++
+   @Test
+   func `getAllActiveSessions filters out inactive sessions`() throws {
+     try withTemporaryDatabase { database in
+@@ -214,8 +228,8 @@ struct MetricsDatabaseTests {
+       try database.insert(session: makeSessionRow(id: "a"))
+       try database.insert(session: makeSessionRow(id: "b"))
+       try database.deleteAllSessions()
+-      let remaining = try database.getAllSessions()
+-      #expect(remaining.isEmpty)
++      #expect(try database.getSession(id: "a") == nil)
++      #expect(try database.getSession(id: "b") == nil)
+     }
+   }
+ 
+@@ -252,10 +266,11 @@ struct MetricsDatabaseTests {
+       }
+ 
+       let database = try MetricsDatabase(directoryUrl: directoryUrl)
+-      let remaining = try await AppMetricsActor.isolated {
+-        return try database.getAllSessions().map(\.id)
++      let (expired, fresh) = try await AppMetricsActor.isolated {
++        return (try database.getSession(id: "expired"), try database.getSession(id: "fresh"))
+       }
+-      #expect(remaining == ["fresh"])
++      #expect(expired == nil)
++      #expect(fresh != nil)
+     }
+   }
+ 
+@@ -273,8 +288,53 @@ struct MetricsDatabaseTests {
+ 
+       try database.cleanupSessions(olderThan: "2026-05-05T00:00:00Z")
+ 
+-      let remaining = try database.getAllSessions().map(\.id).sorted()
+-      #expect(remaining == ["new-active", "new-inactive"])
++      #expect(try database.getSession(id: "old-inactive") == nil)
++      #expect(try database.getSession(id: "old-active") == nil)
++      #expect(try database.getSession(id: "new-active") != nil)
++      #expect(try database.getSession(id: "new-inactive") != nil)
++    }
++  }
++
++  @Test
++  func `periodic cleanup prunes metric and log rows older than the retention window`() async throws {
++    try await withTemporaryDirectory { directoryUrl in
++      // Tighten the loop's interval so the test finishes quickly; restore it after the test so
++      // later tests see production behavior. Both `cleanupInterval` and `cleanupRetentionSeconds`
++      // are `@AppMetricsActor`-isolated, and this test runs on that actor, so the writes are safe.
++      let previousInterval = MetricsDatabase.cleanupInterval
++      let previousRetention = MetricsDatabase.cleanupRetentionSeconds
++      MetricsDatabase.cleanupInterval = 0.05
++      defer {
++        MetricsDatabase.cleanupInterval = previousInterval
++        MetricsDatabase.cleanupRetentionSeconds = previousRetention
++      }
++
++      let database = try MetricsDatabase(directoryUrl: directoryUrl)
++      let retentionSeconds: TimeInterval = 30 * 60
++
++      // Seed: one live session, with metric and log rows split across the retention cutoff.
++      try database.insert(session: makeSessionRow(id: "live"))
++      let oldTimestamp = Date.now.addingTimeInterval(-retentionSeconds - 60).ISO8601Format()
++      let freshTimestamp = Date.now.addingTimeInterval(-60).ISO8601Format()
++      try database.insert(metric: makeMetricRow(sessionId: "live", timestamp: oldTimestamp, name: "m-old"))
++      try database.insert(metric: makeMetricRow(sessionId: "live", timestamp: freshTimestamp, name: "m-fresh"))
++      try database.insert(log: makeLogRow(sessionId: "live", timestamp: oldTimestamp, name: "l-old"))
++      try database.insert(log: makeLogRow(sessionId: "live", timestamp: freshTimestamp, name: "l-fresh"))
++
++      // Start the periodic loop.
++      database.setCleanupRetentionSeconds(retentionSeconds)
++
++      // Wait several intervals so at least one cleanup pass has run.
++      try await Task.sleep(nanoseconds: 300_000_000)
++
++      let metricNames = try database.getMetrics(sessionId: "live").map(\.name)
++      let logNames = try database.getLogs(sessionId: "live").map(\.name)
++      let liveSession = try database.getSession(id: "live")
++      #expect(metricNames == ["m-fresh"])
++      #expect(logNames == ["l-fresh"])
++      // The live session must not be deleted even though its startTimestamp may predate the window —
++      // it's `cleanupInactiveSessions` that runs, and the live row has `isActive = 1`.
++      #expect(liveSession != nil)
+     }
+   }
+ 
+diff --git a/node_modules/expo-app-metrics/ios/Tests/NetworkRequestTests.swift b/node_modules/expo-app-metrics/ios/Tests/NetworkRequestTests.swift
+new file mode 100644
+index 0000000..6ff06b2
+--- /dev/null
++++ b/node_modules/expo-app-metrics/ios/Tests/NetworkRequestTests.swift
+@@ -0,0 +1,916 @@
++import Foundation
++import Testing
++
++@testable import ExpoAppMetrics
++
++@Suite("NetworkRequest")
++struct NetworkRequestTests {
++  @Test
++  func `falls back to wall-clock duration when metrics are nil`() {
++    let request = URLRequest(url: URL(string: "https://expo.dev/health")!)
++    let response = HTTPURLResponse(
++      url: request.url!,
++      statusCode: 204,
++      httpVersion: "HTTP/1.1",
++      headerFields: nil
++    )!
++    let start = Date(timeIntervalSinceReferenceDate: 1000)
++    let end = Date(timeIntervalSinceReferenceDate: 1000.42)
++
++    let snapshot = NetworkRequest.from(
++      id: UUID(),
++      request: request,
++      response: response,
++      taskBytesSent: nil,
++      taskBytesReceived: nil,
++      metrics: nil,
++      fallbackStart: start,
++      fallbackEnd: end,
++      error: nil
++    )
++
++    #expect(snapshot.statusCode == 204)
++    #expect(snapshot.method == "GET")
++    #expect(snapshot.networkProtocol == nil)
++    #expect(snapshot.requestBytesSent == nil)
++    #expect(snapshot.responseBytesReceived == nil)
++    // `Date(timeIntervalSinceReferenceDate:)` math is base-2 floating point; allow a single-ulp
++    // tolerance so e.g. 0.4199999999999591 doesn't flake.
++    #expect(abs(snapshot.timings.totalDuration - 0.42) < 0.0001)
++    #expect(snapshot.timings.fetchStart == start)
++    #expect(snapshot.timings.responseEnd == end)
++    #expect(snapshot.errorDescription == nil)
++  }
++
++  @Test
++  func `captures method override and error description`() {
++    var request = URLRequest(url: URL(string: "https://expo.dev/api")!)
++    request.httpMethod = "POST"
++    let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: nil)
++    let now = Date()
++
++    let snapshot = NetworkRequest.from(
++      id: UUID(),
++      request: request,
++      response: nil,
++      taskBytesSent: nil,
++      taskBytesReceived: nil,
++      metrics: nil,
++      fallbackStart: now,
++      fallbackEnd: now,
++      error: error
++    )
++
++    #expect(snapshot.method == "POST")
++    #expect(snapshot.statusCode == nil)
++    #expect(snapshot.errorDescription != nil)
++  }
++}
++
++@AppMetricsActor
++@Suite("NetworkRequestMonitor")
++struct NetworkRequestMonitorTests {
++  @Test
++  func `records snapshots and fans out to delegates`() {
++    let monitor = NetworkRequestMonitor()
++    let collector = CollectingDelegate()
++    monitor.addDelegate(collector)
++
++    let snapshot = NetworkRequest.from(
++      id: UUID(),
++      request: URLRequest(url: URL(string: "https://expo.dev/x")!),
++      response: HTTPURLResponse(url: URL(string: "https://expo.dev/x")!, statusCode: 200, httpVersion: nil, headerFields: nil),
++      taskBytesSent: nil,
++      taskBytesReceived: nil,
++      metrics: nil,
++      fallbackStart: Date(),
++      fallbackEnd: Date(),
++      error: nil
++    )
++    monitor.record(snapshot)
++
++    #expect(monitor.recent.count == 1)
++    #expect(monitor.recent.first?.id == snapshot.id)
++    #expect(collector.received.count == 1)
++  }
++
++  @Test
++  func `recordStart fans out to delegates without touching the ring buffer`() {
++    let monitor = NetworkRequestMonitor()
++    let collector = CollectingDelegate()
++    monitor.addDelegate(collector)
++
++    let started = NetworkRequestStarted(
++      id: UUID(),
++      url: URL(string: "https://expo.dev/x")!,
++      method: "GET",
++      startedAt: Date()
++    )
++    monitor.recordStart(started)
++
++    #expect(collector.receivedStarts.count == 1)
++    #expect(collector.receivedStarts.first?.id == started.id)
++    // The ring buffer holds completed snapshots only.
++    #expect(monitor.recent.isEmpty)
++  }
++
++  @Test
++  func `bounds the ring buffer`() {
++    let monitor = NetworkRequestMonitor()
++    let url = URL(string: "https://expo.dev/x")!
++    for _ in 0..<250 {
++      let snapshot = NetworkRequest.from(
++        id: UUID(),
++        request: URLRequest(url: url),
++        response: nil,
++        taskBytesSent: nil,
++        taskBytesReceived: nil,
++        metrics: nil,
++        fallbackStart: Date(),
++        fallbackEnd: Date(),
++        error: nil
++      )
++      monitor.record(snapshot)
++    }
++    #expect(monitor.recent.count == 200)
++  }
++
++  @Test
++  func `does not fan out events the delegate filters out`() {
++    let monitor = NetworkRequestMonitor()
++    let collector = FilteringDelegate(allowedHost: "api.expo.dev")
++    monitor.addDelegate(collector)
++
++    monitor.recordStart(makeStarted(url: "https://api.expo.dev/v2/sessions", method: "POST"))
++    monitor.recordStart(makeStarted(url: "https://cdn.example.com/asset.png", method: "GET"))
++    monitor.record(makeRequest(url: "https://api.expo.dev/v2/sessions"))
++    monitor.record(makeRequest(url: "https://cdn.example.com/asset.png"))
++
++    // Only the matching host reaches the delegate, on both the start and the completion path.
++    #expect(collector.receivedStarts.count == 1)
++    #expect(collector.receivedStarts.first?.url.host == "api.expo.dev")
++    #expect(collector.received.count == 1)
++    #expect(collector.received.first?.url.host == "api.expo.dev")
++  }
++
++  private func makeStarted(url: String, method: String) -> NetworkRequestStarted {
++    return NetworkRequestStarted(id: UUID(), url: URL(string: url)!, method: method, startedAt: Date())
++  }
++
++  private func makeRequest(url: String) -> NetworkRequest {
++    return NetworkRequest.from(
++      id: UUID(),
++      request: URLRequest(url: URL(string: url)!),
++      response: nil,
++      taskBytesSent: nil,
++      taskBytesReceived: nil,
++      metrics: nil,
++      fallbackStart: Date(),
++      fallbackEnd: Date(),
++      error: nil
++    )
++  }
++}
++
++@Suite("NetworkRequestFilter")
++struct NetworkRequestFilterTests {
++  @Test
++  func `a filter with no fields set matches every request`() {
++    let filter = NetworkRequestFilter()
++    #expect(filter.matches(url: URL(string: "https://anything.example.com/path")!, method: "GET"))
++    #expect(filter.matches(url: URL(string: "https://other.test/x")!, method: "DELETE"))
++  }
++
++  @Test
++  func `an empty array allows nothing through that dimension`() {
++    var emptyHosts = NetworkRequestFilter()
++    emptyHosts.hosts = []
++    #expect(!emptyHosts.matches(url: URL(string: "https://api.expo.dev/x")!, method: "GET"))
++
++    var emptyMethods = NetworkRequestFilter()
++    emptyMethods.methods = []
++    #expect(!emptyMethods.matches(url: URL(string: "https://api.expo.dev/x")!, method: "GET"))
++  }
++
++  @Test
++  func `hosts match exactly and case-insensitively`() {
++    var filter = NetworkRequestFilter()
++    filter.hosts = ["API.Expo.dev"]
++    #expect(filter.matches(url: URL(string: "https://api.expo.dev/v2")!, method: "GET"))
++    // Exact host only — subdomains and unrelated hosts are excluded.
++    #expect(!filter.matches(url: URL(string: "https://cdn.expo.dev/v2")!, method: "GET"))
++    #expect(!filter.matches(url: URL(string: "https://example.com/v2")!, method: "GET"))
++  }
++
++  @Test
++  func `hosts is an OR across the listed entries`() {
++    var filter = NetworkRequestFilter()
++    filter.hosts = ["api.expo.dev", "u.expo.dev"]
++    #expect(filter.matches(url: URL(string: "https://api.expo.dev/x")!, method: "GET"))
++    #expect(filter.matches(url: URL(string: "https://u.expo.dev/x")!, method: "GET"))
++    #expect(!filter.matches(url: URL(string: "https://cdn.expo.dev/x")!, method: "GET"))
++  }
++
++  @Test
++  func `methods match case-insensitively`() {
++    var filter = NetworkRequestFilter()
++    filter.methods = ["post", "PUT"]
++    #expect(filter.matches(url: URL(string: "https://expo.dev/x")!, method: "POST"))
++    #expect(filter.matches(url: URL(string: "https://expo.dev/x")!, method: "put"))
++    #expect(!filter.matches(url: URL(string: "https://expo.dev/x")!, method: "GET"))
++  }
++
++  @Test
++  func `fields combine with AND`() {
++    var filter = NetworkRequestFilter()
++    filter.hosts = ["api.expo.dev"]
++    filter.methods = ["POST"]
++    // Both the host and the method must match.
++    #expect(filter.matches(url: URL(string: "https://api.expo.dev/x")!, method: "POST"))
++    #expect(!filter.matches(url: URL(string: "https://api.expo.dev/x")!, method: "GET"))
++    #expect(!filter.matches(url: URL(string: "https://cdn.expo.dev/x")!, method: "POST"))
++  }
++}
++
++@Suite("NetworkRequestObserver filtering")
++struct NetworkRequestObserverFilterTests {
++  @Test
++  func `setFilter swaps the active filter synchronously`() {
++    var post = NetworkRequestFilter()
++    post.methods = ["POST"]
++    let observer = NetworkRequestObserver(filter: post)
++    #expect(observer.shouldObserveRequest(url: URL(string: "https://expo.dev/x")!, method: "POST"))
++    #expect(!observer.shouldObserveRequest(url: URL(string: "https://expo.dev/x")!, method: "GET"))
++
++    var get = NetworkRequestFilter()
++    get.methods = ["GET"]
++    observer.setFilter(get)
++    #expect(observer.shouldObserveRequest(url: URL(string: "https://expo.dev/x")!, method: "GET"))
++    #expect(!observer.shouldObserveRequest(url: URL(string: "https://expo.dev/x")!, method: "POST"))
++
++    // No filter falls back to observing everything.
++    observer.setFilter(nil)
++    #expect(observer.shouldObserveRequest(url: URL(string: "https://expo.dev/x")!, method: "POST"))
++  }
++}
++
++@Suite("NetworkRequestSummary")
++struct NetworkRequestSummaryTests {
++  @Test
++  func `empty when no requests are passed in`() {
++    let summary = NetworkRequestSummary.from([])
++    #expect(summary.isEmpty)
++    #expect(summary.count == 0)
++    #expect(summary.slowestHost == nil)
++  }
++
++  @Test
++  func `aggregates count, failures, bytes, durations and slowest`() {
++    let now = Date()
++    let fast = makeRequest(
++      host: "api.expo.dev",
++      duration: 0.1,
++      status: 200,
++      bytesSent: 100,
++      bytesReceived: 200,
++      fetchStart: now
++    )
++    let slow = makeRequest(
++      host: "cdn.expo.dev",
++      duration: 0.8,
++      status: 200,
++      bytesSent: 50,
++      bytesReceived: 9000,
++      fetchStart: now
++    )
++    let failed = makeRequest(
++      host: "broken.expo.dev",
++      duration: 0.3,
++      status: 503,
++      bytesSent: 30,
++      bytesReceived: 40,
++      fetchStart: now
++    )
++
++    let summary = NetworkRequestSummary.from([fast, slow, failed])
++    #expect(summary.count == 3)
++    #expect(summary.failed == 1)
++    #expect(summary.bytesSent == 180)
++    #expect(summary.bytesReceived == 9240)
++    #expect(abs(summary.totalDuration - 1.2) < 0.0001)
++    #expect(summary.slowestDuration == 0.8)
++    #expect(summary.slowestHost == "cdn.expo.dev")
++  }
++
++  @Test
++  func `counts errored requests without a status as failed`() {
++    let request = makeRequest(
++      host: "expo.dev",
++      duration: 0.2,
++      status: nil,
++      bytesSent: 0,
++      bytesReceived: 0,
++      fetchStart: Date(),
++      error: "timed out"
++    )
++    let summary = NetworkRequestSummary.from([request])
++    #expect(summary.failed == 1)
++  }
++
++  @Test
++  func `treats 304 and other 3xx as non-failed`() {
++    // 304 is a successful conditional-GET cache hit; 301/302 are redirections URLSession
++    // typically follows but if one surfaces here it's still a successful response from the
++    // origin's perspective. Only 4xx/5xx (and explicit errors) belong in the failed count.
++    let cacheHit = makeRequest(host: "expo.dev", duration: 0.05, status: 304, bytesSent: 0, bytesReceived: 0, fetchStart: Date())
++    let redirect = makeRequest(host: "expo.dev", duration: 0.1, status: 301, bytesSent: 0, bytesReceived: 0, fetchStart: Date())
++    let clientError = makeRequest(host: "expo.dev", duration: 0.1, status: 404, bytesSent: 0, bytesReceived: 0, fetchStart: Date())
++    let serverError = makeRequest(host: "expo.dev", duration: 0.1, status: 500, bytesSent: 0, bytesReceived: 0, fetchStart: Date())
++
++    let summary = NetworkRequestSummary.from([cacheHit, redirect, clientError, serverError])
++    #expect(summary.count == 4)
++    #expect(summary.failed == 2)
++  }
++
++  private func makeRequest(
++    host: String,
++    duration: TimeInterval,
++    status: Int?,
++    bytesSent: Int64,
++    bytesReceived: Int64,
++    fetchStart: Date,
++    error: String? = nil
++  ) -> NetworkRequest {
++    return NetworkRequest(
++      id: UUID(),
++      url: URL(string: "https://\(host)/x")!,
++      method: "GET",
++      statusCode: status,
++      networkProtocol: nil,
++      requestBytesSent: bytesSent,
++      responseBytesReceived: bytesReceived,
++      timings: NetworkRequest.Timings(
++        fetchStart: fetchStart,
++        domainLookupStart: nil,
++        domainLookupEnd: nil,
++        connectStart: nil,
++        connectEnd: nil,
++        secureConnectionStart: nil,
++        secureConnectionEnd: nil,
++        requestStart: nil,
++        requestEnd: nil,
++        responseStart: nil,
++        responseEnd: nil,
++        totalDuration: duration
++      ),
++      errorDescription: error,
++      redirects: []
++    )
++  }
++}
++
++@AppMetricsActor
++@Suite("NetworkRequestMonitor windowing")
++struct NetworkRequestMonitorWindowingTests {
++  @Test
++  func `filters by fetchStart inclusive on both ends`() {
++    let monitor = NetworkRequestMonitor()
++    let early = makeSnapshot(fetchStart: Date(timeIntervalSinceReferenceDate: 0))
++    let inside = makeSnapshot(fetchStart: Date(timeIntervalSinceReferenceDate: 50))
++    let late = makeSnapshot(fetchStart: Date(timeIntervalSinceReferenceDate: 100))
++    monitor.record(early)
++    monitor.record(inside)
++    monitor.record(late)
++
++    let summary = monitor.summarize(
++      start: Date(timeIntervalSinceReferenceDate: 10),
++      end: Date(timeIntervalSinceReferenceDate: 90)
++    )
++    #expect(summary.count == 1)
++  }
++
++  private func makeSnapshot(fetchStart: Date) -> NetworkRequest {
++    return NetworkRequest(
++      id: UUID(),
++      url: URL(string: "https://expo.dev/x")!,
++      method: "GET",
++      statusCode: 200,
++      networkProtocol: nil,
++      requestBytesSent: 0,
++      responseBytesReceived: 0,
++      timings: NetworkRequest.Timings(
++        fetchStart: fetchStart,
++        domainLookupStart: nil,
++        domainLookupEnd: nil,
++        connectStart: nil,
++        connectEnd: nil,
++        secureConnectionStart: nil,
++        secureConnectionEnd: nil,
++        requestStart: nil,
++        requestEnd: nil,
++        responseStart: nil,
++        responseEnd: nil,
++        totalDuration: 0.1
++      ),
++      errorDescription: nil,
++      redirects: []
++    )
++  }
++}
++
++/**
++ End-to-end tests for `NetworkRequestTaskSwizzling`. We register a `FakeServerProtocol` inside the
++ test's URLSession so requests never escape the process; the swizzles still fire on the real
++ `__NSCFLocalSessionTask` Apple creates to drive the URLProtocol, so we observe the full lifecycle
++ just as we would in production.
++
++ Serialized because every test installs the same process-wide swizzles and shares the monitor's
++ ring buffer — concurrent runs would observe each other's traffic and the assertions filter by URL
++ to keep tests independent.
++ */
++@Suite("NetworkRequestTaskSwizzling", .serialized)
++struct NetworkRequestTaskSwizzlingTests {
++  init() {
++    NetworkRequestTaskSwizzling.install()
++  }
++
++  @Test
++  func `observes a request that completes via the fake server`() async throws {
++    let config = URLSessionConfiguration.ephemeral
++    config.protocolClasses = [FakeServerProtocol.self]
++    let session = URLSession(configuration: config)
++
++    let collector = CollectingDelegate()
++    try await AppMetricsActor.isolated {
++      NetworkRequestMonitor.shared.addDelegate(collector)
++    }.value
++
++    let url = URL(string: "https://fake.test/hello")!
++    let (data, response) = try await session.data(from: url)
++
++    #expect((response as? HTTPURLResponse)?.statusCode == 200)
++    #expect(String(data: data, encoding: .utf8) == "hi")
++
++    let recorded = await waitForRecorded(matching: url)
++    #expect(recorded != nil)
++    #expect(recorded?.statusCode == 200)
++
++    let startEvent = collector.receivedStarts.first { $0.url == url }
++    #expect(startEvent != nil)
++    #expect(startEvent?.method == "GET")
++    #expect(startEvent?.id == recorded?.id)
++  }
++
++  @Test
++  func `skips requests that carry the internal opt-out header`() async throws {
++    let config = URLSessionConfiguration.ephemeral
++    config.protocolClasses = [FakeServerProtocol.self]
++    let session = URLSession(configuration: config)
++
++    var request = URLRequest(url: URL(string: "https://fake.test/internal")!)
++    request.setValue("1", forHTTPHeaderField: NetworkRequestTaskSwizzling.internalHeaderName)
++    _ = try await session.data(for: request)
++
++    // Sleep briefly to let any stray recording attempt complete.
++    try await Task.sleep(nanoseconds: 50_000_000)
++    let recorded = try await AppMetricsActor.isolated {
++      return NetworkRequestMonitor.shared.recent.first(where: { $0.url.path == "/internal" })
++    }.value
++    #expect(recorded == nil)
++  }
++
++  /**
++   With task-resume swizzling the caller's session is never replaced — POST bodies reach the
++   server through the URL loading system's normal path. The fake echoes whatever it receives; a
++   matching echo proves the body wasn't dropped.
++   */
++  @Test
++  func `preserves request bodies for uploads`() async throws {
++    let config = URLSessionConfiguration.ephemeral
++    config.protocolClasses = [FakeServerProtocol.self]
++    let session = URLSession(configuration: config)
++
++    let payload = Data("{\"hello\":\"world\"}".utf8)
++    var request = URLRequest(url: URL(string: "https://fake.test/echo")!)
++    request.httpMethod = "POST"
++    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
++    request.httpBody = payload
++
++    let (data, response) = try await session.data(for: request)
++
++    #expect((response as? HTTPURLResponse)?.statusCode == 200)
++    #expect(data == payload)
++  }
++
++  /**
++   With the swizzle approach the caller's `URLSession` configuration is preserved verbatim — no
++   inner session, no replay. Ephemeral sessions used to leak cookies into `HTTPCookieStorage.shared`
++   under the old URLProtocol-replay implementation; this test pins that the leak is gone.
++   `FakeServerProtocol` returns a `Set-Cookie` header for `/cookie-test`, so the assertion would
++   fail loudly if cookies started flowing into the shared jar again.
++   */
++  @Test
++  func `does not leak cookies from an ephemeral session into the shared storage`() async throws {
++    // Wipe any cookie a previous test or stray network state might have planted on `fake.test`.
++    if let stale = HTTPCookieStorage.shared.cookies(for: URL(string: "https://fake.test/")!) {
++      for cookie in stale {
++        HTTPCookieStorage.shared.deleteCookie(cookie)
++      }
++    }
++
++    let config = URLSessionConfiguration.ephemeral
++    config.protocolClasses = [FakeServerProtocol.self]
++    let session = URLSession(configuration: config)
++
++    let url = URL(string: "https://fake.test/cookie-test")!
++    _ = try await session.data(from: url)
++
++    let sharedAfter = HTTPCookieStorage.shared.cookies(for: URL(string: "https://fake.test/")!) ?? []
++    // The ephemeral session's cookie storage is in-memory and isolated; the global shared storage
++    // must not gain any cookies from a request issued on it.
++    #expect(sharedAfter.isEmpty)
++  }
++
++  /**
++   `URLSessionWebSocketTask` extends `URLSessionTask` so the swizzle's `resume` fires on it, but
++   websockets don't produce useful HTTP metrics and we deliberately skip them. We resume a
++   websocket task pointed at a URL that will never connect, then cancel it; the swizzle must not
++   have recorded a snapshot.
++   */
++  @Test
++  func `skips websocket tasks`() async throws {
++    let config = URLSessionConfiguration.ephemeral
++    let session = URLSession(configuration: config)
++    let url = URL(string: "wss://fake.invalid.test/never-connects")!
++    let task = session.webSocketTask(with: url)
++    task.resume()
++    task.cancel()
++
++    try await Task.sleep(nanoseconds: 50_000_000)
++    let recorded = try await AppMetricsActor.isolated {
++      return NetworkRequestMonitor.shared.recent.first(where: { $0.url == url })
++    }.value
++    #expect(recorded == nil)
++  }
++
++  /**
++   Requests marked with `ExpoRequestInterceptorProtocol.requestId` are dev-launcher inner replays —
++   the swizzle must skip them so we don't double-record every request in dev-client builds. Drive
++   the check through `URLProtocol.setProperty(_:forKey:in:)` directly; we don't need the
++   dev-launcher itself to repro the condition.
++   */
++  @Test
++  func `skips dev-launcher inner replay tasks`() async throws {
++    let config = URLSessionConfiguration.ephemeral
++    config.protocolClasses = [FakeServerProtocol.self]
++    let session = URLSession(configuration: config)
++
++    let url = URL(string: "https://fake.test/dev-launcher-replay")!
++    let mutable = (URLRequest(url: url) as NSURLRequest).mutableCopy() as! NSMutableURLRequest
++    URLProtocol.setProperty("test-request-id", forKey: "ExpoRequestInterceptorProtocol.requestId", in: mutable)
++    _ = try await session.data(for: mutable as URLRequest)
++
++    try await Task.sleep(nanoseconds: 50_000_000)
++    let recorded = try await AppMetricsActor.isolated {
++      return NetworkRequestMonitor.shared.recent.first(where: { $0.url == url })
++    }.value
++    #expect(recorded == nil)
++  }
++
++  /**
++   Sessions created without a delegate (and the global `URLSession.shared`-style completion-handler
++   path) skip our `DelegateProxy`, so `didFinishCollectingMetrics:` never fires. The `setState:`
++   fallback has to win after `setStateFallbackDelay` and still record the snapshot — degraded (no
++   per-phase metrics) but present.
++   */
++  @Test
++  func `records delegate-less sessions via the setState fallback`() async throws {
++    let config = URLSessionConfiguration.ephemeral
++    config.protocolClasses = [FakeServerProtocol.self]
++    // Explicitly pass `nil` delegate so our session-init swizzle doesn't get to wrap a real one.
++    // `URLSession(configuration:delegate:delegateQueue:)` with a nil delegate matches the
++    // completion-handler-only mode in Apple's docs.
++    let session = URLSession(configuration: config, delegate: nil, delegateQueue: nil)
++
++    let url = URL(string: "https://fake.test/delegate-less")!
++    let result: (Data, URLResponse?) = try await withCheckedThrowingContinuation { continuation in
++      let task = session.dataTask(with: url) { data, response, error in
++        if let error {
++          continuation.resume(throwing: error)
++          return
++        }
++        continuation.resume(returning: (data ?? Data(), response))
++      }
++      task.resume()
++    }
++    #expect((result.1 as? HTTPURLResponse)?.statusCode == 200)
++    #expect(String(data: result.0, encoding: .utf8) == "hi")
++
++    let recorded = await waitForRecorded(matching: url)
++    #expect(recorded != nil)
++    #expect(recorded?.statusCode == 200)
++  }
++
++  private func waitForRecorded(matching url: URL, attempts: Int = 50) async -> NetworkRequest? {
++    for _ in 0..<attempts {
++      let found = try? await AppMetricsActor.isolated {
++        return NetworkRequestMonitor.shared.recent.first(where: { $0.url == url })
++      }.value
++      if let found {
++        return found
++      }
++      try? await Task.sleep(nanoseconds: 20_000_000)
++    }
++    return nil
++  }
++}
++
++/**
++ The JS-facing observer mostly forwards to `NetworkRequestMonitor`, which is exercised by the
++ `NetworkRequestMonitor` suite. What's specific to the observer is the payload shape — the dict
++ it hands to `emit()` is the wire format JS consumers see. These tests pin that shape down so
++ renames (`fromUrl` → `from`, `responseEnd` → `endedAt`, etc.) require a deliberate change.
++ */
++@Suite("NetworkRequestObserver")
++struct NetworkRequestObserverTests {
++  @Test
++  func `startedPayload contains the started-event keys`() {
++    let id = UUID()
++    let startedAt = Date(timeIntervalSinceReferenceDate: 1000)
++    let request = NetworkRequestStarted(
++      id: id,
++      url: URL(string: "https://expo.dev/start")!,
++      method: "POST",
++      startedAt: startedAt
++    )
++
++    let payload = NetworkRequestObserver.startedPayload(for: request)
++
++    #expect(payload["id"] as? String == id.uuidString)
++    #expect(payload["url"] as? String == "https://expo.dev/start")
++    #expect(payload["method"] as? String == "POST")
++    #expect(payload["startedAt"] as? String == startedAt.ISO8601Format())
++    // Only the four documented keys — anything extra means the JS contract grew unintentionally.
++    #expect(Set(payload.keys) == ["id", "url", "method", "startedAt"])
++  }
++
++  @Test
++  func `completedPayload normalizes timings and redirects`() {
++    let id = UUID()
++    let fetchStart = Date(timeIntervalSinceReferenceDate: 2000)
++    let responseEnd = Date(timeIntervalSinceReferenceDate: 2000.5)
++    let request = NetworkRequest(
++      id: id,
++      url: URL(string: "https://expo.dev/end")!,
++      method: "GET",
++      statusCode: 200,
++      networkProtocol: "h2",
++      requestBytesSent: 123,
++      responseBytesReceived: 4567,
++      timings: NetworkRequest.Timings(
++        fetchStart: fetchStart,
++        domainLookupStart: nil,
++        domainLookupEnd: nil,
++        connectStart: nil,
++        connectEnd: nil,
++        secureConnectionStart: nil,
++        secureConnectionEnd: nil,
++        requestStart: nil,
++        requestEnd: nil,
++        responseStart: nil,
++        responseEnd: responseEnd,
++        totalDuration: 0.5
++      ),
++      errorDescription: nil,
++      redirects: [
++        NetworkRequest.Redirect(
++          fromUrl: URL(string: "https://expo.dev/a")!,
++          toUrl: URL(string: "https://expo.dev/b")!,
++          statusCode: 301
++        )
++      ]
++    )
++
++    let payload = NetworkRequestObserver.completedPayload(for: request)
++
++    #expect(payload["id"] as? String == id.uuidString)
++    #expect(payload["url"] as? String == "https://expo.dev/end")
++    #expect(payload["method"] as? String == "GET")
++    #expect(payload["statusCode"] as? Int == 200)
++    #expect(payload["networkProtocol"] as? String == "h2")
++    #expect(payload["requestBytesSent"] as? Int64 == 123)
++    #expect(payload["responseBytesReceived"] as? Int64 == 4567)
++    #expect(payload["startedAt"] as? String == fetchStart.ISO8601Format())
++    #expect(payload["completedAt"] as? String == responseEnd.ISO8601Format())
++    #expect(payload["totalDuration"] as? TimeInterval == 0.5)
++
++    let redirects = payload["redirects"] as? [[String: Any?]]
++    #expect(redirects?.count == 1)
++    #expect(redirects?.first?["fromUrl"] as? String == "https://expo.dev/a")
++    #expect(redirects?.first?["toUrl"] as? String == "https://expo.dev/b")
++    #expect(redirects?.first?["statusCode"] as? Int == 301)
++  }
++
++  @Test
++  func `completedPayload preserves nulls and empty redirects`() {
++    // Failed request before the response arrived: status, protocol, byte counts and end timestamps
++    // are all nil. The dict keys must still be present so JS code can read them without crashing.
++    let id = UUID()
++    let fetchStart = Date(timeIntervalSinceReferenceDate: 3000)
++    let request = NetworkRequest(
++      id: id,
++      url: URL(string: "https://expo.dev/error")!,
++      method: "GET",
++      statusCode: nil,
++      networkProtocol: nil,
++      requestBytesSent: nil,
++      responseBytesReceived: nil,
++      timings: NetworkRequest.Timings(
++        fetchStart: fetchStart,
++        domainLookupStart: nil,
++        domainLookupEnd: nil,
++        connectStart: nil,
++        connectEnd: nil,
++        secureConnectionStart: nil,
++        secureConnectionEnd: nil,
++        requestStart: nil,
++        requestEnd: nil,
++        responseStart: nil,
++        responseEnd: nil,
++        totalDuration: 0.1
++      ),
++      errorDescription: "timed out",
++      redirects: []
++    )
++
++    let payload = NetworkRequestObserver.completedPayload(for: request)
++
++    // `payload[key]` returns `Optional<Any?>` because the dict's value type is `Any?`. A missing
++    // key is the outer `.none`; a present-but-nil key is `.some(.none)`. The JS contract says
++    // every key is present, so assert on the outer `.some` and the inner nil separately.
++    #expect(payload.keys.contains("statusCode"))
++    #expect((payload["statusCode"] ?? "missing") as? Int == nil)
++    #expect(payload.keys.contains("networkProtocol"))
++    #expect((payload["networkProtocol"] ?? "missing") as? String == nil)
++    #expect(payload.keys.contains("requestBytesSent"))
++    #expect(payload.keys.contains("completedAt"))
++    #expect((payload["completedAt"] ?? "missing") as? String == nil)
++    #expect(payload["errorDescription"] as? String == "timed out")
++
++    // `redirects` is always present as an empty array, never `nil` — JS callers `.map` over it
++    // without a null-guard.
++    let redirects = payload["redirects"] as? [[String: Any?]]
++    #expect(redirects != nil)
++    #expect(redirects?.isEmpty == true)
++  }
++}
++
++// MARK: - Test helpers
++
++private final class CollectingDelegate: NetworkRequestObserverDelegate, @unchecked Sendable {
++  private let lock = NSLock()
++  private var completed: [NetworkRequest] = []
++  private var started: [NetworkRequestStarted] = []
++
++  var received: [NetworkRequest] {
++    lock.lock()
++    defer {
++      lock.unlock()
++    }
++    return completed
++  }
++
++  var receivedStarts: [NetworkRequestStarted] {
++    lock.lock()
++    defer {
++      lock.unlock()
++    }
++    return started
++  }
++
++  func onNetworkRequestStarted(_ request: NetworkRequestStarted) {
++    lock.lock()
++    defer {
++      lock.unlock()
++    }
++    started.append(request)
++  }
++
++  func onNetworkRequestCompleted(_ request: NetworkRequest) {
++    lock.lock()
++    defer {
++      lock.unlock()
++    }
++    completed.append(request)
++  }
++}
++
++/** Collecting delegate that only accepts requests for a single host, exercising the monitor's
++ per-delegate `shouldObserveRequest` consult at the fan-out site. */
++private final class FilteringDelegate: NetworkRequestObserverDelegate, @unchecked Sendable {
++  private let allowedHost: String
++  private let lock = NSLock()
++  private var completed: [NetworkRequest] = []
++  private var started: [NetworkRequestStarted] = []
++
++  init(allowedHost: String) {
++    self.allowedHost = allowedHost
++  }
++
++  var received: [NetworkRequest] {
++    lock.lock()
++    defer {
++      lock.unlock()
++    }
++    return completed
++  }
++
++  var receivedStarts: [NetworkRequestStarted] {
++    lock.lock()
++    defer {
++      lock.unlock()
++    }
++    return started
++  }
++
++  func shouldObserveRequest(url: URL, method: String) -> Bool {
++    return url.host == allowedHost
++  }
++
++  func onNetworkRequestStarted(_ request: NetworkRequestStarted) {
++    lock.lock()
++    defer {
++      lock.unlock()
++    }
++    started.append(request)
++  }
++
++  func onNetworkRequestCompleted(_ request: NetworkRequest) {
++    lock.lock()
++    defer {
++      lock.unlock()
++    }
++    completed.append(request)
++  }
++}
++
++/**
++ A trivial `URLProtocol` that pretends to be a server. Routes by URL path:
++ - `/cookie-test` returns a `Set-Cookie` header so the cookie-isolation test can detect a leak.
++ - any other path echoes the request body back when there is one (POST/PUT payload assertions) and
++   otherwise returns a `hi` body.
++
++ Sits at the tail of the protocol chain in the test's outer session.
++ */
++private final class FakeServerProtocol: URLProtocol {
++  override class func canInit(with request: URLRequest) -> Bool {
++    return request.url?.host == "fake.test"
++  }
++
++  override class func canonicalRequest(for request: URLRequest) -> URLRequest {
++    return request
++  }
++
++  override func startLoading() {
++    let url = request.url!
++    let headers: [String: String]? = url.path == "/cookie-test"
++      ? ["Set-Cookie": "fake=value; Path=/"]
++      : nil
++    let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers)!
++    client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
++    let body = Self.readBody(from: request) ?? Data("hi".utf8)
++    client?.urlProtocol(self, didLoad: body)
++    client?.urlProtocolDidFinishLoading(self)
++  }
++
++  override func stopLoading() {}
++
++  /**
++   Reads the request body, preferring the in-memory `httpBody` and falling back to draining
++   `httpBodyStream` — by the time a request reaches a `URLProtocol`, Foundation has usually
++   converted the body to a stream, which is exactly the path we want to exercise.
++   */
++  private static func readBody(from request: URLRequest) -> Data? {
++    if let body = request.httpBody {
++      return body
++    }
++    guard let stream = request.httpBodyStream else {
++      return nil
++    }
++    stream.open()
++    defer {
++      stream.close()
++    }
++    var data = Data()
++    let bufferSize = 1024
++    var buffer = [UInt8](repeating: 0, count: bufferSize)
++    while stream.hasBytesAvailable {
++      let read = stream.read(&buffer, maxLength: bufferSize)
++      if read <= 0 {
++        break
++      }
++      data.append(buffer, count: read)
++    }
++    return data.isEmpty ? nil : data
++  }
++}
+diff --git a/node_modules/expo-app-metrics/ios/Tests/SessionMetricInputTests.swift b/node_modules/expo-app-metrics/ios/Tests/SessionMetricInputTests.swift
+new file mode 100644
+index 0000000..a74cd08
+--- /dev/null
++++ b/node_modules/expo-app-metrics/ios/Tests/SessionMetricInputTests.swift
+@@ -0,0 +1,52 @@
++import Testing
++
++@testable import ExpoAppMetrics
++
++@Suite("SessionMetricInput")
++struct SessionMetricInputTests {
++  @Test
++  func `injects the passed sessionId rather than carrying one itself`() {
++    var input = SessionMetricInput()
++    input.category = "navigation"
++    input.name = "ttr"
++    input.value = 1.5
++    input.timestamp = "2026-01-01T00:00:00Z"
++
++    let metric = input.toMetric(sessionId: "session-from-shared-object")
++    #expect(metric.sessionId == "session-from-shared-object")
++    #expect(metric.category == .navigation)
++    #expect(metric.name == "ttr")
++    #expect(metric.value == 1.5)
++    #expect(metric.timestamp == "2026-01-01T00:00:00Z")
++  }
++
++  @Test
++  func `drops the category when the raw string is unknown`() {
++    // Mirrors `JsMetric` behavior: until `Metric.Category` accepts free-form strings, an unknown
++    // category is dropped to keep the Codable contract intact.
++    var input = SessionMetricInput()
++    input.category = "not-a-real-category"
++    input.name = "custom"
++    input.value = 0
++
++    let metric = input.toMetric(sessionId: "s1")
++    #expect(metric.category == nil)
++    #expect(metric.name == "custom")
++  }
++
++  @Test
++  func `carries routeName and params through to the Metric`() {
++    var input = SessionMetricInput()
++    input.category = "navigation"
++    input.name = "ttr"
++    input.value = 0.4
++    input.routeName = "/home"
++    input.params = ["isInitial": true]
++
++    let metric = input.toMetric(sessionId: "s1")
++    #expect(metric.routeName == "/home")
++    // `updateId` is not part of the JS-facing `MetricInput` contract.
++    #expect(metric.updateId == nil)
++    #expect(metric.params != nil)
++  }
++}
+diff --git a/node_modules/expo-app-metrics/ios/Utils/AnyCodable.swift b/node_modules/expo-app-metrics/ios/Utils/AnyCodable.swift
+index 83a99ab..19bcd89 100644
+--- a/node_modules/expo-app-metrics/ios/Utils/AnyCodable.swift
++++ b/node_modules/expo-app-metrics/ios/Utils/AnyCodable.swift
+@@ -35,14 +35,25 @@ public struct AnyCodable: Codable, Sendable {
+   public func encode(to encoder: Encoder) throws {
+     var container = encoder.singleValueContainer()
+ 
++    // `Bool` must come before the integer cases — Swift bridges `Bool` and the numeric types
++    // bidirectionally for `as?`, and on Objective-C runtime values, `Bool` round-trips through
++    // `NSNumber` indistinguishably from an integer. Matching `Bool` first preserves type.
+     switch value {
++    case let value as Bool:
++      try container.encode(value)
+     case let value as Int:
+       try container.encode(value)
++    case let value as Int32:
++      try container.encode(value)
++    case let value as Int64:
++      try container.encode(value)
+     case let value as UInt:
+       try container.encode(value)
+-    case let value as Double:
++    case let value as UInt32:
+       try container.encode(value)
+-    case let value as Bool:
++    case let value as UInt64:
++      try container.encode(value)
++    case let value as Double:
+       try container.encode(value)
+     case let value as String:
+       try container.encode(value)
+diff --git a/node_modules/expo-app-metrics/ios/Utils/MetricParamsBuilder.swift b/node_modules/expo-app-metrics/ios/Utils/MetricParamsBuilder.swift
+index 6d9dc04..21bf6b1 100644
+--- a/node_modules/expo-app-metrics/ios/Utils/MetricParamsBuilder.swift
++++ b/node_modules/expo-app-metrics/ios/Utils/MetricParamsBuilder.swift
+@@ -20,7 +20,8 @@ enum MetricParamsBuilder {
+     userParams: [String: Any] = [:],
+     frameMetrics: FrameRateMetrics? = nil,
+     deviceState: DeviceState? = nil,
+-    networkPath: NetworkPath? = nil
++    networkPath: NetworkPath? = nil,
++    networkRequests: NetworkRequestSummary? = nil
+   ) -> [String: Any] {
+     var params: [String: Any] = userParams
+     if let frameMetrics, frameMetrics.expectedFrames > 0 {
+@@ -48,6 +49,19 @@ enum MetricParamsBuilder {
+       params["expo.network.connected"] = networkPath.status == .satisfied
+       params["expo.network.type"] = networkTypeString(networkPath)
+     }
++    if let networkRequests, !networkRequests.isEmpty {
++      params["expo.network.requests.count"] = networkRequests.count
++      params["expo.network.requests.failed"] = networkRequests.failed
++      params["expo.network.requests.bytesReceived"] = networkRequests.bytesReceived
++      params["expo.network.requests.bytesSent"] = networkRequests.bytesSent
++      params["expo.network.requests.totalDuration"] = networkRequests.totalDuration
++      if let slowestDuration = networkRequests.slowestDuration {
++        params["expo.network.requests.slowestDuration"] = slowestDuration
++      }
++      if let slowestHost = networkRequests.slowestHost {
++        params["expo.network.requests.slowestHost"] = slowestHost
++      }
++    }
+     return params
+   }
+ 
