@@ -85,7 +85,10 @@
     }
   },
   "submit": {
-    "production": {},
-    "production:tv": {}
+    "production:tv": {
+      "ios": {
+        "ascAppId": "395152088"
+      }
+    }
   }
 }
