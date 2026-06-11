@@ -1,8 +1,8 @@
 diff --git a/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift b/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
-index 5cb1733..62a3bff 100644
+index 5cb1733..9f83d5f 100644
 --- a/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
 +++ b/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
-@@ -18,10 +18,25 @@ final class MetricsDatabase: Sendable {
+@@ -18,10 +18,18 @@ final class MetricsDatabase: Sendable {
    static let currentSchemaVersion = 3
  
    /**
@@ -13,23 +13,16 @@ index 5cb1733..62a3bff 100644
  
 +  /**
 +   How often the periodic cleanup runs while the process is alive, so a long-running app
-+   (e.g. an Apple TV app left on for days) prunes retention-expired sessions and caps table
-+   growth without waiting for the next launch. Currently only started on tvOS (see `init`); the
-+   implementation is platform-agnostic so it can be enabled elsewhere (e.g. macOS) later.
++   (e.g. an Apple TV app left on for days) prunes metric/log rows and inactive sessions older than
++   the retention window without waiting for the next launch. Currently only started on tvOS (see
++   `init`); the implementation is platform-agnostic so it can be enabled elsewhere (e.g. macOS) later.
 +   */
 +  static let cleanupInterval: TimeInterval = 60 * 60 // 1 hour
-+
-+  /**
-+   Upper bound on retained rows for the `metrics` and `logs` tables. Each cleanup pass drops the
-+   oldest rows beyond this, bounding on-disk size regardless of uptime — at the cost of dropping
-+   the oldest not-yet-dispatched rows when dispatch has fallen far behind.
-+   */
-+  static let maxRetainedRows = 10_000
 +
    let database: SQLiteDatabase
  
    let fileUrl: URL
-@@ -49,9 +64,15 @@ final class MetricsDatabase: Sendable {
+@@ -49,9 +57,15 @@ final class MetricsDatabase: Sendable {
    }
  
    private static func defaultDirectoryUrl() throws -> URL {
@@ -45,7 +38,7 @@ index 5cb1733..62a3bff 100644
    }
  
    /**
-@@ -64,6 +85,9 @@ final class MetricsDatabase: Sendable {
+@@ -64,6 +78,9 @@ final class MetricsDatabase: Sendable {
      try createSchemaIfNeeded()
      scheduleDeactivateOrphanedSessions()
      schedulePruneExpiredSessions()
@@ -55,7 +48,7 @@ index 5cb1733..62a3bff 100644
    }
  
    /**
-@@ -112,6 +136,31 @@ final class MetricsDatabase: Sendable {
+@@ -112,6 +129,35 @@ final class MetricsDatabase: Sendable {
      }
    }
  
@@ -75,8 +68,12 @@ index 5cb1733..62a3bff 100644
 +        }
 +        let cutoff = Date.now.addingTimeInterval(-Self.sessionRetention).ISO8601Format()
 +        do {
-+          try self.cleanupSessions(olderThan: cutoff)
-+          try self.cleanupExcessRows()
++          // Prune metric/log ROWS by timestamp — bounds a long-lived active session without
++          // deleting it — then tidy dead inactive session rows. Deliberately not `cleanupSessions`,
++          // which deletes regardless of isActive and would drop the live session once it outlives
++          // the window.
++          try self.cleanupMetricsAndLogs(olderThan: cutoff)
++          try self.cleanupInactiveSessions(olderThan: cutoff)
 +        } catch {
 +          logger.warn("[AppMetrics] Periodic cleanup failed: \(error.localizedDescription)")
 +        }
@@ -87,38 +84,51 @@ index 5cb1733..62a3bff 100644
    /**
     Opens a connection at `fileUrl`. If the existing database was written by a different schema
     version than this build understands, the file (plus WAL/shm sidecars) is deleted and a fresh
-@@ -405,6 +454,36 @@ final class MetricsDatabase: Sendable {
+@@ -405,6 +451,49 @@ final class MetricsDatabase: Sendable {
      }
    }
  
 +  /**
-+   Drops the oldest rows from `metrics` and `logs` beyond `maxRetainedRows`, keeping the newest by
-+   `id`. Bounds table size for a long-running process; if dispatch has fallen behind, the
-+   oldest not-yet-dispatched rows are dropped in favor of the hard cap. Sessions left without
-+   children are removed by the retention prune.
++   Deletes metric and log rows older than `cutoff` (an ISO-8601 timestamp), independent of which
++   session they belong to. Unlike pruning whole sessions, this bounds the growth of a single
++   long-lived session (e.g. an Apple TV app left running) without deleting the active session row,
++   and keys on the `timestamp` column so it behaves identically regardless of primary-key type.
 +   */
 +  @AppMetricsActor
-+  func cleanupExcessRows() throws {
++  func cleanupMetricsAndLogs(olderThan cutoff: String) throws {
 +    try database.transaction {
-+      try trimTable("metrics", keeping: Self.maxRetainedRows)
-+      try trimTable("logs", keeping: Self.maxRetainedRows)
++      let dropMetrics = try database.prepare("DELETE FROM metrics WHERE timestamp < ?1")
++      try dropMetrics.bindAll([cutoff])
++      try dropMetrics.run()
++
++      let dropLogs = try database.prepare("DELETE FROM logs WHERE timestamp < ?1")
++      try dropLogs.bindAll([cutoff])
++      try dropLogs.run()
 +    }
 +  }
 +
 +  /**
-+   Deletes all but the newest `maxRows` rows of `table`. The `OFFSET maxRows` subquery returns the
-+   id just past the cap, or no row when the table holds `maxRows` or fewer — in which case the
-+   `id < NULL` comparison deletes nothing.
++   Deletes only *inactive* sessions whose start timestamp is older than `cutoff`, tidying dead
++   session rows left by past foreground cycles without ever removing the live session (whose
++   `startTimestamp` may itself predate the window on a long-running process). Crash reports for the
++   dropped sessions are removed in the same transaction (they don't FK-cascade).
 +   */
 +  @AppMetricsActor
-+  private func trimTable(_ table: String, keeping maxRows: Int) throws {
-+    // `table` is a literal we control (`metrics` / `logs`); SQLite has no placeholder for identifiers.
-+    let statement = try database.prepare("""
-+      DELETE FROM \(table)
-+      WHERE id < (SELECT id FROM \(table) ORDER BY id DESC LIMIT 1 OFFSET ?1)
-+      """)
-+    try statement.bindAll([maxRows])
-+    try statement.run()
++  func cleanupInactiveSessions(olderThan cutoff: String) throws {
++    try database.transaction {
++      let dropCrashReports = try database.prepare("""
++        DELETE FROM crash_reports
++        WHERE sessionId IN (SELECT id FROM sessions WHERE startTimestamp < ?1 AND isActive = 0)
++        """)
++      try dropCrashReports.bindAll([cutoff])
++      try dropCrashReports.run()
++
++      let dropSessions = try database.prepare("""
++        DELETE FROM sessions WHERE startTimestamp < ?1 AND isActive = 0
++        """)
++      try dropSessions.bindAll([cutoff])
++      try dropSessions.run()
++    }
 +  }
 +
    // MARK: - Metrics
