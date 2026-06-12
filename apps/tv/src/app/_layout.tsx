@@ -10,6 +10,8 @@ Observe.configure({
   environment: 'production',
   dispatchingEnabled: true,
   dispatchInDebug: true,
+  scheduledCleanupRetentionWindow: 3600,
+  scheduledDispatchInterval: 60,
 });
 
 function RootLayout() {
