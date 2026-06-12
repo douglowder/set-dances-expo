@@ -26,7 +26,7 @@ jobs:
     type: get-build
     params:
       fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
-      profile: production:tv
+      profile: production
   build_ios:
     name: Build for iOS
     needs:
