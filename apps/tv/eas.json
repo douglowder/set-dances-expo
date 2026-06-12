@@ -74,7 +74,6 @@
     "production:tv": {
       "extends": "production",
       "ios": {
-        "credentialsSource": "local",
         "simulator": false
       },
       "env": {
