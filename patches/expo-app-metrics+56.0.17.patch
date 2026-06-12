@@ -51,15 +51,21 @@ index edf3604..bcdbd23 100644
    }
  
 diff --git a/node_modules/expo-app-metrics/ios/AppMetricsModule.swift b/node_modules/expo-app-metrics/ios/AppMetricsModule.swift
-index 6f2a002..fc2f507 100644
+index 6f2a002..565b4e7 100644
 --- a/node_modules/expo-app-metrics/ios/AppMetricsModule.swift
 +++ b/node_modules/expo-app-metrics/ios/AppMetricsModule.swift
-@@ -1,3 +1,4 @@
+@@ -1,7 +1,10 @@
 +import Foundation
  import ExpoModulesCore
  import EXUpdatesInterface
++import os
  
-@@ -33,6 +34,8 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
+ internal let logger = Logger(logHandlers: [createOSLogHandler(category: Logger.EXPO_LOG_CATEGORY)])
++internal let appMetricsProductionLogger = os.Logger(subsystem: "expo", category: "expo-app-metrics-production")
+ 
+ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
+   var subscription: UpdatesStateChangeSubscription?
+@@ -33,6 +36,8 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
        )
      }
  
@@ -68,7 +74,7 @@ index 6f2a002..fc2f507 100644
      Function("logEvent") { (name: String, options: LogEventOptions?) in
        guard let validatedName = validateEventName(name) else {
          return
-@@ -75,10 +78,11 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
+@@ -75,10 +80,11 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
        // no-op
      }
  
@@ -82,7 +88,7 @@ index 6f2a002..fc2f507 100644
            .map { StoredSession(from: $0) } ?? []
        }.value
      }
-@@ -90,16 +94,44 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
+@@ -90,16 +96,44 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
        }.value
      }
  
@@ -137,7 +143,7 @@ index 6f2a002..fc2f507 100644
      }
  
      Function("simulateCrashReport") {
-@@ -117,6 +149,16 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
+@@ -117,6 +151,16 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
        case .stackOverflow: CrashTriggers.stackOverflow()
        }
      }
@@ -154,7 +160,7 @@ index 6f2a002..fc2f507 100644
    }
  
    public func updatesStateDidChange(_ event: [String : Any]) {
-@@ -129,6 +171,16 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
+@@ -129,6 +173,16 @@ public final class AppMetricsModule: Module, UpdatesStateChangeListener {
    }
  }
  
@@ -236,7 +242,7 @@ index a4aa47f..121950a 100644
          let metric = Metric(
            category: .appStartup,
 diff --git a/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift b/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
-index 5cb1733..c60efe6 100644
+index 5cb1733..5649fb8 100644
 --- a/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
 +++ b/node_modules/expo-app-metrics/ios/Database/MetricsDatabase.swift
 @@ -18,10 +18,31 @@ final class MetricsDatabase: Sendable {
@@ -255,7 +261,7 @@ index 5cb1733..c60efe6 100644
 +   internally so tests can drive the loop without waiting for the production interval to elapse.
 +   */
 +  @AppMetricsActor
-+  static var cleanupInterval: TimeInterval = 60 * 60 // 1 hour
++  static var cleanupInterval: TimeInterval = 5 * 60 // 5 minutes
 +
 +  /**
 +   Retention window (in seconds) for the periodic cleanup loop. `nil` (the default) means the loop
@@ -288,7 +294,7 @@ index 5cb1733..c60efe6 100644
    }
  
    /**
-@@ -112,6 +139,57 @@ final class MetricsDatabase: Sendable {
+@@ -112,6 +139,58 @@ final class MetricsDatabase: Sendable {
      }
    }
  
@@ -334,6 +340,7 @@ index 5cb1733..c60efe6 100644
 +          // deleting it — then tidy dead inactive session rows. Deliberately not `cleanupSessions`,
 +          // which deletes regardless of `isActive` and would drop the live session once it outlives
 +          // the window.
++          appMetricsProductionLogger.warning("Interval is \(Self.cleanupInterval, privacy: .public)s; cleaning up...")
 +          try self.cleanupMetricsAndLogs(olderThan: cutoff)
 +          try self.cleanupInactiveSessions(olderThan: cutoff)
 +        } catch {
@@ -346,7 +353,7 @@ index 5cb1733..c60efe6 100644
    /**
     Opens a connection at `fileUrl`. If the existing database was written by a different schema
     version than this build understands, the file (plus WAL/shm sidecars) is deleted and a fresh
-@@ -301,23 +379,46 @@ final class MetricsDatabase: Sendable {
+@@ -301,23 +380,46 @@ final class MetricsDatabase: Sendable {
      }
    }
  
@@ -403,7 +410,7 @@ index 5cb1733..c60efe6 100644
    }
  
    /**
-@@ -405,6 +506,49 @@ final class MetricsDatabase: Sendable {
+@@ -405,6 +507,49 @@ final class MetricsDatabase: Sendable {
      }
    }
  

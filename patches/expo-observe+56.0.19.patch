@@ -228,10 +228,10 @@ index bd2c66c..7343387 100644
 +{"version":3,"file":"types.d.ts","sourceRoot":"","sources":["../src/types.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,YAAY,EAAE,MAAM,MAAM,CAAC;AACzC,OAAO,KAAK,EAAE,iBAAiB,EAAE,eAAe,EAAE,gBAAgB,EAAE,MAAM,kBAAkB,CAAC;AAE7F;;;;GAIG;AACH,MAAM,MAAM,gBAAgB,GAAG,iBAAiB,CAAC;AAEjD;;;GAGG;AACH,MAAM,MAAM,iBAAiB,GAAG,MAAM,CAAC,MAAM,EAAE,gBAAgB,CAAC,CAAC;AAEjE,MAAM,MAAM,aAAa,GAAG;IAC1B;;;;OAIG;IACH,WAAW,CAAC,EAAE,MAAM,CAAC;IACrB;;;;;;;OAOG;IACH,kBAAkB,CAAC,EAAE,OAAO,CAAC;IAC7B;;;;;;;;;;;;OAYG;IACH,eAAe,CAAC,EAAE,OAAO,CAAC;IAC1B;;;;;;;;;;;;;;;OAeG;IACH,UAAU,CAAC,EAAE,MAAM,CAAC;IACpB;;OAEG;IACH,YAAY,CAAC,EAAE,yBAAyB,CAAC;IACzC;;;;;OAKG;IACH,+BAA+B,CAAC,EAAE,MAAM,CAAC;IACzC;;;;OAIG;IACH,yBAAyB,CAAC,EAAE,MAAM,CAAC;CACpC,CAAC;AAEF,MAAM,MAAM,yBAAyB,GAAG;IACtC;;;;;;;OAOG;IACH,aAAa,CAAC,EAAE,OAAO,CAAC;IACxB;;;;;;;;;OASG;IACH,kBAAkB,CAAC,EAAE,OAAO,CAAC;CAC9B,CAAC;AAEF,MAAM,CAAC,OAAO,OAAO,aAAc,SAAQ,YAAY;IACrD,cAAc,IAAI,OAAO,CAAC,IAAI,CAAC;IAC/B;;OAEG;IACH,SAAS,CAAC,MAAM,EAAE,aAAa,GAAG,IAAI;IACtC;;;;;;;;OAQG;IACH,QAAQ,CAAC,IAAI,EAAE,MAAM,EAAE,OAAO,CAAC,EAAE,eAAe,GAAG,IAAI;IACvD;;;OAGG;IACH,eAAe,IAAI,IAAI;IACvB;;;;;;;OAOG;IACH,eAAe,CAAC,UAAU,CAAC,EAAE,gBAAgB,GAAG,IAAI;IACpD;;;;;;;;;;;;OAYG;IACH,mBAAmB,CAAC,UAAU,CAAC,EAAE,iBAAiB,GAAG,IAAI,GAAG,IAAI;IAChE;;;;;;OAMG;IACH,iBAAiB,CAAC,QAAQ,EAAE;QAAE,WAAW,EAAE,MAAM,CAAC;QAAC,OAAO,EAAE,OAAO,CAAA;KAAE,GAAG,IAAI;CAC7E"}
 \ No newline at end of file
 diff --git a/node_modules/expo-observe/ios/Observability.swift b/node_modules/expo-observe/ios/Observability.swift
-index 1a5b5ff..2ae2086 100644
+index 1a5b5ff..5aa420f 100644
 --- a/node_modules/expo-observe/ios/Observability.swift
 +++ b/node_modules/expo-observe/ios/Observability.swift
-@@ -10,6 +10,51 @@ internal struct ObservabilityManager {
+@@ -10,6 +10,52 @@ internal struct ObservabilityManager {
    private static var projectId: String? = nil
    private static var useOpenTelemetry = false
  
@@ -275,6 +275,7 @@ index 1a5b5ff..2ae2086 100644
 +        guard let configured = dispatchIntervalSeconds, configured > 0 else {
 +          continue
 +        }
++        observeProductionLogger.warning("Interval is \(configured, privacy: .public)s; dispatching...")
 +        await dispatch()
 +      }
 +    }
@@ -283,7 +284,7 @@ index 1a5b5ff..2ae2086 100644
    internal static func dispatch() async {
      // Compute once and reuse for both signals — `shouldDispatch()` reads the persisted config, the
      // bundle defaults, and computes a sample-rate hash. Both halves of dispatch want the same answer.
-@@ -151,7 +196,15 @@ internal struct ObservabilityManager {
+@@ -151,7 +197,15 @@ internal struct ObservabilityManager {
    private static func sendRequest(to endpointUrl: URL, body: any Encodable) async throws -> Bool {
      var request = URLRequest(url: endpointUrl)
      request.httpMethod = "POST"
@@ -301,10 +302,20 @@ index 1a5b5ff..2ae2086 100644
  
      #if DEBUG
 diff --git a/node_modules/expo-observe/ios/ObserveModule.swift b/node_modules/expo-observe/ios/ObserveModule.swift
-index bc8f207..c3a17bc 100644
+index bc8f207..d3ff885 100644
 --- a/node_modules/expo-observe/ios/ObserveModule.swift
 +++ b/node_modules/expo-observe/ios/ObserveModule.swift
-@@ -10,6 +10,8 @@ internal struct Config: Record {
+@@ -2,14 +2,18 @@
+ 
+ import ExpoModulesCore
+ import ExpoAppMetrics
++import os
+ 
+ internal let observeLogger = Logger(logHandlers: [createOSLogHandler(category: Logger.EXPO_LOG_CATEGORY)])
++internal let observeProductionLogger = os.Logger(subsystem: "expo", category: "expo-observe-production")
+ 
+ internal struct Config: Record {
+   @Field var environment: String?
    @Field var dispatchingEnabled: Bool?
    @Field var dispatchInDebug: Bool?
    @Field var sampleRate: Double?
@@ -313,7 +324,7 @@ index bc8f207..c3a17bc 100644
  }
  
  internal struct BundleDefaults: Record {
-@@ -44,13 +46,17 @@ public final class ObserveModule: Module {
+@@ -44,13 +48,17 @@ public final class ObserveModule: Module {
            PersistedConfig(
              dispatchingEnabled: config.dispatchingEnabled,
              dispatchInDebug: config.dispatchInDebug,
