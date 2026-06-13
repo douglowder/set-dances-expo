@@ -63,7 +63,9 @@ export const CircularButton = forwardRef(
                 justifyContent: 'center',
                 alignItems: 'center',
                 padding: 0,
+                opacity: pressed || (Platform.OS === 'android' && focused) ? 0.6 : 1.0,
               },
+/*
               {
                 opacity: withTiming<number>(
                   pressed || (Platform.OS === 'android' && focused) ? 0.6 : 1.0,
@@ -74,6 +76,7 @@ export const CircularButton = forwardRef(
                   },
                 ),
               },
+*/
             ]}
           >
             {iconType === 'MaterialIcons' && (
