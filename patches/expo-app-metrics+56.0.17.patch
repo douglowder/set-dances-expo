@@ -1,3 +1,1915 @@
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/AppMetricsApplicationLifecycleListeners.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/AppMetricsApplicationLifecycleListeners.kt
+index 1f30006..6d5d38c 100644
+--- a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/AppMetricsApplicationLifecycleListeners.kt
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/AppMetricsApplicationLifecycleListeners.kt
+@@ -2,11 +2,21 @@ package expo.modules.appmetrics
+ 
+ import android.app.Application
+ import expo.modules.appmetrics.appstartup.AppStartupManager
++import expo.modules.appmetrics.networkrequests.OkHttpClientProviderHook
+ import expo.modules.core.interfaces.ApplicationLifecycleListener
+ 
+ class AppMetricsApplicationLifecycleListeners : ApplicationLifecycleListener {
+   override fun onCreate(application: Application) {
+     super.onCreate(application)
+     AppStartupManager.recordAppCreated(application)
++    // Install the OkHttp factory hook as early as possible - before React Native lazily caches
++    // its client. See `OkHttpClientProviderHook` for the race we're trying to win.
++    //
++    // `Application.onCreate` runs once per process. When Android keeps the process alive across
++    // activity recreations (see expo/expo#44879), this method isn't called again - but it doesn't
++    // need to be: `OkHttpClientProvider.factory` and `.client` are both process-scope statics, so
++    // the previous install survives and RN's next `getOkHttpClient()` still returns a client with
++    // our interceptor.
++    OkHttpClientProviderHook.installIfNeeded()
+   }
+ }
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/AppMetricsModule.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/AppMetricsModule.kt
+index a832864..b3ddd2b 100644
+--- a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/AppMetricsModule.kt
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/AppMetricsModule.kt
+@@ -3,21 +3,26 @@ package expo.modules.appmetrics
+ import android.content.Context
+ import expo.modules.appmetrics.appstartup.AppStartupManager
+ import expo.modules.appmetrics.logevents.LogEventOptions
++import expo.modules.appmetrics.networkrequests.NetworkRequestFilter
++import expo.modules.appmetrics.networkrequests.NetworkRequestObserver
+ import expo.modules.appmetrics.logevents.Severity
+ import expo.modules.appmetrics.logevents.sanitizeLogEventAttributes
+ import expo.modules.appmetrics.logevents.validateEventBody
+ import expo.modules.appmetrics.logevents.validateEventName
+ import expo.modules.appmetrics.memory.MemoryMetricsManager
++import expo.modules.appmetrics.storage.JsDebugSession
++import expo.modules.appmetrics.storage.JsLogRecord
+ import expo.modules.appmetrics.storage.JsMetric
+-import expo.modules.appmetrics.storage.JsSession
+ import expo.modules.appmetrics.storage.LogRecord
+-import expo.modules.appmetrics.storage.Metric
+ import expo.modules.appmetrics.storage.SessionManager
++import expo.modules.appmetrics.storage.SessionMetricInput
++import expo.modules.appmetrics.storage.SessionSharedObject
+ import expo.modules.appmetrics.updates.UpdatesMonitoring
+ import expo.modules.appmetrics.updates.UpdatesStateEvent
+ import expo.modules.appmetrics.utils.JsonAny
+ import expo.modules.appmetrics.utils.TimeUtils
+ import expo.modules.interfaces.constants.ConstantsInterface
++import expo.modules.kotlin.exception.CodedException
+ import expo.modules.kotlin.exception.Exceptions
+ import expo.modules.kotlin.functions.Coroutine
+ import expo.modules.kotlin.modules.Module
+@@ -29,7 +34,11 @@ import expo.modules.updatesinterface.UpdatesControllerRegistry
+ import expo.modules.updatesinterface.UpdatesStateChangeListener
+ import expo.modules.updatesinterface.UpdatesStateChangeSubscription
+ import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.Job
++import kotlinx.coroutines.SupervisorJob
++import kotlinx.coroutines.cancel
++import kotlinx.coroutines.delay
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.runBlocking
+ 
+@@ -44,18 +53,35 @@ class AppMetricsModule : Module(), UpdatesStateChangeListener {
+   lateinit var memoryMetricsManager: MemoryMetricsManager
+   lateinit var updatesMonitoring: UpdatesMonitoring
+   private var subscription: UpdatesStateChangeSubscription? = null
+-  lateinit var appSessionId: String
+-
+-  private val moduleCreationTimestamp = TimeUtils.getCurrentTimestampInISOFormat()
+ 
+   lateinit var sessionManager: SessionManager
+ 
+-  // Tracks the in-flight session-row INSERT kicked off in `OnCreate`. `OnDestroy`
+-  // joins it before stamping `endTimestamp` so the UPDATE doesn't race with the
+-  // INSERT and silently no-op.
+-  private var sessionStartJob: Job? = null
+-
+-  private var didSaveStartupMetrics: Boolean = false
++  lateinit var mainSession: SessionSharedObject
++
++  /**
++   * How often the periodic cleanup loop runs once `setCleanupRetentionSeconds(...)` has been called
++   * with a positive value. Not exposed through `Observe.configure(...)` — the JS surface only
++   * configures the retention window — but writable so tests can drive the loop without waiting for
++   * the production interval to elapse. Reads happen at each iteration so a test override applies on
++   * the very next wake.
++   */
++  @Volatile
++  var cleanupIntervalMillis: Long = 60 * 60 * 1000L // 1 hour
++
++  /**
++   * Retention window (in seconds) for the periodic cleanup loop. `null` (the default) means the
++   * loop is a no-op; set via `setCleanupRetentionSeconds(...)` from
++   * `Observe.configure({ scheduledCleanupRetentionWindow })`. The loop reads this on every wake so
++   * a re-configure takes effect on the next pass without restarting the coroutine.
++   */
++  @Volatile
++  private var cleanupRetentionSeconds: Long? = null
++
++  // Module-owned scope so the periodic cleanup loop has a lifecycle tied to module destroy rather
++  // than to a single JS-call dispatch (`modulesQueue`, which is per-call). `Dispatchers.IO` is the
++  // right pool: every wake hits SQLite via Room.
++  private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
++  private var cleanupJob: Job? = null
+ 
+   // Lazy-initialized metadata - created once when first needed
+   private val metadata: AppMetadata? by lazy {
+@@ -78,6 +104,8 @@ class AppMetricsModule : Module(), UpdatesStateChangeListener {
+         }
+       }
+ 
++      // TODO(@ubax): move `logEvent` onto the Session shared object so logs are recorded via a
++      // session handle (like `addMetric`), instead of writing to `mainSession` directly here.
+       Function("logEvent") { name: String, options: LogEventOptions? ->
+         val validatedName = validateEventName(name) ?: return@Function
+         val validatedBody = validateEventBody(options?.body)
+@@ -91,11 +119,12 @@ class AppMetricsModule : Module(), UpdatesStateChangeListener {
+           // ordering startup-metric writes ahead of caller-driven log events.
+           saveStartupMetricsIfNotSaved()
+           // Globals merge happens inside `sessionManager.addLogs` so every
+-          // persistence path picks them up.
+-          sessionManager.addLogs(
++          // persistence path picks them up. The session waits for its row
++          // before inserting.
++          mainSession.addLogs(
+             listOf(
+               LogRecord(
+-                sessionId = appSessionId,
++                sessionId = mainSession.sessionId,
+                 timestamp = TimeUtils.getCurrentTimestampInISOFormat(),
+                 name = validatedName,
+                 body = validatedBody,
+@@ -103,8 +132,7 @@ class AppMetricsModule : Module(), UpdatesStateChangeListener {
+                 attributes = sanitized.attributes?.let { JsonAny.encodeMapToJsonString(it) },
+                 droppedAttributesCount = sanitized.droppedCount
+               )
+-            ),
+-            sessionId = appSessionId
++            )
+           )
+         }
+       }
+@@ -116,27 +144,37 @@ class AppMetricsModule : Module(), UpdatesStateChangeListener {
+       OnCreate {
+         sessionManager = SessionManager(context)
+ 
+-        appSessionId = sessionManager.createSessionId()
++        // The main session starts at the first startup metric's timestamp (the
++        // earliest moment we have a record of), falling back to now when none
++        // have been collected yet.
++        val appSessionStartTimestamp =
++          AppStartupManager.metrics.firstOrNull()?.timestamp ?: TimeUtils.getCurrentTimestampInISOFormat()
++
++        mainSession = SessionSharedObject(
++          sessionManager = sessionManager,
++          scope = scope,
++          type = "main",
++          customStartTimestamp = appSessionStartTimestamp,
++          metadata = metadata,
++          runtime = appContext.runtime
++        )
+ 
+         // Persist the session row eagerly so it's visible to readers
+-        // (`getAllSessions`, `addCustomMetricToSession`, …) before any startup
+-        // metrics arrive. Older app runs are deactivated in the same coroutine
+-        // to keep the order well-defined. The `Job` is captured so `OnDestroy`
+-        // can wait for the INSERT before stamping `endTimestamp`.
+-        sessionStartJob = scope.launch {
+-          sessionManager.deactivateAllSessionsBefore(moduleCreationTimestamp)
+-          sessionManager.startSessionWithIdAt(
+-            sessionId = appSessionId,
+-            timestamp = TimeUtils.getProcessStartTimestamp(),
+-            metadata = metadata
+-          )
+-        }
++        // (`getMainSession`, …) as soon as possible. Idempotent:
++        // a racing write triggers (and joins) the same single start job.
++        scope.launch { mainSession.awaitSessionPersisted() }
++
++        // Sweep sessions orphaned by a previous process. The cutoff equals this
++        // session's start and the comparison is strict (`<`), so this session
++        // survives while older ones are swept — order vs the INSERT doesn't
++        // matter. Relies on `<`, not `<=` (see SessionManagerTest).
++        scope.launch { sessionManager.deactivateAllSessionsBefore(appSessionStartTimestamp) }
+ 
+         memoryMetricsManager = MemoryMetricsManager(
+           context = context,
+           sessionManager = sessionManager
+         )
+-        updatesMonitoring = UpdatesMonitoring(sessionId = appSessionId)
++        updatesMonitoring = UpdatesMonitoring(session = mainSession)
+         updatesMonitoring.patchAppInfoIfNeeded(metadata)
+         UpdatesControllerRegistry.controller?.get()?.let { controller ->
+           subscription = controller.subscribeToUpdatesStateChanges(this@AppMetricsModule)
+@@ -154,19 +192,25 @@ class AppMetricsModule : Module(), UpdatesStateChangeListener {
+       }
+ 
+       OnDestroy {
++        // Stop the periodic cleanup loop before teardown so it doesn't try to
++        // hit the database after the module's lifecycle has ended.
++        cleanupScope.cancel()
++        cleanupJob = null
++
+         // `modulesQueue` is cancelled immediately after this hook returns, so
+         // run the UPDATE on the calling thread to make sure the end timestamp
+-        // is persisted before teardown. Joining `sessionStartJob` first
+-        // guarantees the INSERT lands before the UPDATE so the stamp doesn't
++        // is persisted before teardown. `stop` awaits the session-start job
++        // first, so the INSERT lands before the UPDATE and the stamp doesn't
+         // silently no-op on a missing row.
+         runBlocking {
+-          sessionStartJob?.join()
+-          sessionManager.stopSession(appSessionId)
++          mainSession.stop()
+         }
+       }
+ 
+-      AsyncFunction("getAllSessions") Coroutine { ->
+-        sessionManager.getAllSessions().map { JsSession.fromSessionWithMetrics(it) }
++      // Debug-only: surfaces the inactive (ended) sessions for on-device
++      // inspection (e.g. the ObserveTester app)
++      AsyncFunction("getInactiveSessions") Coroutine { ->
++        sessionManager.getInactiveSessions().map { JsDebugSession.fromSessionWithMetrics(it) }
+       }
+ 
+       AsyncFunction("takeMemoryUsageSnapshotAsync") Coroutine { sessionId: String? ->
+@@ -179,8 +223,53 @@ class AppMetricsModule : Module(), UpdatesStateChangeListener {
+         sessionManager.addMetrics(listOf(metric.toMetric()), sessionId = metric.sessionId)
+       }
+ 
+-      AsyncFunction("getMainSession") Coroutine { ->
+-        sessionManager.getSessionById(appSessionId)?.let { JsSession.fromSessionWithMetrics(it) }
++      Function("getMainSession") {
++        mainSession
++      }
++
++      // Android has no foreground-session tracking yet, so there's never a session to return.
++      // Async to match the `Promise<Session | null>` JS contract.
++      AsyncFunction("getForegroundSession") {
++        null as SessionSharedObject?
++      }
++
++      Class(NetworkRequestObserver::class) {
++        Constructor { filter: NetworkRequestFilter? ->
++          NetworkRequestObserver(appContext, filter)
++        }
++
++        Function("setFilter") { observer: NetworkRequestObserver, filter: NetworkRequestFilter? ->
++          observer.setFilter(filter)
++        }
++      }
++
++      Class("Session", SessionSharedObject::class) {
++        // TODO(@ubax): Allow for user session creation from JS
++        Constructor { ->
++          throw CodedException(
++            "Session objects can't be created from JavaScript because sessions are opened and managed natively. " +
++              "Get one from AppMetrics.getMainSession() or AppMetrics.getForegroundSession() instead."
++          )
++        }
++
++        Property("id", SessionSharedObject::sessionId)
++        Property("type", SessionSharedObject::type)
++        Property("startDate", SessionSharedObject::startDate)
++
++        AsyncFunction("isActive") Coroutine SessionSharedObject::isActive
++        AsyncFunction("getEndDate") Coroutine SessionSharedObject::getEndDate
++
++        AsyncFunction("getMetrics") Coroutine { ref: SessionSharedObject ->
++          ref.getMetrics().map { JsMetric.fromMetric(it) }
++        }
++
++        AsyncFunction("getLogs") Coroutine { ref: SessionSharedObject ->
++          ref.getLogs().map { JsLogRecord.fromLogRecord(it) }
++        }
++
++        AsyncFunction("addMetric") Coroutine { ref: SessionSharedObject, metric: SessionMetricInput ->
++          ref.addMetrics(listOf(metric.toMetric(ref.sessionId)))
++        }
+       }
+     }
+ 
+@@ -191,27 +280,62 @@ class AppMetricsModule : Module(), UpdatesStateChangeListener {
+     }
+   }
+ 
++  /**
++   * Configures the periodic cleanup loop. A positive `retentionSeconds` starts the loop (on its
++   * first call) and tells it to keep metric/log rows from the last `retentionSeconds` while tidying
++   * dead inactive session rows older than the same cutoff. Subsequent calls update the retention
++   * window in place — the next pass uses the new value. Passing `null` or `0` leaves the loop idle
++   * (no-ops at each wake). Driven by `Observe.configure({ scheduledCleanupRetentionWindow })`.
++   */
++  fun setCleanupRetentionSeconds(retentionSeconds: Long?) {
++    cleanupRetentionSeconds = retentionSeconds
++    if (cleanupJob == null && retentionSeconds != null && retentionSeconds > 0) {
++      cleanupJob = cleanupScope.launch {
++        while (true) {
++          delay(cleanupIntervalMillis)
++          val retention = cleanupRetentionSeconds ?: continue
++          if (retention <= 0) {
++            continue
++          }
++          val cutoffTimestamp = TimeUtils.getTimestampInISOFormatFromPast(retention)
++          try {
++            sessionManager.cleanupMetricsAndLogs(cutoffTimestamp)
++            sessionManager.cleanupInactiveSessions(cutoffTimestamp)
++          } catch (e: Exception) {
++            android.util.Log.w(
++              "ExpoAppMetrics",
++              "Periodic cleanup failed: ${e.message}"
++            )
++          }
++        }
++      }
++    }
++  }
++
+   override fun updatesStateDidChange(event: Map<String, Any>) {
+     if (UpdatesStateEvent.fromMap(event)?.type == UpdatesStateEvent.EventType.DownloadCompleteWithUpdate) {
+       updatesMonitoring.downloadTimeMetric(subscription)?.let { metric ->
+         scope.launch {
+           // Attach any pending startup metrics first so the download-time
+-          // metric lands alongside them. The session row itself is already
+-          // persisted eagerly in `OnCreate`.
++          // metric lands alongside them. The session waits for its row before
++          // inserting.
+           saveStartupMetricsIfNotSaved()
+-          sessionManager.addMetrics(listOf(metric), sessionId = appSessionId)
++          mainSession.addMetrics(listOf(metric))
+         }
+       }
+     }
+   }
+ 
+-  // TODO(@lukmccall): Potential race condition - multiple coroutines could enter the block simultaneously, causing duplicates.
+-  internal suspend fun saveStartupMetricsIfNotSaved() {
+-    if (!didSaveStartupMetrics) {
+-      // The session row is written eagerly in `OnCreate`, so we only need to
+-      // attach the startup metrics here once they've been collected.
+-      sessionManager.addMetrics(AppStartupManager.metrics, sessionId = appSessionId)
+-      didSaveStartupMetrics = true
++  // Persists the collected startup metrics once, then suspends until that write
++  // completes. The session waits for its row before inserting.
++  internal suspend fun saveStartupMetricsIfNotSaved() = saveStartupMetricsJob.join()
++
++  // Startup metrics are persisted on first access and exactly once: `by lazy`
++  // runs the initializer a single time even across threads, so concurrent callers
++  // don't each insert them.
++  private val saveStartupMetricsJob: Job by lazy {
++    scope.launch {
++      mainSession.addMetrics(AppStartupManager.metrics)
+     }
+   }
+ }
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/appstartup/AppStartupManager.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/appstartup/AppStartupManager.kt
+index d0461a6..3297870 100644
+--- a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/appstartup/AppStartupManager.kt
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/appstartup/AppStartupManager.kt
+@@ -11,6 +11,7 @@ import expo.modules.appmetrics.AppStartupMetric
+ import expo.modules.appmetrics.TAG
+ import expo.modules.appmetrics.frames.FrameMetricsRecord
+ import expo.modules.appmetrics.frames.FrameMetricsRecorder
++import expo.modules.appmetrics.networkrequests.NetworkRequestMonitor
+ import expo.modules.appmetrics.storage.Metric
+ import expo.modules.appmetrics.utils.DeviceConditions
+ import expo.modules.appmetrics.utils.MetricParamsBuilder
+@@ -18,6 +19,7 @@ import expo.modules.appmetrics.utils.TimeUtils.getCurrentTimeInMillis
+ import expo.modules.appmetrics.utils.TimeUtils.getCurrentTimestampInISOFormat
+ import expo.modules.appmetrics.utils.TimeUtils.getProcessStartTimeInMillis
+ import org.json.JSONObject
++import java.util.Date
+ import java.util.concurrent.CopyOnWriteArrayList
+ 
+ enum class AppStartType { COLD, WARM }
+@@ -48,8 +50,11 @@ object AppStartupManager {
+   // and the JS thread. @Volatile guarantees writes are visible across threads so the
+   // one-shot guards (hasRecorded*) don't spuriously fire twice.
+   @Volatile private var bundleLoadStartTime: Long? = null
++
+   @Volatile private var launchTimeInMillis: Long? = null
++
+   @Volatile private var hasRecordedInteractive = false
++
+   @Volatile private var hasRecordedFirstRender = false
+ 
+   @Volatile
+@@ -233,11 +238,18 @@ object AppStartupManager {
+     frameMetrics: FrameMetricsRecord,
+     userParams: Map<String, Any>?
+   ): Map<String, Any> {
++    // Window the network summary to `launchTimeInMillis -> now` - same anchor iOS uses
++    // (`markers.finishedLaunchingDate`). When the anchor is missing we skip the summary
++    // entirely; an unbounded window would silently include requests from before launch.
++    val networkRequests = launchTimeInMillis?.let { launchStart ->
++      NetworkRequestMonitor.shared.summarize(start = Date(launchStart), end = Date())
++    }
+     return MetricParamsBuilder.build(
+       userParams = userParams,
+       frameMetrics = frameMetrics,
+       deviceState = DeviceConditions.deviceState(context),
+-      networkState = DeviceConditions.networkState(context)
++      networkState = DeviceConditions.networkState(context),
++      networkRequests = networkRequests
+     )
+   }
+ 
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequest.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequest.kt
+new file mode 100644
+index 0000000..e8a7b20
+--- /dev/null
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequest.kt
+@@ -0,0 +1,106 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++package expo.modules.appmetrics.networkrequests
++
++import java.util.Date
++import java.util.UUID
++
++/**
++ * Snapshot of an HTTP request seen by `NetworkRequestInterceptor`.
++ * Matches the iOS `NetworkRequest` struct so request data is consistent across platforms.
++ *
++ * The URL is stored as-is, including query parameters. Any redaction of sensitive data
++ * (for example, query parameter tokens or auth headers) must be handled by downstream code
++ * before the request is stored or reported.
++ */
++data class NetworkRequest(
++  /** Stable identifier for this observation. */
++  val id: UUID,
++
++  /** Request URL as supplied to OkHttp. May include query parameters and fragments. */
++  val url: String,
++
++  /** HTTP method (`GET`, `POST`, …). */
++  val method: String,
++
++  /** Response status code, or `null` if the request failed before headers were received. */
++  val statusCode: Int?,
++
++  /** Negotiated wire protocol - `http/1.1`, `h2`, `h3` - as reported by OkHttp's `Protocol`. */
++  val networkProtocol: String?,
++
++  /** Number of bytes sent on the wire for the request (headers + body). */
++  val requestBytesSent: Long?,
++
++  /** Number of bytes received on the wire for the response (headers + body). */
++  val responseBytesReceived: Long?,
++
++  /** Phase-by-phase timings, populated from OkHttp `EventListener` callbacks where available. */
++  val timings: Timings,
++
++  /**
++   * Short human-readable error description if the request completed with an exception. Kept as a
++   * string rather than carrying the throwable so the type stays serializable.
++   */
++  val errorDescription: String?,
++
++  /**
++   * Ordered list of redirect hops that preceded the final response. Empty when the request landed
++   * directly. Each entry's `fromUrl` is the URL that returned the redirect, `toUrl` is where the
++   * redirect pointed, and `statusCode` is the 3xx code that caused the hop.
++   */
++  val redirects: List<Redirect>
++) {
++  data class Redirect(
++    /** The URL that returned the redirect. */
++    val fromUrl: String,
++    /** The URL the request was redirected to. */
++    val toUrl: String,
++    /** The 3xx status code returned by `fromUrl` that caused this hop. */
++    val statusCode: Int
++  )
++
++  data class Timings(
++    /** When the request was dispatched (interceptor entry). */
++    val fetchStart: Date?,
++
++    /** When DNS resolution began. `null` if the host was resolved from cache or the connection was reused. */
++    val domainLookupStart: Date?,
++    val domainLookupEnd: Date?,
++
++    /** When the TCP connection began. `null` if a connection was reused. */
++    val connectStart: Date?,
++    val connectEnd: Date?,
++
++    /** TLS handshake window. `null` for cleartext or reused connections. */
++    val secureConnectionStart: Date?,
++    val secureConnectionEnd: Date?,
++
++    /** When the request line/headers began being sent. */
++    val requestStart: Date?,
++    val requestEnd: Date?,
++
++    /** When the first byte of the response arrived (TTFB). */
++    val responseStart: Date?,
++    val responseEnd: Date?,
++
++    /**
++     * Total wall-clock duration of the request in seconds. Convenience: callers don't have to
++     * subtract `fetchStart` from `responseEnd` themselves, and we can populate this even when
++     * individual phases are `null` (cache hits, errors before headers).
++     */
++    val totalDuration: Double
++  )
++}
++
++/**
++ * Lightweight snapshot emitted when a request begins, before any response or timing data exists.
++ * Shares its `id` with the corresponding completion-time `NetworkRequest`, so JS subscribers can
++ * correlate the two events.
++ */
++data class NetworkRequestStarted(
++  val id: UUID,
++  val url: String,
++  val method: String,
++  val startedAt: Date
++)
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestFilter.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestFilter.kt
+new file mode 100644
+index 0000000..b43b694
+--- /dev/null
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestFilter.kt
+@@ -0,0 +1,63 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++package expo.modules.appmetrics.networkrequests
++
++import expo.modules.kotlin.records.Field
++import expo.modules.kotlin.records.Record
++import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
++
++/**
++ * Declares which requests a `NetworkRequestObserver` emits events for. Mirrors the JS
++ * `NetworkRequestFilter` type and the iOS `NetworkRequestFilter`.
++ *
++ * Only attributes knowable the moment a request starts are supported — host and method — so the
++ * same predicate yields the same answer at start and at completion. That keeps the
++ * `requestStarted`/`requestCompleted` pair consistent: a request that matches always emits both, a
++ * request that doesn't matches neither.
++ *
++ * Different fields combine with AND; entries within a field combine with OR. A field that is left
++ * unset (`null`) places no constraint on its dimension, while a field set to an empty list allows
++ * nothing through it (an empty allow-list matches no value), so any empty field drops every
++ * request. A filter with no fields set matches every request, matching the no-filter default.
++ */
++data class NetworkRequestFilter(
++  /**
++   * Exact host matches, compared case-insensitively against the request URL's host.
++   */
++  @Field val hosts: List<String>? = null,
++  /**
++   * Allowed HTTP methods (`GET`, `POST`, …), compared case-insensitively.
++   */
++  @Field val methods: List<String>? = null
++) : Record {
++  /**
++   * Returns whether a request with the given URL and method passes this filter. Host and method
++   * comparisons are case-insensitive. An unset (`null`) field places no constraint on its
++   * dimension; a field set to an empty list allows nothing through it.
++   */
++  fun matches(url: String, method: String): Boolean {
++    hosts?.let { allowedHosts ->
++      val host = hostOf(url)
++      val allowed = allowedHosts.any { it.equals(host, ignoreCase = true) }
++      if (!allowed) {
++        return false
++      }
++    }
++    methods?.let { allowedMethods ->
++      val allowed = allowedMethods.any { it.equals(method, ignoreCase = true) }
++      if (!allowed) {
++        return false
++      }
++    }
++    return true
++  }
++
++  private fun hostOf(url: String): String? {
++    // Parse with OkHttp's `HttpUrl`, the same engine that issued the request, so host extraction
++    // matches how the request was actually routed. `java.net.URI` is stricter (RFC 2396) and
++    // rejects hosts OkHttp accepts (underscores, some IDN/Unicode forms), which would silently
++    // drop a request a `hosts` entry was meant to match. A URL with no parseable host yields
++    // `null` and can't match any `hosts` entry.
++    return url.toHttpUrlOrNull()?.host
++  }
++}
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestInterceptor.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestInterceptor.kt
+new file mode 100644
+index 0000000..11a498e
+--- /dev/null
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestInterceptor.kt
+@@ -0,0 +1,552 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++package expo.modules.appmetrics.networkrequests
++
++import okhttp3.Call
++import okhttp3.EventListener
++import okhttp3.Handshake
++import okhttp3.Headers
++import okhttp3.Interceptor
++import okhttp3.MediaType
++import okhttp3.Protocol
++import okhttp3.Request
++import okhttp3.Response
++import okhttp3.ResponseBody
++import okio.Buffer
++import okio.BufferedSource
++import okio.ForwardingSource
++import okio.buffer
++import java.io.IOException
++import java.net.InetAddress
++import java.net.InetSocketAddress
++import java.net.Proxy
++import java.util.Date
++import java.util.UUID
++import java.util.WeakHashMap
++
++/**
++ * Sentinel header recognised by `NetworkRequestInterceptor` to skip observation. expo-observe's
++ * dispatcher sets it on outgoing telemetry so our own uploads don't recurse through the monitor.
++ * Mirrors `NetworkRequestTaskSwizzling.internalHeaderName` on iOS — keep the literal in sync.
++ */
++const val INTERNAL_HEADER_NAME = "Expo-AppMetrics-Skip"
++
++/**
++ * Marker tag attached to requests that have already entered our application interceptor. Used by
++ * the double-instrumentation guard: if an app installs `NetworkRequestInterceptor.instance` on a
++ * client that's *also* getting injected by the RN factory hook, the second pass short-circuits
++ * to `chain.proceed(request)` without re-observing.
++ */
++private object AlreadyObservedMarker
++
++/**
++ * OkHttp `Interceptor` that records every HTTP request that traverses an `OkHttpClient` it's
++ * installed on. Sees the original outgoing request (URL the caller fetched) and the final
++ * response after OkHttp follows redirects — emits one `requestStarted` and one `requestCompleted`
++ * per logical fetch.
++ *
++ * Phase timings (`dnsStart`, `connectStart`, etc.) and body byte counts are captured by
++ * `NetworkRequestEventListener` on the network layer (below `BridgeInterceptor` and
++ * `GzipSource`) so they reflect real on-the-wire bytes rather than the gunzipped, app-level
++ * view our interceptor sees. The interceptor reads (and removes) the per-call timings entry
++ * when finalizing the snapshot.
++ *
++ * Response-body completion is signaled via a thin `BodyCloseSignal` wrapper so finalization
++ * waits for the caller to drain the response — by the time the wrapper fires, the listener's
++ * `responseBodyEnd` byte count is stable.
++ */
++class NetworkRequestInterceptor private constructor(
++  private val monitor: NetworkRequestMonitor
++) : Interceptor {
++  override fun intercept(chain: Interceptor.Chain): Response {
++    val originalRequest = chain.request()
++
++    // Recursion guard: telemetry uploads carry this header so they aren't observed in turn. We
++    // don't record these, but the per-call event listener still fires for them — its orphaned
++    // timings entry is reclaimed by the weak-keyed `inFlightTimings` map (see there).
++    if (originalRequest.header(INTERNAL_HEADER_NAME) != null) {
++      val stripped = originalRequest.newBuilder().removeHeader(INTERNAL_HEADER_NAME).build()
++      return chain.proceed(stripped)
++    }
++
++    // Double-instrumentation guard: a downstream interceptor in the same chain may already be us.
++    if (originalRequest.tag(AlreadyObservedMarker::class.java) != null) {
++      return chain.proceed(originalRequest)
++    }
++
++    val observationId = UUID.randomUUID()
++    val startedAt = Date()
++    val startNanos = System.nanoTime()
++
++    val request = originalRequest.newBuilder()
++      .tag(AlreadyObservedMarker::class.java, AlreadyObservedMarker)
++      .build()
++
++    monitor.recordStart(NetworkRequestStarted(observationId, originalRequest.url.toString(), originalRequest.method, startedAt))
++
++    var response: Response? = null
++    var error: IOException? = null
++    var bodySignalingWrapper: BodyCloseSignal? = null
++    try {
++      val raw = chain.proceed(request)
++      // Wrap the response body purely for completion signaling — the wrapper doesn't count
++      // bytes (those come from `EventListener.responseBodyEnd`, which fires below `GzipSource`
++      // on the real network layer). It just lets us defer `finalizeAndRecord` until the caller
++      // drains the body, so the snapshot's byte counts are populated by the time we read them.
++      val wrapped = raw.body?.let { rawBody ->
++        BodyCloseSignal(rawBody) {
++          finalizeAndRecord(
++            observationId = observationId,
++            originalRequest = originalRequest,
++            response = raw,
++            call = chain.call(),
++            startedAt = startedAt,
++            startNanos = startNanos,
++            error = null
++          )
++        }
++      }
++      response = if (wrapped != null) {
++        raw.newBuilder().body(wrapped).build()
++      } else {
++        raw
++      }
++      bodySignalingWrapper = wrapped
++    } catch (e: IOException) {
++      error = e
++    }
++
++    // Two paths land here without a streaming body to wait on: an error before headers, and a
++    // response with no body (HEAD, 204, 304, ...). Both finalize the snapshot inline.
++    if (error != null || bodySignalingWrapper == null) {
++      finalizeAndRecord(
++        observationId = observationId,
++        originalRequest = originalRequest,
++        response = response,
++        call = chain.call(),
++        startedAt = startedAt,
++        startNanos = startNanos,
++        error = error
++      )
++    }
++
++    if (error != null) {
++      throw error
++    }
++    return response!!
++  }
++
++  private fun finalizeAndRecord(
++    observationId: UUID,
++    originalRequest: Request,
++    response: Response?,
++    call: Call,
++    startedAt: Date,
++    startNanos: Long,
++    error: IOException?
++  ) {
++    val endNanos = System.nanoTime()
++    val totalDuration = (endNanos - startNanos) / 1_000_000_000.0
++    val endDate = Date(startedAt.time + ((endNanos - startNanos) / 1_000_000L))
++
++    val phases = NetworkRequestEventListener.takeTimings(call)
++
++    val snapshot = buildSnapshot(
++      id = observationId,
++      originalRequest = originalRequest,
++      response = response,
++      phases = phases,
++      fallbackStart = startedAt,
++      fallbackEnd = endDate,
++      totalDuration = totalDuration,
++      error = error
++    )
++    monitor.record(snapshot)
++  }
++
++  companion object {
++    /** Shared interceptor backed by `NetworkRequestMonitor.shared`. App code adds this to its own
++     `OkHttpClient.Builder` if it wants those requests observed. */
++    val instance: NetworkRequestInterceptor by lazy {
++      NetworkRequestInterceptor(NetworkRequestMonitor.shared)
++    }
++
++    /** Test-only constructor that lets tests drive a dedicated monitor. */
++    internal fun forTesting(monitor: NetworkRequestMonitor): NetworkRequestInterceptor =
++      NetworkRequestInterceptor(monitor)
++  }
++}
++
++/**
++ * Builds a `NetworkRequest` snapshot from interceptor outputs. Pulled out so tests can exercise
++ * the field-population logic without spinning up a full OkHttp chain.
++ *
++ * Byte counts come from `EventListener.requestBodyEnd` / `responseBodyEnd` (carried on
++ * `phases.requestBodyBytes` / `responseBodyBytes`) — those fire on the network layer and
++ * report on-the-wire bytes (including chunked framing and gzip compression). The app-layer
++ * `originalRequest.body.contentLength()` and `response.body.contentLength()` are only used as
++ * a fallback when the listener didn't fire (no request body, response not consumed, errors
++ * before headers). Header bytes are an HTTP/1.1 framing estimate — see
++ * `requestHeaderByteCount` / `responseHeaderByteCount` for the caveats.
++ */
++internal fun buildSnapshot(
++  id: UUID,
++  originalRequest: Request,
++  response: Response?,
++  phases: NetworkRequestEventListener.PhaseTimings?,
++  fallbackStart: Date,
++  fallbackEnd: Date,
++  totalDuration: Double,
++  error: IOException?
++): NetworkRequest {
++  val redirects = response?.let { buildRedirectChain(it) } ?: emptyList()
++
++  val requestHeaderBytes = requestHeaderByteCount(originalRequest)
++  val responseHeaderBytes = response?.let { responseHeaderByteCount(it) } ?: 0L
++  // Prefer the on-the-wire body count reported by `EventListener.{request,response}BodyEnd` —
++  // those callbacks fire on the network layer (below `BridgeInterceptor` and `GzipSource`) so
++  // they're the truth. Fall back to declared `contentLength()` for callers that never streamed
++  // the body and zero otherwise. The `takeIf { it > 0 }` guards `contentLength()`'s sentinel
++  // `-1` for unknown sizes.
++  val requestBytesSent: Long? = if (response != null || error != null) {
++    val body = phases?.requestBodyBytes?.takeIf { it > 0 }
++      ?: originalRequest.body?.contentLength()?.takeIf { it > 0 }
++      ?: 0L
++    requestHeaderBytes + body
++  } else {
++    null
++  }
++  val responseBytesReceived: Long? = response?.let {
++    val body = phases?.responseBodyBytes?.takeIf { it > 0 }
++      ?: it.body?.contentLength()?.takeIf { it > 0 }
++      ?: 0L
++    responseHeaderBytes + body
++  }
++
++  val timings = NetworkRequest.Timings(
++    fetchStart = phases?.fetchStart ?: fallbackStart,
++    domainLookupStart = phases?.dnsStart,
++    domainLookupEnd = phases?.dnsEnd,
++    connectStart = phases?.connectStart,
++    connectEnd = phases?.connectEnd,
++    secureConnectionStart = phases?.secureConnectStart,
++    secureConnectionEnd = phases?.secureConnectEnd,
++    requestStart = phases?.requestHeadersStart ?: phases?.requestBodyStart,
++    requestEnd = phases?.requestBodyEnd ?: phases?.requestHeadersEnd,
++    responseStart = phases?.responseHeadersStart,
++    responseEnd = phases?.responseBodyEnd ?: phases?.responseHeadersEnd ?: fallbackEnd,
++    totalDuration = totalDuration
++  )
++
++  return NetworkRequest(
++    id = id,
++    url = originalRequest.url.toString(),
++    method = originalRequest.method,
++    statusCode = response?.code,
++    networkProtocol = response?.protocol?.toString(),
++    requestBytesSent = requestBytesSent,
++    responseBytesReceived = responseBytesReceived,
++    timings = timings,
++    errorDescription = error?.localizedMessage ?: error?.message,
++    redirects = redirects
++  )
++}
++
++/**
++ * Walks `Response.priorResponse()` chronologically and emits one `Redirect` per hop. The chain
++ * is naturally redirect-only — OkHttp doesn't surface intermediate protocol upgrades through
++ * `priorResponse` the way iOS exposes Alt-Svc upgrades through `transactionMetrics`, so no
++ * status-code filter is required.
++ */
++internal fun buildRedirectChain(final: Response): List<NetworkRequest.Redirect> {
++  // Collect tuples (priorResponse, nextResponseInChain) walking backwards, then reverse.
++  val reversed = mutableListOf<NetworkRequest.Redirect>()
++  var next: Response = final
++  var prior: Response? = final.priorResponse
++  while (prior != null) {
++    reversed.add(
++      NetworkRequest.Redirect(
++        fromUrl = prior.request.url.toString(),
++        toUrl = next.request.url.toString(),
++        statusCode = prior.code
++      )
++    )
++    next = prior
++    prior = prior.priorResponse
++  }
++  return reversed.reversed()
++}
++
++/**
++ * OkHttp `EventListener` that captures per-phase timestamps and stashes them in a process-wide
++ * map keyed by `Call`. `NetworkRequestInterceptor` reads (and removes) the entry when finalizing
++ * the snapshot.
++ *
++ * Use the factory rather than the bare class so each `Call` gets its own builder; OkHttp shares a
++ * single `EventListener` instance across calls otherwise and concurrent writes would race.
++ */
++class NetworkRequestEventListener : EventListener() {
++  private val builder = MutablePhaseTimings()
++
++  override fun callStart(call: Call) {
++    builder.fetchStart = Date()
++  }
++
++  override fun dnsStart(call: Call, domainName: String) {
++    builder.dnsStart = Date()
++  }
++
++  override fun dnsEnd(call: Call, domainName: String, inetAddressList: List<InetAddress>) {
++    builder.dnsEnd = Date()
++  }
++
++  override fun connectStart(call: Call, inetSocketAddress: InetSocketAddress, proxy: Proxy) {
++    builder.connectStart = Date()
++  }
++
++  override fun secureConnectStart(call: Call) {
++    builder.secureConnectStart = Date()
++  }
++
++  override fun secureConnectEnd(call: Call, handshake: Handshake?) {
++    builder.secureConnectEnd = Date()
++  }
++
++  override fun connectEnd(call: Call, inetSocketAddress: InetSocketAddress, proxy: Proxy, protocol: Protocol?) {
++    builder.connectEnd = Date()
++  }
++
++  override fun requestHeadersStart(call: Call) {
++    builder.requestHeadersStart = Date()
++  }
++
++  override fun requestHeadersEnd(call: Call, request: Request) {
++    builder.requestHeadersEnd = Date()
++  }
++
++  override fun requestBodyStart(call: Call) {
++    builder.requestBodyStart = Date()
++  }
++
++  override fun requestBodyEnd(call: Call, byteCount: Long) {
++    builder.requestBodyEnd = Date()
++    builder.requestBodyBytes = byteCount
++  }
++
++  override fun responseHeadersStart(call: Call) {
++    builder.responseHeadersStart = Date()
++  }
++
++  override fun responseHeadersEnd(call: Call, response: Response) {
++    builder.responseHeadersEnd = Date()
++  }
++
++  override fun responseBodyEnd(call: Call, byteCount: Long) {
++    builder.responseBodyEnd = Date()
++    builder.responseBodyBytes = byteCount
++  }
++
++  override fun callEnd(call: Call) {
++    publish(call)
++  }
++
++  override fun callFailed(call: Call, ioe: IOException) {
++    publish(call)
++  }
++
++  override fun canceled(call: Call) {
++    publish(call)
++  }
++
++  private fun publish(call: Call) {
++    synchronized(inFlightTimings) {
++      inFlightTimings[call] = builder.snapshot()
++    }
++  }
++
++  /**
++   * Mutable per-phase scratch space the listener writes into as the call progresses. A separate
++   * type from `PhaseTimings` so the published value (read by the interceptor) is immutable.
++   */
++  internal class MutablePhaseTimings(
++    @Volatile var fetchStart: Date? = null,
++    @Volatile var dnsStart: Date? = null,
++    @Volatile var dnsEnd: Date? = null,
++    @Volatile var connectStart: Date? = null,
++    @Volatile var connectEnd: Date? = null,
++    @Volatile var secureConnectStart: Date? = null,
++    @Volatile var secureConnectEnd: Date? = null,
++    @Volatile var requestHeadersStart: Date? = null,
++    @Volatile var requestHeadersEnd: Date? = null,
++    @Volatile var requestBodyStart: Date? = null,
++    @Volatile var requestBodyEnd: Date? = null,
++    @Volatile var responseHeadersStart: Date? = null,
++    @Volatile var responseHeadersEnd: Date? = null,
++    @Volatile var responseBodyEnd: Date? = null,
++    @Volatile var requestBodyBytes: Long? = null,
++    @Volatile var responseBodyBytes: Long? = null
++  ) {
++    fun snapshot() = PhaseTimings(
++      fetchStart, dnsStart, dnsEnd,
++      connectStart, connectEnd,
++      secureConnectStart, secureConnectEnd,
++      requestHeadersStart, requestHeadersEnd,
++      requestBodyStart, requestBodyEnd,
++      responseHeadersStart, responseHeadersEnd,
++      responseBodyEnd,
++      requestBodyBytes, responseBodyBytes
++    )
++  }
++
++  /**
++   * Per-phase wire timestamps captured from OkHttp's `EventListener` callbacks. The interceptor
++   * folds these into the broader `NetworkRequest.Timings` at finalize time; the latter is the
++   * iOS-mirrored snapshot shape and the only one JS ever sees.
++   *
++   * `requestBodyBytes` and `responseBodyBytes` come from `EventListener.requestBodyEnd` /
++   * `responseBodyEnd`, which fire on the *network* layer — below `BridgeInterceptor` and
++   * `GzipSource`. They report the bytes actually on the wire, not the (gunzipped, app-layer)
++   * view that the interceptor sees. `null` means the corresponding body-end callback never
++   * fired (no request body / response not fully consumed / error before headers).
++   */
++  data class PhaseTimings(
++    val fetchStart: Date?,
++    val dnsStart: Date?,
++    val dnsEnd: Date?,
++    val connectStart: Date?,
++    val connectEnd: Date?,
++    val secureConnectStart: Date?,
++    val secureConnectEnd: Date?,
++    val requestHeadersStart: Date?,
++    val requestHeadersEnd: Date?,
++    val requestBodyStart: Date?,
++    val requestBodyEnd: Date?,
++    val responseHeadersStart: Date?,
++    val responseHeadersEnd: Date?,
++    val responseBodyEnd: Date?,
++    val requestBodyBytes: Long?,
++    val responseBodyBytes: Long?
++  )
++
++  companion object {
++    /**
++     * Process-wide map of in-flight call timings. Lifecycle: the listener writes one entry per
++     * call when the call ends, the interceptor reads + removes when it builds the snapshot.
++     *
++     * Keyed weakly on `Call` so any entry the interceptor never takes is reclaimed once the `Call`
++     * is collected, rather than pinned forever. That covers the paths where `finalizeAndRecord`
++     * doesn't run for a call the listener still reported on: the recursion / double-instrumentation
++     * guards that short-circuit to `chain.proceed(...)` without recording, and responses whose body
++     * the caller never drains or closes. `Call` doesn't override `equals`/`hashCode`, so the map
++     * keys on identity as intended.
++     *
++     * `WeakHashMap` isn't thread-safe and OkHttp drives the listener from a pool of dispatcher
++     * threads, so every access goes through `synchronized`.
++     */
++    private val inFlightTimings = WeakHashMap<Call, PhaseTimings>()
++
++    /** Removes and returns the timings for `call`, or `null` if none were recorded. */
++    internal fun takeTimings(call: Call): PhaseTimings? = synchronized(inFlightTimings) {
++      inFlightTimings.remove(call)
++    }
++
++    /** Factory that installs a fresh listener per call. Wire to `OkHttpClient.Builder.eventListenerFactory(...)`. */
++    val factory: EventListener.Factory = EventListener.Factory { NetworkRequestEventListener() }
++  }
++}
++
++/**
++ * Wraps the response body to signal when the caller finishes draining it. Doesn't count bytes
++ * — those come from `EventListener.responseBodyEnd` (the network layer, below `GzipSource`),
++ * which fires before the caller's close/EOF on the app layer. This wrapper exists purely so
++ * the interceptor can defer `finalizeAndRecord` until the byte counters on `PhaseTimings` are
++ * stable.
++ */
++private class BodyCloseSignal(
++  private val delegate: ResponseBody,
++  private val onComplete: () -> Unit
++) : ResponseBody() {
++  @Volatile
++  private var completed: Boolean = false
++
++  // OkHttp's contract returns the same `BufferedSource` on repeated `source()` calls, so we
++  // cache ours too — wrapping twice would fire the completion callback twice.
++  private val signalingSource: BufferedSource by lazy {
++    object : ForwardingSource(delegate.source()) {
++      override fun read(sink: Buffer, byteCount: Long): Long {
++        val read = super.read(sink, byteCount)
++        if (read == -1L) {
++          // Body fully drained — fire the completion callback exactly once. Callers that close
++          // the stream without reaching EOF still trigger completion via the `close()` override.
++          fireCompleteOnce()
++        }
++        return read
++      }
++
++      override fun close() {
++        fireCompleteOnce()
++        super.close()
++      }
++    }.buffer()
++  }
++
++  override fun contentType(): MediaType? = delegate.contentType()
++  override fun contentLength(): Long = delegate.contentLength()
++  override fun source(): BufferedSource = signalingSource
++
++  private fun fireCompleteOnce() {
++    if (completed) {
++      return
++    }
++    completed = true
++    onComplete()
++  }
++}
++
++/**
++ * Approximates the number of bytes the request headers occupy on the wire - the HTTP/1.1 request
++ * line (`METHOD path HTTP/1.1\r\n`) plus the serialized header block (`Name: Value\r\n` per
++ * header and the trailing CRLF that terminates the block).
++ *
++ * iOS gets exact numbers from `URLSessionTaskTransactionMetrics.countOfRequestHeaderBytesSent`.
++ * Android has no equivalent — `EventListener.requestHeadersEnd` carries a `Request` object, but
++ * it's the application-layer view (the one our interceptor receives), not the post-
++ * `BridgeInterceptor` request that's actually sent. Headers OkHttp adds below us
++ * (`Host`, `Accept-Encoding`, `User-Agent`, `Connection`, `Content-Length`) are missing from
++ * this count, so we undercount by roughly 80–150 bytes per request on HTTP/1.1.
++ *
++ * HTTP/2 and HTTP/3 use HPACK/QPACK header compression and a binary framing layer; on those
++ * protocols the comparison to "wire bytes" is fundamentally fuzzy regardless. We accept the
++ * imprecision rather than reach into OkHttp internals.
++ */
++private fun requestHeaderByteCount(request: Request): Long {
++  // "METHOD " + encodedPathQuery + " HTTP/1.1\r\n"
++  val pathLength = request.url.encodedPath.length +
++    (request.url.encodedQuery?.let { it.length + 1 } ?: 0)
++  val requestLine = request.method.length + 1 + pathLength + 1 + "HTTP/1.1".length + 2
++  return requestLine + serializedHeaderBytes(request.headers)
++}
++
++/**
++ * Same approximation as `requestHeaderByteCount` but for the response side: the status line
++ * (`HTTP/1.1 STATUSCODE REASON\r\n`) plus the serialized header block.
++ */
++private fun responseHeaderByteCount(response: Response): Long {
++  val statusLine = response.protocol.toString().length + 1 +
++    response.code.toString().length + 1 +
++    response.message.length + 2
++  return statusLine + serializedHeaderBytes(response.headers)
++}
++
++/**
++ * Serialized size of an HTTP/1.1 header block: `Name: Value\r\n` per header plus the trailing
++ * `\r\n` that terminates the block. OkHttp 4.10+ ships `Headers.byteCount()` natively; we
++ * implement it ourselves because we're pinned to 4.9.2 (matches RN's pin).
++ */
++private fun serializedHeaderBytes(headers: Headers): Long {
++  var total = 2L // trailing CRLF terminating the header block
++  for (i in 0 until headers.size) {
++    total += headers.name(i).length + 2 + headers.value(i).length + 2
++  }
++  return total
++}
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestMonitor.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestMonitor.kt
+new file mode 100644
+index 0000000..406bb85
+--- /dev/null
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestMonitor.kt
+@@ -0,0 +1,118 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++package expo.modules.appmetrics.networkrequests
++
++import java.lang.ref.WeakReference
++import java.util.Date
++
++/**
++ * Receives notifications about HTTP requests observed by `NetworkRequestInterceptor`. Both
++ * methods default to no-ops so delegates can opt into either start- or complete-time
++ * notifications without implementing the other.
++ */
++interface NetworkRequestObserverDelegate {
++  fun onNetworkRequestStarted(request: NetworkRequestStarted) {}
++  fun onNetworkRequestCompleted(request: NetworkRequest) {}
++
++  /**
++   * Whether this delegate wants events for a request with the given URL and method. Consulted by
++   * the monitor before each fan-out call so a delegate's filter is evaluated before the payload is
++   * built. Only the URL and method are passed because those are the only attributes available at
++   * both start and completion, which keeps the started/completed decision consistent. Defaults to
++   * accepting every request.
++   */
++  fun shouldObserveRequest(url: String, method: String): Boolean = true
++}
++
++/**
++ * Aggregates `NetworkRequest` snapshots delivered by the OkHttp interceptor and fans them out to
++ * registered delegates. Mirrors the iOS `NetworkRequestMonitor`.
++ *
++ * The interceptor runs on OkHttp's dispatcher threads; delegates may be added/removed from any
++ * thread (JS-facing observers come from the React thread, the singleton is reachable from app
++ * code). All shared state is guarded by a single intrinsic lock - the work inside is small and
++ * synchronous, so contention is negligible.
++ */
++class NetworkRequestMonitor internal constructor() {
++  /** Maximum number of completed requests retained for debug surfaces. */
++  private val recentCapacity = 200
++
++  private val lock = Any()
++  private val recentRequests = ArrayDeque<NetworkRequest>()
++  private val delegates = mutableListOf<WeakReference<NetworkRequestObserverDelegate>>()
++
++  /**
++   * Most recently observed completed requests, oldest first. Bounded by `recentCapacity`.
++   * Intended for debug surfaces and the TTI summary; not for the dispatch path.
++   */
++  val recent: List<NetworkRequest>
++    get() = synchronized(lock) { recentRequests.toList() }
++
++  /**
++   * Folds the requests whose `timings.fetchStart` falls within `[start, end]` into a summary.
++   * Used by the TTI metric to attach a per-launch network rollup. Bounded by the ring buffer:
++   * under heavy network load the earliest requests in the window may have been evicted, in which
++   * case the summary undercounts - acceptable for a TTI-attached signal.
++   */
++  fun summarize(start: Date, end: Date): NetworkRequestSummary {
++    val inWindow = synchronized(lock) {
++      recentRequests.filter { request ->
++        val fetchStart = request.timings.fetchStart ?: return@filter false
++        !fetchStart.before(start) && !fetchStart.after(end)
++      }
++    }
++    return NetworkRequestSummary.from(inWindow)
++  }
++
++  /** Adds a delegate. Held weakly - drop the reference to unsubscribe. */
++  fun addDelegate(delegate: NetworkRequestObserverDelegate) = synchronized(lock) {
++    delegates.removeAll { it.get() == null }
++    delegates.add(WeakReference(delegate))
++  }
++
++  fun removeDelegate(delegate: NetworkRequestObserverDelegate) = synchronized(lock) {
++    delegates.removeAll {
++      val strongRef = it.get()
++      strongRef === delegate || strongRef == null
++    }
++  }
++
++  /** Records a completed request: appends to the ring buffer and fans out. */
++  fun record(request: NetworkRequest) {
++    val snapshot = synchronized(lock) {
++      recentRequests.addLast(request)
++      while (recentRequests.size > recentCapacity) {
++        recentRequests.removeFirst()
++      }
++      delegates.removeAll { it.get() == null }
++      delegates.mapNotNull { it.get() }
++    }
++    for (delegate in snapshot) {
++      if (delegate.shouldObserveRequest(request.url, request.method)) {
++        delegate.onNetworkRequestCompleted(request)
++      }
++    }
++  }
++
++  /**
++   * Records that a request has begun. No ring-buffer entry - the started snapshot is purely a
++   * notification used to surface in-flight state to subscribers. The corresponding completion
++   * event will arrive later with a matching `id`.
++   */
++  fun recordStart(request: NetworkRequestStarted) {
++    val snapshot = synchronized(lock) {
++      delegates.removeAll { it.get() == null }
++      delegates.mapNotNull { it.get() }
++    }
++    for (delegate in snapshot) {
++      if (delegate.shouldObserveRequest(request.url, request.method)) {
++        delegate.onNetworkRequestStarted(request)
++      }
++    }
++  }
++
++  companion object {
++    /** Process-wide singleton mirroring `NetworkRequestMonitor.shared` on iOS. */
++    val shared: NetworkRequestMonitor = NetworkRequestMonitor()
++  }
++}
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestObserver.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestObserver.kt
+new file mode 100644
+index 0000000..d12d2c4
+--- /dev/null
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestObserver.kt
+@@ -0,0 +1,94 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++package expo.modules.appmetrics.networkrequests
++
++import expo.modules.appmetrics.utils.TimeUtils
++import expo.modules.kotlin.AppContext
++import expo.modules.kotlin.sharedobjects.SharedObject
++import java.util.concurrent.atomic.AtomicReference
++
++/** Event names emitted by `NetworkRequestObserver`, matching the keys in the JS `NetworkRequestObserverEvents` type. */
++internal const val REQUEST_STARTED_EVENT = "requestStarted"
++internal const val REQUEST_COMPLETED_EVENT = "requestCompleted"
++
++/**
++ * JS-facing `SharedObject` that bridges per-instance JS subscriptions to the singleton
++ * `NetworkRequestMonitor`. Each JS `new NetworkRequestObserver()` allocates one of these and
++ * registers it as a delegate; the native instance is released when JS drops the reference, at
++ * which point `sharedObjectDidRelease` removes the delegate registration.
++ *
++ * The class only forwards events — it doesn't store request history. Use
++ * `NetworkRequestMonitor.shared.recent` for that.
++ */
++class NetworkRequestObserver(appContext: AppContext, filter: NetworkRequestFilter? = null) :
++  SharedObject(appContext),
++  NetworkRequestObserverDelegate {
++
++  // The active filter, or null to observe every request. An `AtomicReference` so the read from the
++  // monitor's fan-out (`shouldObserveRequest`) and the swap from `setFilter` are atomic: a
++  // `setFilter` call never leaves a request observed under a half-applied filter.
++  private val filter = AtomicReference(filter)
++
++  init {
++    NetworkRequestMonitor.shared.addDelegate(this)
++  }
++
++  override fun sharedObjectDidRelease() {
++    NetworkRequestMonitor.shared.removeDelegate(this)
++    super.sharedObjectDidRelease()
++  }
++
++  /**
++   * Replaces the active filter. Pass null to observe every request. The swap is atomic.
++   */
++  fun setFilter(filter: NetworkRequestFilter?) {
++    this.filter.set(filter)
++  }
++
++  override fun shouldObserveRequest(url: String, method: String): Boolean {
++    return filter.get()?.matches(url, method) ?: true
++  }
++
++  override fun onNetworkRequestStarted(request: NetworkRequestStarted) {
++    emit(REQUEST_STARTED_EVENT, startedPayload(request))
++  }
++
++  override fun onNetworkRequestCompleted(request: NetworkRequest) {
++    emit(REQUEST_COMPLETED_EVENT, completedPayload(request))
++  }
++
++  companion object {
++    /**
++     * Internal so tests can assert the payload shape without going through `emit`, which needs a
++     * live JS runtime. The keys here are part of the public JS contract — additions are safe but
++     * renames are breaking.
++     */
++    internal fun startedPayload(request: NetworkRequestStarted): Map<String, Any?> = mapOf(
++      "id" to request.id.toString(),
++      "url" to request.url,
++      "method" to request.method,
++      "startedAt" to TimeUtils.dateToIsoUtcSeconds(request.startedAt)
++    )
++
++    internal fun completedPayload(request: NetworkRequest): Map<String, Any?> = mapOf(
++      "id" to request.id.toString(),
++      "url" to request.url,
++      "method" to request.method,
++      "statusCode" to request.statusCode,
++      "networkProtocol" to request.networkProtocol,
++      "requestBytesSent" to request.requestBytesSent,
++      "responseBytesReceived" to request.responseBytesReceived,
++      "errorDescription" to request.errorDescription,
++      "startedAt" to request.timings.fetchStart?.let { TimeUtils.dateToIsoUtcSeconds(it) },
++      "completedAt" to request.timings.responseEnd?.let { TimeUtils.dateToIsoUtcSeconds(it) },
++      "totalDuration" to request.timings.totalDuration,
++      "redirects" to request.redirects.map { redirect ->
++        mapOf(
++          "fromUrl" to redirect.fromUrl,
++          "toUrl" to redirect.toUrl,
++          "statusCode" to redirect.statusCode
++        )
++      }
++    )
++  }
++}
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestSummary.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestSummary.kt
+new file mode 100644
+index 0000000..42f0249
+--- /dev/null
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/NetworkRequestSummary.kt
+@@ -0,0 +1,104 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++package expo.modules.appmetrics.networkrequests
++
++import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
++
++/**
++ * Aggregate over a set of `NetworkRequest` snapshots. Designed to be flattened into a metric's
++ * `params` map, so all fields are simple value types.
++ *
++ * The summary is intentionally small. Anything that would explode cardinality (per-URL p95s, full
++ * request lists) belongs in a separate metric/table once we ship one - not on the TTI envelope.
++ */
++data class NetworkRequestSummary(
++  /** Number of requests in the window. */
++  val count: Int,
++
++  /** Requests that errored or returned a non-2xx status. */
++  val failed: Int,
++
++  /** Sum of `responseBytesReceived` across all requests. */
++  val bytesReceived: Long,
++
++  /** Sum of `requestBytesSent` across all requests. */
++  val bytesSent: Long,
++
++  /** Sum of `timings.totalDuration` across all requests, in seconds. Can exceed wall-clock when requests overlap. */
++  val totalDuration: Double,
++
++  /** Longest single request duration in seconds, or `null` if `count == 0`. */
++  val slowestDuration: Double?,
++
++  /** Host of the slowest request, or `null` if the URL had no resolvable host. */
++  val slowestHost: String?
++) {
++  val isEmpty: Boolean
++    get() = count == 0
++
++  companion object {
++    val empty = NetworkRequestSummary(
++      count = 0,
++      failed = 0,
++      bytesReceived = 0,
++      bytesSent = 0,
++      totalDuration = 0.0,
++      slowestDuration = null,
++      slowestHost = null
++    )
++
++    /**
++     * Folds a list of `NetworkRequest` into a summary. The caller is responsible for filtering
++     * the list to the desired window.
++     */
++    fun from(requests: List<NetworkRequest>): NetworkRequestSummary {
++      if (requests.isEmpty()) {
++        return empty
++      }
++      var failed = 0
++      var bytesReceived = 0L
++      var bytesSent = 0L
++      var totalDuration = 0.0
++      var slowest: NetworkRequest? = null
++
++      for (request in requests) {
++        if (request.isFailed) {
++          failed += 1
++        }
++        bytesReceived += request.responseBytesReceived ?: 0
++        bytesSent += request.requestBytesSent ?: 0
++        totalDuration += request.timings.totalDuration
++        val current = slowest
++        if (current == null || request.timings.totalDuration > current.timings.totalDuration) {
++          slowest = request
++        }
++      }
++
++      return NetworkRequestSummary(
++        count = requests.size,
++        failed = failed,
++        bytesReceived = bytesReceived,
++        bytesSent = bytesSent,
++        totalDuration = totalDuration,
++        slowestDuration = slowest?.timings?.totalDuration,
++        slowestHost = slowest?.url?.toHttpUrlOrNull()?.host
++      )
++    }
++  }
++}
++
++/**
++ * A request is treated as failed if it errored, or returned a 4xx (client error) or 5xx (server
++ * error) status. 1xx (informational), 2xx (success), and 3xx (redirection — usually followed
++ * transparently by OkHttp, but the unfollowed case is still a successful response from the
++ * origin's perspective) are not failures. A missing status code (the request failed before
++ * headers arrived) counts as failed.
++ */
++internal val NetworkRequest.isFailed: Boolean
++  get() {
++    if (errorDescription != null) {
++      return true
++    }
++    val code = statusCode ?: return true
++    return code >= 400
++  }
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/OkHttpClientProviderHook.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/OkHttpClientProviderHook.kt
+new file mode 100644
+index 0000000..9c9640c
+--- /dev/null
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/networkrequests/OkHttpClientProviderHook.kt
+@@ -0,0 +1,64 @@
++// Copyright 2025-present 650 Industries. All rights reserved.
++
++package expo.modules.appmetrics.networkrequests
++
++import android.util.Log
++import com.facebook.react.modules.network.OkHttpClientFactory
++import com.facebook.react.modules.network.OkHttpClientProvider
++import expo.modules.appmetrics.TAG
++
++/**
++ * Installs `NetworkRequestInterceptor` into React Native's networking client so RN's `fetch` and
++ * `XMLHttpRequest` flow through it automatically. App-owned `OkHttpClient` instances need a
++ * one-line manual `addInterceptor(NetworkRequestInterceptor.instance)` to opt in.
++ *
++ * **Install timing.** `OkHttpClientProvider.getOkHttpClient()` lazily caches its client on first
++ * use. The factory we set here is only consulted on that first creation; if RN's networking layer
++ * (or another package) already triggered creation before this hook runs, we miss everything that
++ * client touches. We can't fix that without bytecode rewriting - Datadog hit the same constraint
++ * in production (DataDog/dd-sdk-android#513). We log a warning if we detect we landed too late
++ * so engineers see it in logcat; the workaround is to install another hook earlier.
++ */
++object OkHttpClientProviderHook {
++  @Volatile
++  private var installed = false
++
++  fun installIfNeeded() {
++    if (installed) {
++      return
++    }
++    installed = true
++
++    if (isClientAlreadyCached()) {
++      Log.w(
++        TAG,
++        "OkHttpClientProvider.client was already created before expo-app-metrics could install its" +
++          " factory. Network requests that went through the existing client won't be observed." +
++          " Either move expo-app-metrics earlier in your initialization or add" +
++          " NetworkRequestInterceptor.instance to your custom OkHttp client manually."
++      )
++    }
++
++    OkHttpClientProvider.setOkHttpClientFactory(object : OkHttpClientFactory {
++      override fun createNewNetworkModuleClient() =
++        OkHttpClientProvider.createClientBuilder()
++          .addInterceptor(NetworkRequestInterceptor.instance)
++          .eventListenerFactory(NetworkRequestEventListener.factory)
++          .build()
++    })
++  }
++
++  /**
++   * `OkHttpClientProvider.client` is `internal`, so we reach it via reflection. Failures are
++   * benign - if the field is no longer present or the access is denied, we assume the client
++   * hasn't been cached and skip the warning. Worst case the warning is silent in a future RN
++   * version; the factory installation itself is unaffected.
++   */
++  private fun isClientAlreadyCached(): Boolean = try {
++    val providerClass = OkHttpClientProvider::class.java
++    val field = providerClass.getDeclaredField("client").apply { isAccessible = true }
++    field.get(OkHttpClientProvider) != null
++  } catch (_: Throwable) {
++    false
++  }
++}
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/MetricsDatabase.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/MetricsDatabase.kt
+index dfefda8..a40a7da 100644
+--- a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/MetricsDatabase.kt
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/MetricsDatabase.kt
+@@ -176,6 +176,17 @@ interface MetricDao {
+ 
+   @Delete
+   suspend fun delete(metrics: List<Metric>)
++
++  // Bounds the growth of a long-lived live session. Cascade from
++  // `deleteSessionsOlderThan` can't help here — the live session row is
++  // excluded by `isActive = 1` and its metrics would otherwise accumulate
++  // indefinitely. Keying on `timestamp` (not `metricId`, which is a UUID)
++  // keeps the same semantics as the iOS port.
++  @Query("DELETE FROM metrics WHERE timestamp < :cutoffTimestamp")
++  suspend fun deleteMetricsOlderThan(cutoffTimestamp: String)
++
++  @Query("SELECT * FROM metrics WHERE sessionId = :sessionId ORDER BY timestamp ASC")
++  suspend fun getMetricsForSession(sessionId: String): List<Metric>
+ }
+ 
+ @Dao
+@@ -188,6 +199,9 @@ interface LogDao {
+ 
+   @Query("DELETE FROM logs WHERE timestamp < :cutoffTimestamp")
+   suspend fun deleteLogsOlderThan(cutoffTimestamp: String)
++
++  @Query("SELECT * FROM logs WHERE sessionId = :sessionId ORDER BY timestamp ASC")
++  suspend fun getLogsForSession(sessionId: String): List<LogRecord>
+ }
+ 
+ @Dao
+@@ -230,8 +244,8 @@ interface SessionDao {
+   suspend fun deleteAll()
+ 
+   @Transaction
+-  @Query("SELECT * FROM sessions")
+-  suspend fun getAll(): List<SessionWithMetrics>
++  @Query("SELECT * FROM sessions WHERE isActive = 0 ORDER BY startTimestamp DESC")
++  suspend fun getInactive(): List<SessionWithMetrics>
+ 
+   @Transaction
+   @Query("SELECT * FROM sessions WHERE id = :id")
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/SessionManager.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/SessionManager.kt
+index 7fad1cf..660f5df 100644
+--- a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/SessionManager.kt
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/SessionManager.kt
+@@ -113,10 +113,18 @@ class SessionManager(
+     }
+   }
+ 
+-  suspend fun getAllSessions(): List<SessionWithMetrics> = database.sessionDao().getAll()
++  suspend fun getInactiveSessions(): List<SessionWithMetrics> = database.sessionDao().getInactive()
+ 
+   suspend fun getSessionById(id: String): SessionWithMetrics? = database.sessionDao().getSessionWithMetricsBySessionId(id)
+ 
++  suspend fun getSessionRow(id: String): Session? = database.sessionDao().getById(id)
++
++  suspend fun getMetricsForSession(sessionId: String): List<Metric> =
++    database.metricDao().getMetricsForSession(sessionId)
++
++  suspend fun getLogsForSession(sessionId: String): List<LogRecord> =
++    database.logDao().getLogsForSession(sessionId)
++
+   suspend fun clearAllData() {
+     database.sessionDao().deleteAll()
+   }
+@@ -160,6 +168,27 @@ class SessionManager(
+     database.logDao().deleteLogsOlderThan(cutoffTimestamp)
+   }
+ 
++  /**
++   * Deletes metric and log rows whose `timestamp` is older than `cutoffTimestamp`, independent of
++   * which session owns them. Unlike `cleanupOldSessions`, this bounds the growth of a long-lived
++   * live session (whose row is intentionally excluded from session-level prunes) without deleting
++   * the session itself. Driven by `Observe.configure({ scheduledCleanupRetentionWindow })`.
++   */
++  suspend fun cleanupMetricsAndLogs(cutoffTimestamp: String) {
++    database.metricDao().deleteMetricsOlderThan(cutoffTimestamp)
++    database.logDao().deleteLogsOlderThan(cutoffTimestamp)
++  }
++
++  /**
++   * Deletes only *inactive* sessions whose `startTimestamp` is older than `cutoffTimestamp`,
++   * tidying dead session rows left by past app lifecycles without ever removing the live session
++   * (whose `startTimestamp` may itself predate the window on a long-running process). Their
++   * metrics and logs cascade via the foreign-key relation.
++   */
++  suspend fun cleanupInactiveSessions(cutoffTimestamp: String) {
++    database.sessionDao().deleteSessionsOlderThan(cutoffTimestamp)
++  }
++
+   suspend fun updateEnvironmentForActiveSessions(environment: String) {
+     database.sessionDao().updateEnvironmentForActiveSessions(environment)
+   }
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/SessionMappers.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/SessionMappers.kt
+index 0b4b669..7802b93 100644
+--- a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/SessionMappers.kt
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/SessionMappers.kt
+@@ -11,17 +11,21 @@ import kotlinx.serialization.json.JsonElement
+ import kotlinx.serialization.json.JsonObject
+ 
+ /**
+- * JS-facing shape of a session. Field names mirror the TypeScript `Session`
+- * type (`startDate` / `endDate`), distinct from the Room column names
+- * (`startTimestamp` / `endTimestamp`).
++ * JS-facing shape of a historic session — the plain eager `DebugSession` record
++ * returned by `getInactiveSessions`. Field names mirror the TypeScript
++ * `DebugSession` type (`startDate` / `endDate`), distinct from the Room column
++ * names (`startTimestamp` / `endTimestamp`).
+  *
+  * `type` is hard-coded to `"main"` since the per-launch session opened in
+- * `AppMetricsModule.OnCreate` is the only one we track. A future change
+- * should add a real `type` column and lifecycle hooks for
+- * foreground/screen/custom sessions.
++ * `AppMetricsModule.OnCreate` is the only one we track.
++ *
++ * TODO(@ubax): surface all session types — add a real `type` column and lifecycle
++ *   hooks for foreground/screen/custom sessions.
++ * TODO(@ubax): add crash report support on Android — `crashReport` is an iOS-only
++ *   MetricKit feature today, so the record omits it (optional in the TS type).
+  */
+ @OptimizedRecord
+-data class JsSession(
++data class JsDebugSession(
+   @Field val id: String,
+   @Field val type: String,
+   @Field val startDate: String,
+@@ -30,8 +34,8 @@ data class JsSession(
+   @Field val logs: List<JsLogRecord>
+ ) : Record {
+   companion object {
+-    fun fromSessionWithMetrics(value: SessionWithMetrics): JsSession =
+-      JsSession(
++    fun fromSessionWithMetrics(value: SessionWithMetrics): JsDebugSession =
++      JsDebugSession(
+         id = value.session.id,
+         type = "main",
+         startDate = value.session.startTimestamp,
+@@ -83,6 +87,36 @@ data class JsMetric(
+   }
+ }
+ 
++/**
++ * Payload for `Session.addMetric` — mirrors the TypeScript `MetricInput` type
++ * (`Metric` minus `sessionId`). The owning session is implied by the shared
++ * object the metric is added to, so the id is injected via `toMetric(sessionId)`
++ * rather than carried across the bridge; `updateId` is a native-side concern not
++ * exposed to JS.
++ */
++@OptimizedRecord
++data class SessionMetricInput(
++  @Field val category: String,
++  @Field val name: String,
++  @Field val value: Double,
++  @Field val timestamp: String = TimeUtils.getCurrentTimestampInISOFormat(),
++  @Field val routeName: String? = null,
++  @Field val params: Map<String, Any?>? = null
++) : Record {
++  fun toMetric(sessionId: String): Metric =
++    Metric(
++      metricId = UUID.randomUUID().toString(),
++      sessionId = sessionId,
++      timestamp = timestamp,
++      category = category,
++      name = name,
++      value = value,
++      routeName = routeName,
++      updateId = null,
++      params = params?.let { JsonAny.encodeMapToJsonString(it) }
++    )
++}
++
+ /**
+  * JS-facing shape of a log event. Mirrors the TypeScript `LogRecord` type and
+  * decodes the storage-only JSON `attributes` column into a typed map.
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/SessionSharedObject.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/SessionSharedObject.kt
+new file mode 100644
+index 0000000..8d1fec9
+--- /dev/null
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/storage/SessionSharedObject.kt
+@@ -0,0 +1,57 @@
++package expo.modules.appmetrics.storage
++
++import expo.modules.appmetrics.AppMetadata
++import expo.modules.appmetrics.utils.TimeUtils
++import expo.modules.kotlin.runtime.Runtime
++import expo.modules.kotlin.sharedobjects.SharedObject
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.launch
++
++class SessionSharedObject(
++  private val sessionManager: SessionManager,
++  private val scope: CoroutineScope,
++  val type: String,
++  customStartTimestamp: String? = null,
++  private val metadata: AppMetadata? = null,
++  runtime: Runtime? = null
++) : SharedObject(runtime) {
++  // Generated synchronously so it's available immediately to readers and to
++  // collaborators that capture it before the session row has been persisted.
++  val sessionId: String = sessionManager.createSessionId()
++
++  // The session's start timestamp, exposed to JS as `startDate`.
++  val startDate: String = customStartTimestamp ?: TimeUtils.getCurrentTimestampInISOFormat()
++
++  private val sessionStartJob: Job by lazy {
++    scope.launch {
++      sessionManager.startSessionWithIdAt(sessionId, startDate, metadata)
++    }
++  }
++
++  /** Suspends until the session row has been persisted. */
++  suspend fun awaitSessionPersisted() = sessionStartJob.join()
++
++  suspend fun addMetrics(metrics: List<Metric>) {
++    awaitSessionPersisted()
++    sessionManager.addMetrics(metrics, sessionId)
++  }
++
++  suspend fun addLogs(logs: List<LogRecord>) {
++    awaitSessionPersisted()
++    sessionManager.addLogs(logs, sessionId)
++  }
++
++  suspend fun stop() {
++    awaitSessionPersisted()
++    sessionManager.stopSession(sessionId)
++  }
++
++  suspend fun isActive(): Boolean = sessionManager.getSessionRow(sessionId)?.isActive ?: true
++
++  suspend fun getEndDate(): String? = sessionManager.getSessionRow(sessionId)?.endTimestamp
++
++  suspend fun getMetrics(): List<Metric> = sessionManager.getMetricsForSession(sessionId)
++
++  suspend fun getLogs(): List<LogRecord> = sessionManager.getLogsForSession(sessionId)
++}
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/updates/UpdatesMonitoring.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/updates/UpdatesMonitoring.kt
+index bf53c23..13c7c32 100644
+--- a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/updates/UpdatesMonitoring.kt
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/updates/UpdatesMonitoring.kt
+@@ -5,6 +5,7 @@ import expo.modules.appmetrics.AppUpdatesInfo
+ import expo.modules.appmetrics.MetricCategory
+ import expo.modules.appmetrics.TAG
+ import expo.modules.appmetrics.storage.Metric
++import expo.modules.appmetrics.storage.SessionSharedObject
+ import expo.modules.appmetrics.utils.TimeUtils
+ import expo.modules.updatesinterface.UpdatesControllerRegistry
+ import expo.modules.updatesinterface.UpdatesNativeInterfaceStateContext
+@@ -15,7 +16,7 @@ import expo.modules.updatesinterface.UpdatesStateChangeSubscription
+  * The subscription lifecycle and state change listening are managed by AppMetricsModule.
+  */
+ class UpdatesMonitoring(
+-  private val sessionId: String
++  private val session: SessionSharedObject
+ ) {
+ 
+   /**
+@@ -62,7 +63,7 @@ class UpdatesMonitoring(
+     val downloadTimeSeconds = (finishTime.time - startTime.time).toDouble() / 1000.0
+ 
+     return Metric(
+-      sessionId = sessionId,
++      sessionId = session.sessionId,
+       timestamp = TimeUtils.getCurrentTimestampInISOFormat(),
+       category = MetricCategory.Updates.categoryName,
+       name = "updateDownloadTime",
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/JsonAny.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/JsonAny.kt
+index e13129c..69662a7 100644
+--- a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/JsonAny.kt
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/JsonAny.kt
+@@ -48,10 +48,11 @@ object JsonAny {
+       is JsonNull -> null
+       is JsonPrimitive -> when {
+         element.isString -> element.content
+-        else -> element.booleanOrNull
+-          ?: element.longOrNull
+-          ?: element.doubleOrNull
+-          ?: element.content
++        else ->
++          element.booleanOrNull
++            ?: element.longOrNull
++            ?: element.doubleOrNull
++            ?: element.content
+       }
+       is JsonObject -> element.mapValues { (_, v) -> fromElement(v) }
+       is JsonArray -> element.map { fromElement(it) }
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/MetricParamsBuilder.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/MetricParamsBuilder.kt
+index 014447a..f0dfdec 100644
+--- a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/MetricParamsBuilder.kt
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/MetricParamsBuilder.kt
+@@ -1,6 +1,7 @@
+ package expo.modules.appmetrics.utils
+ 
+ import expo.modules.appmetrics.frames.FrameMetricsRecord
++import expo.modules.appmetrics.networkrequests.NetworkRequestSummary
+ 
+ /**
+  * Single source of truth for the `expo.*` keys we attach to metrics. Takes
+@@ -16,7 +17,8 @@ object MetricParamsBuilder {
+     userParams: Map<String, Any>? = null,
+     frameMetrics: FrameMetricsRecord? = null,
+     deviceState: DeviceState? = null,
+-    networkState: NetworkState? = null
++    networkState: NetworkState? = null,
++    networkRequests: NetworkRequestSummary? = null
+   ): Map<String, Any> {
+     val params = mutableMapOf<String, Any>()
+     userParams?.let { params.putAll(it) }
+@@ -35,6 +37,15 @@ object MetricParamsBuilder {
+       params["expo.network.connected"] = networkState.connected
+       params["expo.network.type"] = networkTransportString(networkState.transport)
+     }
++    if (networkRequests != null && !networkRequests.isEmpty) {
++      params["expo.network.requests.count"] = networkRequests.count
++      params["expo.network.requests.failed"] = networkRequests.failed
++      params["expo.network.requests.bytesReceived"] = networkRequests.bytesReceived
++      params["expo.network.requests.bytesSent"] = networkRequests.bytesSent
++      params["expo.network.requests.totalDuration"] = networkRequests.totalDuration
++      networkRequests.slowestDuration?.let { params["expo.network.requests.slowestDuration"] = it }
++      networkRequests.slowestHost?.let { params["expo.network.requests.slowestHost"] = it }
++    }
+     return params
+   }
+ 
+diff --git a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/TimeUtils.kt b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/TimeUtils.kt
+index 7369ca8..d94c9b9 100644
+--- a/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/TimeUtils.kt
++++ b/node_modules/expo-app-metrics/android/src/main/java/expo/modules/appmetrics/utils/TimeUtils.kt
+@@ -43,4 +43,21 @@ object TimeUtils {
+   private fun dateToTimestamp(date: Date): String {
+     return sdf().format(date)
+   }
++
++  /**
++   * Formats `date` as `yyyy-MM-ddTHH:mm:ssZ` in UTC — whole-second precision, matching iOS's
++   * `Date.ISO8601Format()` with the default `internetDateTime` options. Used by callers that
++   * need the JS wire format to read identically on both platforms; the millisecond-precision
++   * `dateToTimestamp` is reserved for internal telemetry timestamps where sub-second matters.
++   */
++  fun dateToIsoUtcSeconds(date: Date): String = secondsFormatter.get()!!.format(date)
++
++  // `SimpleDateFormat` isn't thread-safe; we stash one per thread. `java.time.DateTimeFormatter`
++  // would be cleaner but requires API 26+ without core-library desugaring (we avoid both, see
++  // `sdf()` below for the matching choice).
++  private val secondsFormatter = ThreadLocal.withInitial {
++    SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
++      timeZone = TimeZone.getTimeZone("UTC")
++    }
++  }
+ }
 diff --git a/node_modules/expo-app-metrics/ios/AppMetrics.swift b/node_modules/expo-app-metrics/ios/AppMetrics.swift
 index a1fb1f7..1457533 100644
 --- a/node_modules/expo-app-metrics/ios/AppMetrics.swift

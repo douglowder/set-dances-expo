@@ -1,3 +1,158 @@
+diff --git a/node_modules/expo-observe/android/src/main/java/expo/modules/observe/EventDispatcher.kt b/node_modules/expo-observe/android/src/main/java/expo/modules/observe/EventDispatcher.kt
+index 3d9751c..fa41074 100644
+--- a/node_modules/expo-observe/android/src/main/java/expo/modules/observe/EventDispatcher.kt
++++ b/node_modules/expo-observe/android/src/main/java/expo/modules/observe/EventDispatcher.kt
+@@ -103,6 +103,13 @@ class EventDispatcher(
+     val request = Request
+       .Builder()
+       .url(endpointUrl)
++      // Tells the expo-app-metrics network observer to skip this request so our own telemetry
++      // uploads don't get logged back into the network-request stream. The interceptor strips
++      // the header before forwarding so the server never sees it. The name is duplicated here
++      // rather than imported: expo-observe must not depend on expo-app-metrics internals. Keep
++      // it in sync with `INTERNAL_HEADER_NAME` in
++      // `expo-app-metrics/android/.../networkrequests/NetworkRequestInterceptor.kt`.
++      .addHeader("Expo-AppMetrics-Skip", "1")
+       .post(body.toRequestBody("application/json".toMediaType()))
+       .build()
+ 
+diff --git a/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObservabilityManager.kt b/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObservabilityManager.kt
+index 37ccc6d..97cd2d2 100644
+--- a/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObservabilityManager.kt
++++ b/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObservabilityManager.kt
+@@ -1,11 +1,19 @@
+ package expo.modules.observe
+ 
+ import android.content.Context
++import android.util.Log
+ import expo.modules.easclient.EASClientID
+ import expo.modules.observe.storage.PendingLogsManager
+ import expo.modules.observe.storage.PendingMetricsManager
+ import expo.modules.appmetrics.storage.SessionManager
+ import expo.modules.interfaces.constants.ConstantsInterface
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.SupervisorJob
++import kotlinx.coroutines.cancel
++import kotlinx.coroutines.delay
++import kotlinx.coroutines.launch
+ 
+ class ObservabilityManager(
+   // TODO(@lukmccall): Consider saving context as weak reference to avoid potential memory leaks
+@@ -68,6 +76,56 @@ class ObservabilityManager(
+       useOpenTelemetry = useOpenTelemetry
+     )
+   }
++
++  // Manager-owned scope so the periodic dispatch loop has a lifecycle tied to module destroy
++  // rather than to a single JS-call dispatch (`modulesQueue`, which is per-call). `Dispatchers.IO`
++  // is the right pool: each wake reads pending tables, queries the DB, and POSTs to the endpoint.
++  private val dispatchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
++  private var dispatchJob: Job? = null
++
++  @Volatile
++  private var dispatchIntervalSeconds: Long? = null
++
++  /**
++   * Configures the periodic dispatch loop. A positive `intervalSeconds` starts the loop (on its
++   * first call) and tells it to flush pending metrics and logs that often, so a long-running app
++   * sends in-session telemetry without waiting for `OnActivityEntersBackground`. Subsequent calls
++   * update the interval in place — the next wake uses the new value. Passing `null` or `0` leaves
++   * the loop idle (no-ops at each wake). Driven by
++   * `Observe.configure({ scheduledDispatchInterval })`.
++   */
++  fun setDispatchIntervalSeconds(intervalSeconds: Long?) {
++    dispatchIntervalSeconds = intervalSeconds
++    if (dispatchJob == null && intervalSeconds != null && intervalSeconds > 0) {
++      dispatchJob = dispatchScope.launch {
++        while (true) {
++          // Idle in a 1-minute heartbeat while the interval is cleared, so a later re-configure
++          // resumes promptly. Matches iOS.
++          val interval = dispatchIntervalSeconds?.coerceAtLeast(1) ?: 60
++          delay(interval * 1000)
++          val configured = dispatchIntervalSeconds ?: continue
++          if (configured <= 0) {
++            continue
++          }
++          try {
++            baseManager.dispatchUnsentMetrics()
++            baseManager.dispatchUnsentLogs()
++          } catch (e: Exception) {
++            Log.w(OBSERVE_TAG, "Periodic dispatch failed: ${e.message}")
++          }
++        }
++      }
++    }
++  }
++
++  /**
++   * Cancels the periodic dispatch loop. Called from `ObserveModule.OnDestroy` so the loop doesn't
++   * try to hit the network or DB after the module's lifecycle has ended.
++   */
++  fun destroy() {
++    dispatchScope.cancel()
++    dispatchJob = null
++  }
+ }
+ 
+ class BaseObservabilityManager(
+diff --git a/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObserveModule.kt b/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObserveModule.kt
+index e9aeac1..2fd36a2 100644
+--- a/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObserveModule.kt
++++ b/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObserveModule.kt
+@@ -17,7 +17,9 @@ class Config(
+   @Field val environment: String? = null,
+   @Field val dispatchingEnabled: Boolean? = null,
+   @Field val dispatchInDebug: Boolean? = null,
+-  @Field val sampleRate: Double? = null
++  @Field val sampleRate: Double? = null,
++  @Field val scheduledCleanupRetentionWindow: Double? = null,
++  @Field val scheduledDispatchInterval: Double? = null
+ ) : Record
+ 
+ @OptimizedRecord
+@@ -64,7 +66,9 @@ class ObserveModule : Module() {
+           PersistedConfig(
+             dispatchingEnabled = config.dispatchingEnabled,
+             dispatchInDebug = config.dispatchInDebug,
+-            sampleRate = config.sampleRate
++            sampleRate = config.sampleRate,
++            scheduledCleanupRetentionWindow = config.scheduledCleanupRetentionWindow,
++            scheduledDispatchInterval = config.scheduledDispatchInterval
+           )
+         )
+         // Environment falls back to the bundle default (set on JS package import) so an
+@@ -72,6 +76,14 @@ class ObserveModule : Module() {
+         val resolvedEnvironment = config.environment
+           ?: ObservePreferences.getBundleDefaults(context)?.environment
+         resolvedEnvironment?.let { appMetricsModule.setEnvironment(it) }
++        // The JS surface speaks Double seconds; native loops want Long seconds. `null`/`0` keep
++        // the loop idle; any positive value starts or updates it.
++        appMetricsModule.setCleanupRetentionSeconds(config.scheduledCleanupRetentionWindow?.toLong())
++        observabilityManager.setDispatchIntervalSeconds(config.scheduledDispatchInterval?.toLong())
++      }
++
++      OnDestroy {
++        observabilityManager.destroy()
+       }
+ 
+       Function("setBundleDefaults") { defaults: BundleDefaults ->
+diff --git a/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObservePreferences.kt b/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObservePreferences.kt
+index 0cc18fb..d6b013c 100644
+--- a/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObservePreferences.kt
++++ b/node_modules/expo-observe/android/src/main/java/expo/modules/observe/ObservePreferences.kt
+@@ -16,7 +16,9 @@ private const val KEY_BUNDLE_DEFAULTS = "bundleDefaults"
+ data class PersistedConfig(
+   val dispatchingEnabled: Boolean? = null,
+   val dispatchInDebug: Boolean? = null,
+-  val sampleRate: Double? = null
++  val sampleRate: Double? = null,
++  val scheduledCleanupRetentionWindow: Double? = null,
++  val scheduledDispatchInterval: Double? = null
+ )
+ 
+ /**
 diff --git a/node_modules/expo-observe/build/integrations/react-navigation/ObserveNavigationContainer.d.ts b/node_modules/expo-observe/build/integrations/react-navigation/ObserveNavigationContainer.d.ts
 index 9524959..68c7b96 100644
 --- a/node_modules/expo-observe/build/integrations/react-navigation/ObserveNavigationContainer.d.ts
