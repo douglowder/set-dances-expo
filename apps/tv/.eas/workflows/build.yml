@@ -1,7 +1,7 @@
 # Manual build workflow
 #
 
-name: Manual build
+name: Manual build for TV
 on:
   workflow_dispatch: {}
 jobs:
@@ -10,4 +10,14 @@ jobs:
     type: build
     params:
       platform: ios
+      profile: production:tv
+  submit_ios_build:
+    name: Submit Apple TV build
+    needs:
+      - build_ios
+    type: submit
+    env:
+      EXPO_DEBUG: '1'
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
       profile: production:tv
