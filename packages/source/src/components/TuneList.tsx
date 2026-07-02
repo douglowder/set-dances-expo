@@ -1,4 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
+import { Observe } from 'expo-observe';
 import { StyleSheet, Pressable, Platform } from 'react-native';
 
 import { ThemedText } from '@/components/ThemedText';
@@ -41,6 +42,7 @@ export default function TuneList({ tuneTypes }: { tuneTypes: TuneType[] }) {
       await storeTuneSettingAsync(item);
       await storeSavedSpeedAsync(item, item.defaultSpeed);
       emitTuneChangeEvent();
+      Observe.logEvent('tune.select', { attributes: { tune: item.key } });
       // TV root is a Stack: navigate('/') pushes a duplicate index because RN's NAVIGATE only
       // reuses the currently focused route, not one deeper in the stack — so pop back to home
       // instead. Phone root is a Drawer with no back stack, where navigate switches correctly.
