@@ -1,4 +1,7 @@
 packages:
   - apps/*
   - packages/*
+allowBuilds:
+  postinstall-postinstall: true
+  unrs-resolver: true
 nodeLinker: hoisted
