@@ -1,0 +1,30 @@
+diff --git a/node_modules/expo-dev-launcher/ios/SwiftUI/DevServersView.swift b/node_modules/expo-dev-launcher/ios/SwiftUI/DevServersView.swift
+index b54a66dfe2a..9221e413ef4 100644
+--- a/node_modules/expo-dev-launcher/ios/SwiftUI/DevServersView.swift
++++ b/node_modules/expo-dev-launcher/ios/SwiftUI/DevServersView.swift
+@@ -112,6 +112,17 @@ struct DevServersView: View {
+         #endif
+           .disableAutocorrection(true)
+           .toolbar {
++            #if os(tvOS)
++            ToolbarItemGroup(placement: .automatic) {
++              ForEach(keyboardShortcuts, id: \.self) { shortcut in
++                Button {
++                  urlText += shortcut
++                } label: {
++                  Text(shortcut)
++                }
++              }
++            }
++            #else
+             ToolbarItemGroup(placement: .keyboard) {
+               ForEach(keyboardShortcuts, id: \.self) { shortcut in
+                 Button {
+@@ -121,6 +132,7 @@ struct DevServersView: View {
+                 }
+               }
+             }
++            #endif
+           }
+           .padding(.horizontal, 16)
+           .padding(.vertical, 12)
