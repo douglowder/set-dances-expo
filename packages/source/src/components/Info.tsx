@@ -111,7 +111,7 @@ function About() {
       <ThemedText>&nbsp;</ThemedText>
       <ThemedView>
         <ThemedText style={styles.text}>
-          Copyright &copy; 2010-2024 by Douglas Lowder, all rights reserved.
+          Copyright &copy; 2010-2026 by Douglas Lowder, all rights reserved.
         </ThemedText>
       </ThemedView>
     </ThemedView>
