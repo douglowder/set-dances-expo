@@ -21,43 +21,75 @@ declare global {
   var __reanimatedLoggerConfig: ReanimatedLoggerConfigInternal | undefined;
 }
 
-// A UI-runtime warning can repeat every frame, so report each distinct message
-// once. The cap bounds the set when messages embed varying values.
+const REANIMATED_ERROR_NAME = 'reanimated.error';
+const REANIMATED_WARNING_EVENT = 'reanimated.warning';
+
+// A UI-runtime log can repeat every frame, so report each distinct message once.
+// The cap bounds the set when messages embed varying values.
 const MAX_DISTINCT_MESSAGES = 100;
 // Attribute values cross the network on every dispatch, and Reanimated's strict
 // messages append a docs reference, so cap the copied message.
 const MAX_MESSAGE_LENGTH = 500;
 const reportedMessages = new Set<string>();
 
-function reportToObserve(level: ReanimatedLogLevel, message: string) {
+/**
+ * A Reanimated error routed to `Observe.reportError`. `reportCaughtError` maps
+ * `name` to the report's `type` and `stack` to its `stacktrace`, so both are set
+ * explicitly — the stack is captured at the log site, not at construction.
+ */
+export class ReanimatedError extends Error {
+  constructor(message: string, stack?: string) {
+    super(message);
+    this.name = REANIMATED_ERROR_NAME;
+    if (stack !== undefined) {
+      this.stack = stack;
+    }
+  }
+}
+
+function shouldReport(message: string) {
   if (reportedMessages.has(message) || reportedMessages.size >= MAX_DISTINCT_MESSAGES) {
-    return;
+    return false;
   }
   reportedMessages.add(message);
+  return true;
+}
 
-  Observe.logEvent('reanimated.log', {
-    displayName: 'Reanimated log',
-    body: message,
-    severity: level === ReanimatedLogLevel.error ? 'error' : 'warn',
-    attributes: {
-      level: ReanimatedLogLevel[level],
-      // `eas observe:events` and `observe:session` surface `attributes` but not
-      // `body`, so the message is copied here to stay queryable from the CLI.
-      message: message.slice(0, MAX_MESSAGE_LENGTH),
-    },
-  });
+function reportErrorToObserve(message: string, stack: string | undefined) {
+  if (shouldReport(message)) {
+    Observe.reportError(new ReanimatedError(message, stack));
+  }
+}
+
+function reportWarningToObserve(message: string) {
+  if (shouldReport(message)) {
+    Observe.logEvent(REANIMATED_WARNING_EVENT, {
+      displayName: 'Reanimated warning',
+      body: message,
+      severity: 'warn',
+      attributes: {
+        // `eas observe:events` and `observe:session` surface `attributes` but
+        // not `body`, so the message is copied here to stay queryable.
+        message: message.slice(0, MAX_MESSAGE_LENGTH),
+      },
+    });
+  }
 }
 
 function logToConsoleAndObserve(data: ReanimatedLogData) {
   'worklet';
+  // Both branches hand off with `scheduleOnRN`, which works from either runtime:
+  // on the RN runtime it queues a microtask, on the UI runtime it hops to the RN
+  // runtime where the native module lives.
   if (data.level === ReanimatedLogLevel.error) {
     console.error(data.message);
+    // Captured here because this is the only point where the frames that led to
+    // the log are still on the stack; the hand-off below unwinds them.
+    scheduleOnRN(reportErrorToObserve, data.message, new Error(data.message).stack);
   } else {
     console.warn(data.message);
+    scheduleOnRN(reportWarningToObserve, data.message);
   }
-  // Works from either runtime: on the RN runtime it queues a microtask, on the
-  // UI runtime it hops to the RN runtime where the native module lives.
-  scheduleOnRN(reportToObserve, data.level, data.message);
 }
 
 function installOnUIRuntime(level: ReanimatedLogLevel, strict: boolean) {
@@ -70,8 +102,9 @@ function installOnUIRuntime(level: ReanimatedLogLevel, strict: boolean) {
 }
 
 /**
- * Routes every Reanimated warning and error to expo-observe as a
- * `reanimated.log` user event, and keeps the console output.
+ * Routes Reanimated logs to expo-observe, keeping the console output. Errors go
+ * to `Observe.reportError` as a `reanimated.error`, carrying the stack from the
+ * log site. Warnings go to `Observe.logEvent` as `reanimated.warning`.
  *
  * Replaces `configureReanimatedLogger`: it sets `level` and `strict` itself, so
  * calling `configureReanimatedLogger` afterwards resets them to the defaults.
