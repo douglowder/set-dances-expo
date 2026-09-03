@@ -1,3 +1,4 @@
+import { installReanimatedObserveLogger } from '@/utils/reanimatedObserveLogger';
 import TVLayout from '@/layouts/tv';
 import PhoneLayout from '@/layouts/phone';
 import { Observe, ObserveRoot } from 'expo-observe';
@@ -5,8 +6,11 @@ import { Platform } from 'react-native';
 
 // App-specific root layout. Not managed by scripts/sync-routes.js (no
 // @generated marker), so edits here are preserved across syncs.
+installReanimatedObserveLogger();
+
 Observe.configure({
   integrations: { 'expo-router': true },
+  dispatchInDebug: true,
 });
 
 function RootLayout() {
