@@ -1,0 +1,3861 @@
+diff --git a/build/integrations/react-native-reanimated/init.d.ts b/build/integrations/react-native-reanimated/init.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f57c5dab444e1933c100215b4e97c160ecf10fb0
+--- /dev/null
++++ b/build/integrations/react-native-reanimated/init.d.ts
+@@ -0,0 +1,5 @@
++/**
++ * Reports Reanimated errors to Observe as `reanimated.error` errors, and Reanimated warnings as
++ * `reanimated.warning` events. Console output is kept. Installs once per app launch.
++ */
++export declare function initReanimatedIntegration(): void;
+diff --git a/build/integrations/react-native-reanimated/init.js b/build/integrations/react-native-reanimated/init.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..ce5c69b7a840510b579eac7c462e9c1ef98b0611
+--- /dev/null
++++ b/build/integrations/react-native-reanimated/init.js
+@@ -0,0 +1,108 @@
++import AppMetrics from 'expo-app-metrics';
++import { reportCaughtError } from '../../reportCaughtError';
++import { loadReanimated } from './reanimated';
++// Values of Reanimated's `ReanimatedLogLevel` enum and its default logger config.
++const LOG_LEVEL_WARN = 1;
++const LOG_LEVEL_ERROR = 2;
++const DEFAULT_STRICT = true;
++const SUPPORTED_VERSION = /^4\.[67]\./;
++const REANIMATED_ERROR_NAME = 'reanimated.error';
++const REANIMATED_WARNING_EVENT = 'reanimated.warning';
++// A UI-runtime log can repeat every frame, so each distinct message is reported once. The cap
++// bounds the set when messages embed varying values.
++const MAX_DISTINCT_MESSAGES = 100;
++// Attribute values are sent on every dispatch, and strict-mode messages append a docs
++// reference, so the copied message is capped.
++const MAX_MESSAGE_LENGTH = 500;
++const reportedMessages = new Set();
++let installed = false;
++/**
++ * A Reanimated error reported to Observe. The stack is set explicitly because it is captured
++ * at the log site, before the hand-off to the React Native runtime unwinds those frames.
++ */ class ReanimatedError extends Error {
++    constructor(message, stack){
++        super(message);
++        this.name = REANIMATED_ERROR_NAME;
++        if (stack !== undefined) {
++            this.stack = stack;
++        }
++    }
++}
++function shouldReport(message) {
++    if (reportedMessages.has(message) || reportedMessages.size >= MAX_DISTINCT_MESSAGES) {
++        return false;
++    }
++    reportedMessages.add(message);
++    return true;
++}
++function reportReanimatedError(message, stack) {
++    if (shouldReport(message)) {
++        reportCaughtError(new ReanimatedError(message, stack));
++    }
++}
++function reportReanimatedWarning(message) {
++    if (shouldReport(message)) {
++        AppMetrics.logEvent(REANIMATED_WARNING_EVENT, {
++            displayName: 'Reanimated warning',
++            body: message,
++            severity: 'warn',
++            // `eas observe:events` and `observe:session` show `attributes` but not `body`, so the
++            // message is copied here to stay queryable.
++            attributes: {
++                message: message.slice(0, MAX_MESSAGE_LENGTH)
++            }
++        });
++    }
++}
++// Created in a factory, after the optional `require`, because a worklet captures its closure
++// when it is created: a module-level worklet would capture `scheduleOnRN` before it is loaded.
++function createLogFunction(scheduleOnRN) {
++    return (data)=>{
++        'worklet';
++        // `scheduleOnRN` works from both runtimes: on the React Native runtime it queues a
++        // microtask, and on the UI runtime it moves the call to the React Native runtime, where
++        // the native module is available.
++        if (data.level === LOG_LEVEL_ERROR) {
++            console.error(data.message);
++            scheduleOnRN(reportReanimatedError, data.message, new Error(data.message).stack);
++        } else {
++            console.warn(data.message);
++            scheduleOnRN(reportReanimatedWarning, data.message);
++        }
++    };
++}
++// Runs on each runtime. It keeps the `level`, `strict` and any other fields that runtime
++// already has, and only replaces `logFunction`.
++function installLogFunction(logFunction) {
++    'worklet';
++    const target = globalThis;
++    target.__reanimatedLoggerConfig = {
++        level: LOG_LEVEL_WARN,
++        strict: DEFAULT_STRICT,
++        ...target.__reanimatedLoggerConfig,
++        logFunction
++    };
++}
++/**
++ * Reports Reanimated errors to Observe as `reanimated.error` errors, and Reanimated warnings as
++ * `reanimated.warning` events. Console output is kept. Installs once per app launch.
++ */ export function initReanimatedIntegration() {
++    if (installed) {
++        return;
++    }
++    const reanimated = loadReanimated();
++    if (!reanimated) {
++        console.warn("[expo-observe] `integrations: { 'react-native-reanimated': true }` was set, but " + '`react-native-reanimated` or `react-native-worklets` is not installed. The integration will not initialize.');
++        return;
++    }
++    if (!SUPPORTED_VERSION.test(reanimated.version)) {
++        console.warn(`[expo-observe] The 'react-native-reanimated' integration supports Reanimated 4.6 and 4.7, ` + `but Reanimated ${reanimated.version} is installed. Reanimated errors and warnings will not be ` + 'reported to EAS Observe. Install a supported Reanimated version, or update expo-observe.');
++        return;
++    }
++    const logFunction = createLogFunction(reanimated.worklets.scheduleOnRN);
++    installLogFunction(logFunction);
++    reanimated.worklets.runOnUISync(installLogFunction, logFunction);
++    installed = true;
++}
++
++//# sourceMappingURL=init.js.map
+diff --git a/build/integrations/react-native-reanimated/init.js.map b/build/integrations/react-native-reanimated/init.js.map
+new file mode 100644
+index 0000000000000000000000000000000000000000..54c8e5ba780c94a3a28ef10a3c7cc81049a47010
+--- /dev/null
++++ b/build/integrations/react-native-reanimated/init.js.map
+@@ -0,0 +1 @@
++{"version":3,"sources":["integrations/react-native-reanimated/init.ts"],"sourcesContent":[null],"names":["AppMetrics","reportCaughtError","loadReanimated","LOG_LEVEL_WARN","LOG_LEVEL_ERROR","DEFAULT_STRICT","SUPPORTED_VERSION","REANIMATED_ERROR_NAME","REANIMATED_WARNING_EVENT","MAX_DISTINCT_MESSAGES","MAX_MESSAGE_LENGTH","reportedMessages","Set","installed","ReanimatedError","Error","message","stack","name","undefined","shouldReport","has","size","add","reportReanimatedError","reportReanimatedWarning","logEvent","displayName","body","severity","attributes","slice","createLogFunction","scheduleOnRN","data","level","console","error","warn","installLogFunction","logFunction","target","globalThis","__reanimatedLoggerConfig","strict","initReanimatedIntegration","reanimated","test","version","worklets","runOnUISync"],"mappings":"AAAA,OAAOA,gBAAgB,mBAAmB;AAE1C,SAASC,iBAAiB,QAAQ,0BAA0B;AAC5D,SAASC,cAAc,QAA+B,eAAe;AAerE,kFAAkF;AAClF,MAAMC,iBAAiB;AACvB,MAAMC,kBAAkB;AACxB,MAAMC,iBAAiB;AAEvB,MAAMC,oBAAoB;AAE1B,MAAMC,wBAAwB;AAC9B,MAAMC,2BAA2B;AAEjC,8FAA8F;AAC9F,qDAAqD;AACrD,MAAMC,wBAAwB;AAC9B,sFAAsF;AACtF,8CAA8C;AAC9C,MAAMC,qBAAqB;AAE3B,MAAMC,mBAAmB,IAAIC;AAC7B,IAAIC,YAAY;AAEhB;;;CAGC,GACD,MAAMC,wBAAwBC;IAC5B,YAAYC,OAAe,EAAEC,KAAyB,CAAE;QACtD,KAAK,CAACD;QACN,IAAI,CAACE,IAAI,GAAGX;QACZ,IAAIU,UAAUE,WAAW;YACvB,IAAI,CAACF,KAAK,GAAGA;QACf;IACF;AACF;AAEA,SAASG,aAAaJ,OAAe;IACnC,IAAIL,iBAAiBU,GAAG,CAACL,YAAYL,iBAAiBW,IAAI,IAAIb,uBAAuB;QACnF,OAAO;IACT;IACAE,iBAAiBY,GAAG,CAACP;IACrB,OAAO;AACT;AAEA,SAASQ,sBAAsBR,OAAe,EAAEC,KAAyB;IACvE,IAAIG,aAAaJ,UAAU;QACzBf,kBAAkB,IAAIa,gBAAgBE,SAASC;IACjD;AACF;AAEA,SAASQ,wBAAwBT,OAAe;IAC9C,IAAII,aAAaJ,UAAU;QACzBhB,WAAW0B,QAAQ,CAAClB,0BAA0B;YAC5CmB,aAAa;YACbC,MAAMZ;YACNa,UAAU;YACV,sFAAsF;YACtF,4CAA4C;YAC5CC,YAAY;gBAAEd,SAASA,QAAQe,KAAK,CAAC,GAAGrB;YAAoB;QAC9D;IACF;AACF;AAEA,6FAA6F;AAC7F,+FAA+F;AAC/F,SAASsB,kBAAkBC,YAA8C;IACvE,OAAO,CAACC;QACN;QACA,mFAAmF;QACnF,wFAAwF;QACxF,kCAAkC;QAClC,IAAIA,KAAKC,KAAK,KAAK/B,iBAAiB;YAClCgC,QAAQC,KAAK,CAACH,KAAKlB,OAAO;YAC1BiB,aAAaT,uBAAuBU,KAAKlB,OAAO,EAAE,IAAID,MAAMmB,KAAKlB,OAAO,EAAEC,KAAK;QACjF,OAAO;YACLmB,QAAQE,IAAI,CAACJ,KAAKlB,OAAO;YACzBiB,aAAaR,yBAAyBS,KAAKlB,OAAO;QACpD;IACF;AACF;AAEA,yFAAyF;AACzF,gDAAgD;AAChD,SAASuB,mBAAmBC,WAAkC;IAC5D;IACA,MAAMC,SAASC;IACfD,OAAOE,wBAAwB,GAAG;QAChCR,OAAOhC;QACPyC,QAAQvC;QACR,GAAGoC,OAAOE,wBAAwB;QAClCH;IACF;AACF;AAEA;;;CAGC,GACD,OAAO,SAASK;IACd,IAAIhC,WAAW;QACb;IACF;IAEA,MAAMiC,aAAa5C;IACnB,IAAI,CAAC4C,YAAY;QACfV,QAAQE,IAAI,CACV,qFACE;QAEJ;IACF;IAEA,IAAI,CAAChC,kBAAkByC,IAAI,CAACD,WAAWE,OAAO,GAAG;QAC/CZ,QAAQE,IAAI,CACV,CAAC,0FAA0F,CAAC,GAC1F,CAAC,eAAe,EAAEQ,WAAWE,OAAO,CAAC,0DAA0D,CAAC,GAChG;QAEJ;IACF;IAEA,MAAMR,cAAcR,kBAAkBc,WAAWG,QAAQ,CAAChB,YAAY;IACtEM,mBAAmBC;IACnBM,WAAWG,QAAQ,CAACC,WAAW,CAACX,oBAAoBC;IACpD3B,YAAY;AACd"}
+\ No newline at end of file
+diff --git a/build/integrations/react-native-reanimated/reanimated.d.ts b/build/integrations/react-native-reanimated/reanimated.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e361a42f7bfd99900e3694e7c5780a131ba37608
+--- /dev/null
++++ b/build/integrations/react-native-reanimated/reanimated.d.ts
+@@ -0,0 +1,9 @@
++export interface OptionalWorklets {
++    runOnUISync<A extends unknown[]>(worklet: (...args: A) => void, ...args: A): void;
++    scheduleOnRN<A extends unknown[]>(fn: (...args: A) => void, ...args: A): void;
++}
++export interface LoadedReanimated {
++    version: string;
++    worklets: OptionalWorklets;
++}
++export declare function loadReanimated(): LoadedReanimated | null;
+diff --git a/build/integrations/react-native-reanimated/reanimated.js b/build/integrations/react-native-reanimated/reanimated.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..398134e2a1ab9d34dc2247215d916029767dbfe2
+--- /dev/null
++++ b/build/integrations/react-native-reanimated/reanimated.js
+@@ -0,0 +1,22 @@
++// react-native-reanimated and react-native-worklets are optional peerDependencies of
++// expo-observe. They are required lazily, only when the integration is enabled, so an app
++// that doesn't enable it never loads Reanimated through expo-observe. This lives in its own
++// file because a `require` wrapped in try/catch doesn't work with Metro's `inlineRequires`
++// when it shares a file with other imports (see expo-gl's `GLWorkletContextManager`).
++export function loadReanimated() {
++    try {
++        const { reanimatedVersion } = require('react-native-reanimated');
++        const { runOnUISync, scheduleOnRN } = require('react-native-worklets');
++        return {
++            version: reanimatedVersion,
++            worklets: {
++                runOnUISync,
++                scheduleOnRN
++            }
++        };
++    } catch  {
++        return null;
++    }
++}
++
++//# sourceMappingURL=reanimated.js.map
+diff --git a/build/integrations/react-native-reanimated/reanimated.js.map b/build/integrations/react-native-reanimated/reanimated.js.map
+new file mode 100644
+index 0000000000000000000000000000000000000000..6e29e61c1f04b56617c59013d201f12980e487a5
+--- /dev/null
++++ b/build/integrations/react-native-reanimated/reanimated.js.map
+@@ -0,0 +1 @@
++{"version":3,"sources":["integrations/react-native-reanimated/reanimated.ts"],"sourcesContent":[null],"names":["loadReanimated","reanimatedVersion","require","runOnUISync","scheduleOnRN","version","worklets"],"mappings":"AAAA,qFAAqF;AACrF,0FAA0F;AAC1F,4FAA4F;AAC5F,2FAA2F;AAC3F,sFAAsF;AAYtF,OAAO,SAASA;IACd,IAAI;QACF,MAAM,EAAEC,iBAAiB,EAAE,GAAGC,QAAQ;QAGtC,MAAM,EAAEC,WAAW,EAAEC,YAAY,EAAE,GAAGF,QAAQ;QAC9C,OAAO;YAAEG,SAASJ;YAAmBK,UAAU;gBAAEH;gBAAaC;YAAa;QAAE;IAC/E,EAAE,OAAM;QACN,OAAO;IACT;AACF"}
+\ No newline at end of file
+diff --git a/build/module.js b/build/module.js
+index 684fed369057e33b715f0cdf2913a454d28b9e62..b32d8ec7df50e6e69ba5d10f40122a40d536cc5b 100644
+--- a/build/module.js
++++ b/build/module.js
+@@ -2,6 +2,7 @@ import { requireNativeModule } from 'expo';
+ import AppMetrics, { setErrorHandlerEnabled } from 'expo-app-metrics';
+ import { initRouterIntegration } from './integrations/expo-router/init';
+ import { isRouterInstalled } from './integrations/expo-router/router';
++import { initReanimatedIntegration } from './integrations/react-native-reanimated/init';
+ import { initReactNavigationIntegration } from './integrations/react-navigation/init';
+ import { isReactNavigationInstalled } from './integrations/react-navigation/reactNavigation';
+ import { reportCaughtError } from './reportCaughtError';
+@@ -64,6 +65,9 @@ const Observe = new Proxy(native, {
+                 } else if (shouldInitReactNavigationIntegration) {
+                     initReactNavigationIntegration(config.integrations?.['react-navigation']);
+                 }
++                if (config.integrations?.['react-native-reanimated']) {
++                    initReanimatedIntegration();
++                }
+                 return target.configure(config);
+             };
+         }
+diff --git a/build/module.js.map b/build/module.js.map
+index 2c5cf1ccaaecb9a2ec2cf79da948fc5e9fd4289f..d7d9ed5b9dc78b38dae868c04c22d690df955e15 100644
+--- a/build/module.js.map
++++ b/build/module.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["module.ts"],"sourcesContent":[null],"names":["requireNativeModule","AppMetrics","setErrorHandlerEnabled","initRouterIntegration","isRouterInstalled","initReactNavigationIntegration","isReactNavigationInstalled","reportCaughtError","networkTracesConfigFromOption","networkTraces","option","enabled","__DEV__","malformed","filter","hosts","host","test","length","console","warn","join","native","Observe","Proxy","get","target","prop","receiver","config","errorHandlingEnabled","setNetworkTracesConfig","routerEnabled","integrations","reactNavigationEnabled","shouldInitRouterIntegration","shouldInitReactNavigationIntegration","configure","error","name","callback","registerIntegrationImpl","Object","keys","includes","Reflect","getIntegrations","subscription","addListener","remove"],"mappings":"AAAA,SAASA,mBAAmB,QAAQ,OAAO;AAC3C,OAAOC,cAAcC,sBAAsB,QAAQ,mBAAmB;AAEtE,SAASC,qBAAqB,QAAQ,kCAAkC;AACxE,SAASC,iBAAiB,QAAQ,oCAAoC;AACtE,SAASC,8BAA8B,QAAQ,uCAAuC;AACtF,SAASC,0BAA0B,QAAQ,kDAAkD;AAC7F,SAASC,iBAAiB,QAAQ,sBAAsB;AAGxD;;;;CAIC,GACD,SAASC,8BAA8BC,aAA6C;IAClF,MAAMC,SAASD,iBAAiB;IAChC,IAAI,OAAOC,WAAW,WAAW;QAC/B,OAAO;YAAEC,SAASD;QAAO;IAC3B;IACA,IAAIE,SAAS;QACX,uFAAuF;QACvF,4CAA4C;QAC5C,MAAMC,YAAYH,OAAOI,MAAM,EAAEC,OAAOD,OAAO,CAACE,OAAS,OAAOC,IAAI,CAACD;QACrE,IAAIH,WAAWK,QAAQ;YACrBC,QAAQC,IAAI,CACV,CAAC,8EAA8E,EAAEP,UAAUQ,IAAI,CAAC,MAAM,EAAE,CAAC,GACvG;QAEN;IACF;IACA,0FAA0F;IAC1F,wFAAwF;IACxF,MAAMV,UAAUD,OAAOC,OAAO,IAAI;IAClC,OAAOD,OAAOI,MAAM,IAAI,OAAO;QAAEH;QAASG,QAAQJ,OAAOI,MAAM;IAAC,IAAI;QAAEH;IAAQ;AAChF;AAEA,MAAMW,SAAStB,oBAAmC;AAElD,MAAMuB,UAAyB,IAAIC,MAAMF,QAAQ;IAC/CG,KAAIC,MAAM,EAAEC,IAAI,EAAEC,QAAQ;QACxB,IAAID,SAAS,aAAa;YACxB,OAAO,CAACE;gBACN,uFAAuF;gBACvF,uCAAuC;gBACvC3B,uBAAuB2B,OAAOC,oBAAoB,IAAI;gBAEtD,qFAAqF;gBACrF,oFAAoF;gBACpF,8DAA8D;gBAC9D7B,WAAW8B,sBAAsB,CAACvB,8BAA8BqB,OAAOpB,aAAa;gBAEpF,MAAMuB,gBAAgB,CAAC,CAACH,OAAOI,YAAY,EAAE,CAAC,cAAc;gBAC5D,MAAMC,yBAAyB,CAAC,CAACL,OAAOI,YAAY,EAAE,CAAC,mBAAmB;gBAE1E,IAAID,iBAAiB,CAAC5B,mBAAmB;oBACvCe,QAAQC,IAAI,CACV;gBAEJ;gBACA,IAAIc,0BAA0B,CAAC5B,4BAA4B;oBACzDa,QAAQC,IAAI,CACV;gBAEJ;gBAEA,MAAMe,8BAA8BH,iBAAiB5B;gBACrD,MAAMgC,uCACJF,0BAA0B5B;gBAE5B,IAAI6B,+BAA+BC,sCAAsC;oBACvEjB,QAAQC,IAAI,CACV,wFACE;gBAEN;gBAEA,IAAIe,6BAA6B;oBAC/BhC,sBAAsB0B,OAAOI,YAAY,EAAE,CAAC,cAAc;gBAC5D,OAAO,IAAIG,sCAAsC;oBAC/C/B,+BAA+BwB,OAAOI,YAAY,EAAE,CAAC,mBAAmB;gBAC1E;gBACA,OAAOP,OAAOW,SAAS,CAACR;YAC1B;QACF;QAEA,IAAIF,SAAS,eAAe;YAC1B,OAAO,CAACW,QAAmB/B,kBAAkB+B;QAC/C;QAEA,IAAIX,SAAS,uBAAuB;YAClC,OAAO,CACLY,MACAC,WACGC,wBAAwBf,QAAQa,MAAMC;QAC7C;QAEA,wGAAwG;QACxG,iGAAiG;QACjG,iGAAiG;QACjG,wEAAwE;QACxE,IAAI,OAAOb,SAAS,YAAY,CAACe,OAAOC,IAAI,CAACjB,QAAQkB,QAAQ,CAACjB,OAAO;YACnE,OAAOkB,QAAQpB,GAAG,CAACxB,YAAY0B;QACjC;QACA,OAAOkB,QAAQpB,GAAG,CAACC,QAAQC,MAAMC;IACnC;AACF;AAEA,OAAO,SAASa,wBACdf,MAA8D,EAC9Da,IAAO,EACPC,QAAwD;IAExD,MAAMP,eAAeP,OAAOoB,eAAe;IAC3C,IAAIb,cAAc;QAChB,IAAIA,YAAY,CAACM,KAAK,EAAE;YACtBC,SAASP,YAAY,CAACM,KAAK;QAC7B;QACA;IACF;IAEA,MAAMQ,eAAerB,OAAOsB,WAAW,CAAC,aAAa,CAAC,EAAEf,YAAY,EAAE;QACpEc,aAAaE,MAAM;QACnB,IAAIhB,cAAc,CAACM,KAAK,EAAE;YACxBC,SAASP,YAAY,CAACM,KAAK;QAC7B;IACF;AACF;AAEA,eAAehB,QAAQ"}
+\ No newline at end of file
++{"version":3,"sources":["module.ts"],"sourcesContent":[null],"names":["requireNativeModule","AppMetrics","setErrorHandlerEnabled","initRouterIntegration","isRouterInstalled","initReanimatedIntegration","initReactNavigationIntegration","isReactNavigationInstalled","reportCaughtError","networkTracesConfigFromOption","networkTraces","option","enabled","__DEV__","malformed","filter","hosts","host","test","length","console","warn","join","native","Observe","Proxy","get","target","prop","receiver","config","errorHandlingEnabled","setNetworkTracesConfig","routerEnabled","integrations","reactNavigationEnabled","shouldInitRouterIntegration","shouldInitReactNavigationIntegration","configure","error","name","callback","registerIntegrationImpl","Object","keys","includes","Reflect","getIntegrations","subscription","addListener","remove"],"mappings":"AAAA,SAASA,mBAAmB,QAAQ,OAAO;AAC3C,OAAOC,cAAcC,sBAAsB,QAAQ,mBAAmB;AAEtE,SAASC,qBAAqB,QAAQ,kCAAkC;AACxE,SAASC,iBAAiB,QAAQ,oCAAoC;AACtE,SAASC,yBAAyB,QAAQ,8CAA8C;AACxF,SAASC,8BAA8B,QAAQ,uCAAuC;AACtF,SAASC,0BAA0B,QAAQ,kDAAkD;AAC7F,SAASC,iBAAiB,QAAQ,sBAAsB;AAGxD;;;;CAIC,GACD,SAASC,8BAA8BC,aAA6C;IAClF,MAAMC,SAASD,iBAAiB;IAChC,IAAI,OAAOC,WAAW,WAAW;QAC/B,OAAO;YAAEC,SAASD;QAAO;IAC3B;IACA,IAAIE,SAAS;QACX,uFAAuF;QACvF,4CAA4C;QAC5C,MAAMC,YAAYH,OAAOI,MAAM,EAAEC,OAAOD,OAAO,CAACE,OAAS,OAAOC,IAAI,CAACD;QACrE,IAAIH,WAAWK,QAAQ;YACrBC,QAAQC,IAAI,CACV,CAAC,8EAA8E,EAAEP,UAAUQ,IAAI,CAAC,MAAM,EAAE,CAAC,GACvG;QAEN;IACF;IACA,0FAA0F;IAC1F,wFAAwF;IACxF,MAAMV,UAAUD,OAAOC,OAAO,IAAI;IAClC,OAAOD,OAAOI,MAAM,IAAI,OAAO;QAAEH;QAASG,QAAQJ,OAAOI,MAAM;IAAC,IAAI;QAAEH;IAAQ;AAChF;AAEA,MAAMW,SAASvB,oBAAmC;AAElD,MAAMwB,UAAyB,IAAIC,MAAMF,QAAQ;IAC/CG,KAAIC,MAAM,EAAEC,IAAI,EAAEC,QAAQ;QACxB,IAAID,SAAS,aAAa;YACxB,OAAO,CAACE;gBACN,uFAAuF;gBACvF,uCAAuC;gBACvC5B,uBAAuB4B,OAAOC,oBAAoB,IAAI;gBAEtD,qFAAqF;gBACrF,oFAAoF;gBACpF,8DAA8D;gBAC9D9B,WAAW+B,sBAAsB,CAACvB,8BAA8BqB,OAAOpB,aAAa;gBAEpF,MAAMuB,gBAAgB,CAAC,CAACH,OAAOI,YAAY,EAAE,CAAC,cAAc;gBAC5D,MAAMC,yBAAyB,CAAC,CAACL,OAAOI,YAAY,EAAE,CAAC,mBAAmB;gBAE1E,IAAID,iBAAiB,CAAC7B,mBAAmB;oBACvCgB,QAAQC,IAAI,CACV;gBAEJ;gBACA,IAAIc,0BAA0B,CAAC5B,4BAA4B;oBACzDa,QAAQC,IAAI,CACV;gBAEJ;gBAEA,MAAMe,8BAA8BH,iBAAiB7B;gBACrD,MAAMiC,uCACJF,0BAA0B5B;gBAE5B,IAAI6B,+BAA+BC,sCAAsC;oBACvEjB,QAAQC,IAAI,CACV,wFACE;gBAEN;gBAEA,IAAIe,6BAA6B;oBAC/BjC,sBAAsB2B,OAAOI,YAAY,EAAE,CAAC,cAAc;gBAC5D,OAAO,IAAIG,sCAAsC;oBAC/C/B,+BAA+BwB,OAAOI,YAAY,EAAE,CAAC,mBAAmB;gBAC1E;gBACA,IAAIJ,OAAOI,YAAY,EAAE,CAAC,0BAA0B,EAAE;oBACpD7B;gBACF;gBACA,OAAOsB,OAAOW,SAAS,CAACR;YAC1B;QACF;QAEA,IAAIF,SAAS,eAAe;YAC1B,OAAO,CAACW,QAAmB/B,kBAAkB+B;QAC/C;QAEA,IAAIX,SAAS,uBAAuB;YAClC,OAAO,CACLY,MACAC,WACGC,wBAAwBf,QAAQa,MAAMC;QAC7C;QAEA,wGAAwG;QACxG,iGAAiG;QACjG,iGAAiG;QACjG,wEAAwE;QACxE,IAAI,OAAOb,SAAS,YAAY,CAACe,OAAOC,IAAI,CAACjB,QAAQkB,QAAQ,CAACjB,OAAO;YACnE,OAAOkB,QAAQpB,GAAG,CAACzB,YAAY2B;QACjC;QACA,OAAOkB,QAAQpB,GAAG,CAACC,QAAQC,MAAMC;IACnC;AACF;AAEA,OAAO,SAASa,wBACdf,MAA8D,EAC9Da,IAAO,EACPC,QAAwD;IAExD,MAAMP,eAAeP,OAAOoB,eAAe;IAC3C,IAAIb,cAAc;QAChB,IAAIA,YAAY,CAACM,KAAK,EAAE;YACtBC,SAASP,YAAY,CAACM,KAAK;QAC7B;QACA;IACF;IAEA,MAAMQ,eAAerB,OAAOsB,WAAW,CAAC,aAAa,CAAC,EAAEf,YAAY,EAAE;QACpEc,aAAaE,MAAM;QACnB,IAAIhB,cAAc,CAACM,KAAK,EAAE;YACxBC,SAASP,YAAY,CAACM,KAAK;QAC7B;IACF;AACF;AAEA,eAAehB,QAAQ"}
+\ No newline at end of file
+diff --git a/build/types.d.ts b/build/types.d.ts
+index 6575b95a76a9034c5a7408e68f5c32c8d72d2b2c..737e7ddf690164fc2a1f6efb97aa406a6afe1b1f 100644
+--- a/build/types.d.ts
++++ b/build/types.d.ts
+@@ -139,6 +139,17 @@ export interface ObserveIntegrationsConfig {
+      * @default false
+      */
+     'react-navigation'?: boolean | ObserveNavigationIntegrationConfig;
++    /**
++     * Enables the `react-native-reanimated` integration, which reports Reanimated errors as
++     * `reanimated.error` errors and Reanimated warnings as `reanimated.warning` events. Logs are
++     * still printed to the console. Each distinct message is reported once per app launch.
++     *
++     * Requires `react-native-reanimated` 4.6 or 4.7 and `react-native-worklets` to be installed.
++     * Reanimated's `level` and `strict` logger settings still decide which logs are reported.
++     *
++     * @default false
++     */
++    'react-native-reanimated'?: boolean;
+ }
+ /**
+  * Events emitted by the native `ExpoObserve` module.
+diff --git a/build/types.js.map b/build/types.js.map
+index 68a369901007c80dd4a4231e0224e1cc20849cb1..edf3a5fb5dcfd518abb692d5e1e8d5616c0b4a34 100644
+--- a/build/types.js.map
++++ b/build/types.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["types.ts"],"sourcesContent":[null],"names":[],"mappings":"AAqKA,WAyJC"}
+\ No newline at end of file
++{"version":3,"sources":["types.ts"],"sourcesContent":[null],"names":[],"mappings":"AAgLA,WAyJC"}
+\ No newline at end of file
+diff --git a/src/integrations/expo-router/__tests__/ObserveRouterIntegrationProvider.test.native.tsx b/src/integrations/expo-router/__tests__/ObserveRouterIntegrationProvider.test.native.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..04c16cc39b1a8c3902234d8a6f6080c07192fc95
+--- /dev/null
++++ b/src/integrations/expo-router/__tests__/ObserveRouterIntegrationProvider.test.native.tsx
+@@ -0,0 +1,134 @@
++/* eslint-disable @typescript-eslint/no-require-imports */
++import { render } from '@testing-library/react-native';
++import { use } from 'react';
++import { Text } from 'react-native';
++
++import {
++  ObserveRouterIntegrationContext,
++  ObserveRouterIntegrationProvider,
++} from '../ObserveRouterIntegrationProvider';
++import * as initModule from '../init';
++
++jest.mock('expo-app-metrics', () => ({
++  __esModule: true,
++  default: {
++    markInteractive: jest.fn(),
++    getMainSession: jest.fn(() => ({
++      id: 'session-1',
++      type: 'main',
++      startDate: '2026-01-01T00:00:00.000Z',
++      addMetric: jest.fn(),
++    })),
++  },
++}));
++
++jest.mock('../init', () => {
++  const initListenersCleanup = jest.fn();
++  return {
++    __esModule: true,
++    isInitialized: jest.fn(() => true),
++    initListeners: jest.fn(() => initListenersCleanup),
++    initRouterIntegration: jest.fn(),
++    __initListenersCleanup: initListenersCleanup,
++  };
++});
++
++jest.mock('../router', () => ({
++  optionalRouter: { unstable_navigationEvents: { addListener: jest.fn(), emit: jest.fn() } },
++  isRouterInstalled: true,
++}));
++
++const mockIsInitialized = initModule.isInitialized as jest.Mock;
++const mockInitListeners = initModule.initListeners as jest.Mock;
++const mockInitListenersCleanup = (initModule as unknown as { __initListenersCleanup: jest.Mock })
++  .__initListenersCleanup;
++
++function StorageProbe({ onRead }: { onRead: (storage: unknown) => void }) {
++  const storage = use(ObserveRouterIntegrationContext);
++  onRead(storage);
++  return <Text>probe</Text>;
++}
++
++beforeEach(() => {
++  mockIsInitialized.mockReturnValue(true);
++  mockIsInitialized.mockClear();
++  mockInitListeners.mockClear();
++  mockInitListenersCleanup.mockClear();
++  jest.spyOn(console, 'warn').mockImplementation(() => {});
++});
++
++describe('ObserveRouterIntegrationProvider', () => {
++  it('exposes a non-null storage on first render when isInitialized() is true at mount', () => {
++    const reads: unknown[] = [];
++    render(
++      <ObserveRouterIntegrationProvider>
++        <StorageProbe onRead={(s) => reads.push(s)} />
++      </ObserveRouterIntegrationProvider>
++    );
++    expect(reads[0]).toBeTruthy();
++    expect(
++      (reads[0] as { interactiveScreensIds: Set<string> }).interactiveScreensIds
++    ).toBeInstanceOf(Set);
++  });
++
++  it('keeps storage null and does not attach listeners when isInitialized() is false at mount', () => {
++    mockIsInitialized.mockReturnValue(false);
++    const reads: unknown[] = [];
++    render(
++      <ObserveRouterIntegrationProvider>
++        <StorageProbe onRead={(s) => reads.push(s)} />
++      </ObserveRouterIntegrationProvider>
++    );
++    expect(reads[0]).toBeNull();
++    expect(mockInitListeners).not.toHaveBeenCalled();
++  });
++
++  it('calls initListeners with storage in useEffect and runs cleanup on unmount', () => {
++    const { unmount } = render(
++      <ObserveRouterIntegrationProvider>
++        <Text>child</Text>
++      </ObserveRouterIntegrationProvider>
++    );
++    expect(mockInitListeners).toHaveBeenCalledTimes(1);
++    const [storageArg] = mockInitListeners.mock.calls[0];
++    expect(
++      (storageArg as { interactiveScreensIds: Set<string> }).interactiveScreensIds
++    ).toBeInstanceOf(Set);
++
++    expect(mockInitListenersCleanup).not.toHaveBeenCalled();
++    unmount();
++    expect(mockInitListenersCleanup).toHaveBeenCalledTimes(1);
++  });
++
++  it('throws when isInitialized() flips during the provider lifetime', () => {
++    mockIsInitialized.mockReturnValue(false);
++    jest.spyOn(console, 'error').mockImplementation(() => {});
++
++    const { rerender } = render(
++      <ObserveRouterIntegrationProvider>
++        <Text>child</Text>
++      </ObserveRouterIntegrationProvider>
++    );
++
++    mockIsInitialized.mockReturnValue(true);
++    expect(() =>
++      rerender(
++        <ObserveRouterIntegrationProvider>
++          <Text>child</Text>
++        </ObserveRouterIntegrationProvider>
++      )
++    ).toThrow(
++      '[expo-observe] Router integration was enabled after application mounted. Call Observe.configure() before mounting AppMetricsRoot.'
++    );
++  });
++
++  it('renders children when storage is null (router not installed scenario)', () => {
++    mockIsInitialized.mockReturnValue(false);
++    const { getByText } = render(
++      <ObserveRouterIntegrationProvider>
++        <Text>visible</Text>
++      </ObserveRouterIntegrationProvider>
++    );
++    expect(getByText('visible')).toBeTruthy();
++  });
++});
+diff --git a/src/integrations/expo-router/__tests__/init.test.native.ts b/src/integrations/expo-router/__tests__/init.test.native.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..55f1a69111a69ba69b0357fc543bb3170f7ec8a9
+--- /dev/null
++++ b/src/integrations/expo-router/__tests__/init.test.native.ts
+@@ -0,0 +1,484 @@
++/* eslint-disable @typescript-eslint/no-require-imports */
++import AppMetrics from 'expo-app-metrics';
++
++import { initListeners, initRouterIntegration } from '../init';
++import { createRouterIntegrationStorage, type RouterIntegrationStorage } from '../storage';
++
++// These are `expo-router`'s event types, but importing them here would pull expo-router's source
++// (and its vendored react-navigation global augmentation of `ReactNavigation.RootParamList`/`Theme`)
++// into the program, which clashes with the real `@react-navigation/core` augmentation loaded by the
++// sibling react-navigation integration tests. They're only used to shape test event payloads, so we
++// alias them to `any` to keep the clash out of this package.
++type ActionDispatchedEvent = any;
++type PageFocusedEvent = any;
++type PagePreloadedEvent = any;
++
++jest.mock('expo-app-metrics', () => {
++  const mainSession = {
++    id: 'session-1',
++    type: 'main',
++    startDate: '2026-01-01T00:00:00.000Z',
++    addMetric: jest.fn(),
++  };
++  return {
++    __esModule: true,
++    default: {
++      markInteractive: jest.fn(),
++      getMainSession: jest.fn(() => mainSession),
++    },
++  };
++});
++
++jest.mock('../router', () => ({ optionalRouter: undefined, isRouterInstalled: false }));
++
++const mockGetMainSession = AppMetrics.getMainSession as jest.Mock;
++const mockAddMetric = AppMetrics.getMainSession().addMetric as jest.Mock;
++
++type Listener<T> = (event: T) => void;
++
++interface FakeNavigationEvents {
++  addListener<T>(type: string, cb: Listener<T>): () => void;
++  emit<T>(type: string, event: T): void;
++}
++
++function createFakeNavigationEvents(): FakeNavigationEvents {
++  const listeners: Record<string, Set<Listener<any>>> = {};
++  return {
++    addListener(type, cb) {
++      const set = listeners[type] ?? new Set();
++      listeners[type] = set;
++      set.add(cb);
++      return () => set.delete(cb);
++    },
++    emit(type, event) {
++      listeners[type]?.forEach((cb) => cb(event));
++    },
++  };
++}
++
++function dispatch(events: FakeNavigationEvents, actionType: string) {
++  events.emit<Partial<ActionDispatchedEvent>>('actionDispatched', {
++    type: 'actionDispatched',
++    actionType: actionType as ActionDispatchedEvent['actionType'],
++  });
++}
++
++function focus(
++  events: FakeNavigationEvents,
++  screenId: string,
++  overrides?: Partial<PageFocusedEvent>
++) {
++  events.emit<Partial<PageFocusedEvent>>('pageFocused', {
++    type: 'pageFocused',
++    screenId,
++    pathname: `/${screenId}`,
++    params: {},
++    segments: [screenId],
++    ...overrides,
++  });
++}
++
++function preload(
++  events: FakeNavigationEvents,
++  screenId: string,
++  overrides?: Partial<PagePreloadedEvent>
++) {
++  events.emit<Partial<PagePreloadedEvent>>('pagePreloaded', {
++    type: 'pagePreloaded',
++    screenId,
++    pathname: `/${screenId}`,
++    params: {},
++    segments: [screenId],
++    ...overrides,
++  });
++}
++
++function flushAsync() {
++  return new Promise((resolve) => setImmediate(resolve));
++}
++
++let storage: RouterIntegrationStorage;
++let events: FakeNavigationEvents;
++let cleanup: () => void;
++let logSpy: jest.SpyInstance;
++let warnSpy: jest.SpyInstance;
++
++beforeEach(() => {
++  jest.clearAllMocks();
++  initRouterIntegration(undefined);
++  logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
++  warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
++  storage = createRouterIntegrationStorage();
++  events = createFakeNavigationEvents();
++  cleanup = initListeners(storage, events as any);
++});
++
++function setRouterConfig(config: Parameters<typeof initRouterIntegration>[0]) {
++  cleanup?.();
++  initRouterIntegration(config);
++  cleanup = initListeners(storage, events as any);
++}
++
++afterEach(() => {
++  cleanup?.();
++  expect(logSpy).not.toHaveBeenCalled();
++  expect(warnSpy).not.toHaveBeenCalled();
++  jest.clearAllMocks();
++});
++
++describe('initListeners', () => {
++  it('records cold_ttr with isAppLaunch=true on the first focus after a non-PRELOAD action', async () => {
++    const now = performance.now();
++    jest.spyOn(performance, 'now').mockReturnValue(now + 100);
++    focus(events, 'a');
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++    expect(mockAddMetric).toHaveBeenCalledWith({
++      timestamp: expect.any(String),
++      category: 'navigation',
++      name: 'cold_ttr',
++      routeName: '/a',
++      value: expect.closeTo(0.1, 2),
++      params: { isAppLaunch: true, routeParams: {}, url: '/a' },
++    });
++  });
++
++  it('filters route params from cold_ttr, warm_ttr, and deferred tti metrics', async () => {
++    setRouterConfig({ filteredParams: ['userId', 'token'] });
++    const circular: Record<string, unknown> = {};
++    circular.self = circular;
++    storage.screenTimes['b'] = { lastInteractiveCall: performance.now() };
++
++    focus(events, 'a', { params: { userId: '1', tab: 'home', callback: () => {}, circular } });
++    await flushAsync();
++
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'b', {
++      pathname: '/b?token=secret',
++      params: { token: 'secret', q: 'ok', callback: () => {}, circular },
++    });
++    await flushAsync();
++
++    expect(mockAddMetric.mock.calls[0][0].params).toEqual({
++      isAppLaunch: true,
++      routeParams: { tab: 'home' },
++      urlHidden: true,
++    });
++    expect(mockAddMetric.mock.calls[1][0].params).toEqual({
++      isAppLaunch: false,
++      routeParams: { q: 'ok' },
++      urlHidden: true,
++    });
++    expect(mockAddMetric.mock.calls[2][0].params).toEqual({
++      isAppLaunch: false,
++      routeParams: { q: 'ok' },
++      urlHidden: true,
++    });
++  });
++
++  it('keeps URL visible when filteredParams does not remove any route param', async () => {
++    setRouterConfig({ filteredParams: ['userId'] });
++    storage.screenTimes['a'] = { lastInteractiveCall: performance.now() };
++
++    focus(events, 'a', { pathname: '/a?token=secret', params: { token: 'secret' } });
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(2);
++    expect(mockAddMetric.mock.calls[0][0].params).toEqual({
++      isAppLaunch: true,
++      routeParams: { token: 'secret' },
++      url: '/a?token=secret',
++    });
++    expect(mockAddMetric.mock.calls[1][0].params).toEqual({
++      isAppLaunch: true,
++      routeParams: { token: 'secret' },
++      url: '/a?token=secret',
++    });
++  });
++
++  it('seeds dispatchTime and isAppLaunch=true for the initial screen so a later markInteractive can compute navigation TTI', async () => {
++    focus(events, 'a');
++    await flushAsync();
++
++    // The initial focus is treated as if the app launch dispatched the
++    // navigation — without this, useObserveForRouter has no dispatchTime to
++    // diff against and the navigation `tti` metric is silently skipped.
++    expect(storage.screenTimes['a']).toEqual({
++      dispatchTime: expect.any(Number),
++      isAppLaunch: true,
++    });
++  });
++
++  it('seeds isAppLaunch=false on subsequent navigated focuses so markInteractive can label the tti metric', async () => {
++    focus(events, 'a');
++    await flushAsync();
++
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'b');
++    await flushAsync();
++
++    expect(storage.screenTimes['b']).toEqual({
++      dispatchTime: expect.any(Number),
++      isAppLaunch: false,
++    });
++  });
++
++  it('records cold_ttr with isAppLaunch=false on subsequent focuses of a new screen', async () => {
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'a');
++    await flushAsync();
++    mockAddMetric.mockClear();
++
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'b');
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++    expect(mockAddMetric.mock.calls[0][0].name).toBe('cold_ttr');
++    expect(mockAddMetric.mock.calls[0][0].params).toEqual({
++      isAppLaunch: false,
++      routeParams: {},
++      url: '/b',
++    });
++  });
++
++  it('records warm_ttr when revisiting a previously rendered screen', async () => {
++    focus(events, 'a');
++    await flushAsync();
++
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'b');
++    await flushAsync();
++
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'a');
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(3);
++    expect(mockAddMetric.mock.calls[0][0].name).toBe('cold_ttr');
++    expect(mockAddMetric.mock.calls[0][0].params).toEqual({
++      isAppLaunch: true,
++      routeParams: {},
++      url: '/a',
++    });
++    expect(mockAddMetric.mock.calls[1][0].name).toBe('cold_ttr');
++    expect(mockAddMetric.mock.calls[1][0].params).toEqual({
++      isAppLaunch: false,
++      routeParams: {},
++      url: '/b',
++    });
++    expect(mockAddMetric.mock.calls[2][0].name).toBe('warm_ttr');
++    expect(mockAddMetric.mock.calls[2][0].params).toEqual({
++      isAppLaunch: false,
++      routeParams: {},
++      url: '/a',
++    });
++  });
++
++  it.each<[string[], string, Record<string, string | string[]>, string]>([
++    [[], '/', {}, '/'],
++    [['(tabs)'], '/', {}, '/(tabs)'],
++    [['(tabs)', '(home)'], '/', {}, '/(tabs)/(home)'],
++    [['users', '[id]'], '/users/42', { id: '42' }, '/users/[id]'],
++    [['files', '[...path]'], '/files/a/b/c', { path: ['a', 'b', 'c'] }, '/files/[...path]'],
++    [
++      ['(tabs)', 'sessions', '[sessionId]'],
++      '/sessions/1234',
++      { sessionId: '1234' },
++      '/(tabs)/sessions/[sessionId]',
++    ],
++  ])(
++    'pageFocused(segments=%s, pathname=%s, params=%s) records routeName=%s',
++    async (segments, pathname, routeParams, expectedRouteName) => {
++      dispatch(events, 'NAVIGATE');
++      focus(events, 'screen', { pathname, params: routeParams, segments });
++      await flushAsync();
++
++      expect(mockAddMetric).toHaveBeenCalledTimes(1);
++      expect(mockAddMetric).toHaveBeenCalledWith(
++        expect.objectContaining({
++          routeName: expectedRouteName,
++          params: expect.objectContaining({
++            url: pathname,
++            routeParams,
++          }),
++        })
++      );
++    }
++  );
++
++  it('does not record a TTR for a PRELOAD action', async () => {
++    storage.hasRecordedInitialTtr = true;
++
++    dispatch(events, 'PRELOAD');
++    focus(events, 'a');
++    await flushAsync();
++    expect(mockAddMetric).not.toHaveBeenCalled();
++  });
++
++  it('records warm_ttr when a preloaded screen is focused for the first time', async () => {
++    dispatch(events, 'PRELOAD');
++    preload(events, 'a');
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'a');
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++    expect(mockAddMetric.mock.calls[0][0].name).toBe('warm_ttr');
++  });
++
++  it('records cold_ttr for a non-preloaded screen even when a different screen was preloaded', async () => {
++    dispatch(events, 'PRELOAD');
++    preload(events, 'a');
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'b');
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++    expect(mockAddMetric.mock.calls[0][0].name).toBe('cold_ttr');
++  });
++
++  it('does not emit a metric when a screen is preloaded but never focused', async () => {
++    storage.hasRecordedInitialTtr = true;
++
++    dispatch(events, 'PRELOAD');
++    preload(events, 'a');
++    await flushAsync();
++
++    expect(mockAddMetric).not.toHaveBeenCalled();
++    expect(storage.renderedScreensIds.has('a')).toBe(true);
++  });
++
++  it('handles a duplicate pagePreloaded for the same screen idempotently', async () => {
++    preload(events, 'a');
++    preload(events, 'a');
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'a');
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++    expect(mockAddMetric.mock.calls[0][0].name).toBe('warm_ttr');
++    expect(storage.renderedScreensIds.size).toBe(1);
++  });
++
++  it('treats subsequent focuses of a preloaded screen as warm_ttr', async () => {
++    preload(events, 'a');
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'a');
++    await flushAsync();
++
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'b');
++    await flushAsync();
++
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'a');
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(3);
++    expect(mockAddMetric.mock.calls[0][0].name).toBe('warm_ttr');
++    expect(mockAddMetric.mock.calls[1][0].name).toBe('cold_ttr');
++    expect(mockAddMetric.mock.calls[2][0].name).toBe('warm_ttr');
++  });
++
++  it('cleanup unsubscribes all listeners', async () => {
++    cleanup();
++    dispatch(events, 'NAVIGATE');
++    preload(events, 'a');
++    focus(events, 'a');
++    await flushAsync();
++    expect(mockAddMetric).not.toHaveBeenCalled();
++    expect(storage.pendingActions).toHaveLength(0);
++    expect(storage.renderedScreensIds.size).toBe(0);
++    cleanup = () => {};
++  });
++
++  it('emits tti alongside the TTR when a pending interactive was waiting (post-cold-launch)', async () => {
++    // Cold-launch first screen so the next focus runs through the warm branch.
++    focus(events, 'a');
++    await flushAsync();
++    mockAddMetric.mockClear();
++
++    // markInteractive ran before pageFocused — wrote lastInteractiveCall with
++    // no dispatchTime.
++    storage.screenTimes['b'] = { lastInteractiveCall: performance.now() };
++
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'b');
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(2);
++    const ttrCall = mockAddMetric.mock.calls[0][0];
++    const ttiCall = mockAddMetric.mock.calls[1][0];
++    expect(ttrCall.name).toBe('cold_ttr');
++    expect(ttrCall.params.isAppLaunch).toBe(false);
++    expect(ttiCall.name).toBe('tti');
++    expect(ttiCall.value).toBe(ttrCall.value);
++    expect(ttiCall.routeName).toBe('/b');
++    expect(ttiCall.params).toEqual({ isAppLaunch: false, routeParams: {}, url: '/b' });
++    expect(storage.interactiveScreensIds.has('b')).toBe(true);
++  });
++
++  it('emits tti = cold_ttr when a pending interactive was waiting during cold launch', async () => {
++    storage.screenTimes['a'] = { lastInteractiveCall: performance.now() };
++
++    focus(events, 'a');
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(2);
++    const ttrCall = mockAddMetric.mock.calls.find((c) => c[0].name === 'cold_ttr')?.[0];
++    const ttiCall = mockAddMetric.mock.calls.find((c) => c[0].name === 'tti')?.[0];
++    expect(ttrCall.params.isAppLaunch).toBe(true);
++    expect(ttiCall.value).toBe(ttrCall.value);
++    expect(ttiCall.routeName).toBe('/a');
++    expect(ttiCall.params).toEqual({ isAppLaunch: true, routeParams: {}, url: '/a' });
++    expect(storage.interactiveScreensIds.has('a')).toBe(true);
++  });
++
++  it('marks lastInteractiveCall after a deferred emit so a follow-up markInteractive is deduped', async () => {
++    storage.hasRecordedInitialTtr = true;
++    storage.screenTimes['b'] = { lastInteractiveCall: 1000 };
++
++    const nowSpy = jest.spyOn(performance, 'now');
++    nowSpy.mockReturnValue(2000);
++    dispatch(events, 'NAVIGATE');
++    nowSpy.mockReturnValue(2100);
++    focus(events, 'b');
++    await flushAsync();
++
++    // After pageFocused: dispatchTime < lastInteractiveCall (now), so a
++    // follow-up markInteractive after focus is treated as duplicate.
++    const entry = storage.screenTimes['b'];
++    expect(entry?.dispatchTime).toBe(2000);
++    expect(entry?.lastInteractiveCall).toBe(2100);
++  });
++
++  it('records metrics against the session returned by getMainSession', async () => {
++    dispatch(events, 'NAVIGATE');
++    focus(events, 'a');
++    await new Promise((resolve) => setImmediate(resolve));
++    expect(mockGetMainSession).toHaveBeenCalled();
++    expect(mockAddMetric).toHaveBeenCalledWith(
++      expect.objectContaining({ name: 'cold_ttr', routeName: '/a' })
++    );
++  });
++});
++
++describe('isInitialized + initRouterIntegration', () => {
++  it('flips initialized when initRouterIntegration is called and stays decoupled from initListeners', () => {
++    jest.isolateModules(() => {
++      const init = require('../init');
++      expect(init.isInitialized()).toBe(false);
++
++      const fresh = createRouterIntegrationStorage();
++      const fakeEvents = createFakeNavigationEvents();
++      const dispose = init.initListeners(fresh, fakeEvents);
++      expect(init.isInitialized()).toBe(false);
++      dispose();
++
++      init.initRouterIntegration();
++      expect(init.isInitialized()).toBe(true);
++    });
++  });
++});
+diff --git a/src/integrations/expo-router/__tests__/navigationConfig.test.ts b/src/integrations/expo-router/__tests__/navigationConfig.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..83fa658ee8db301fed90e6b8e1db476e344dc9c6
+--- /dev/null
++++ b/src/integrations/expo-router/__tests__/navigationConfig.test.ts
+@@ -0,0 +1,77 @@
++import { getNavigationMetricParams, getNavigationRouteParams } from '../../navigationConfig';
++
++describe('expo-router navigation config', () => {
++  it('filters configured route and query param keys', () => {
++    const circular: Record<string, unknown> = {};
++    circular.self = circular;
++
++    expect(
++      getNavigationRouteParams(
++        { filteredParams: ['userId', 'token', 42 as unknown as string] },
++        { userId: '1', tab: 'posts', token: circular }
++      ).routeParams
++    ).toEqual({ tab: 'posts' });
++  });
++
++  it('returns an empty object when every param is filtered', () => {
++    expect(
++      getNavigationRouteParams({ filteredParams: ['userId'] }, { userId: '1' }).routeParams
++    ).toEqual({});
++  });
++
++  it('omits only route param values that cannot be serialized', () => {
++    const circular: Record<string, unknown> = {};
++    circular.self = circular;
++    const symbol = Symbol('value');
++
++    expect(
++      getNavigationRouteParams(true, {
++        id: '42',
++        callback: () => {},
++        circular,
++        nested: { ok: true, callback: () => {} },
++        none: null,
++        symbol,
++        unset: undefined,
++      })
++    ).toEqual({ routeParams: { id: '42', nested: { ok: true }, none: null } });
++  });
++
++  it('keeps params and URL visible by default', () => {
++    const params = { userId: '1' };
++    expect(getNavigationRouteParams(true, params).routeParams).toEqual(params);
++    expect(getNavigationMetricParams(true, params, '/users/1')).toEqual({
++      routeParams: params,
++      url: '/users/1',
++    });
++  });
++
++  it('keeps the URL visible when no route param is filtered', () => {
++    expect(
++      getNavigationMetricParams({ filteredParams: ['token'] }, { tab: 'posts' }, '/users/1')
++    ).toEqual({
++      routeParams: { tab: 'posts' },
++      url: '/users/1',
++    });
++  });
++
++  it('hides the URL when a route param is filtered', () => {
++    expect(
++      getNavigationMetricParams(
++        { filteredParams: ['token'] },
++        { token: 'secret', tab: 'posts' },
++        '/u?token=secret'
++      )
++    ).toEqual({ routeParams: { tab: 'posts' }, urlHidden: true });
++  });
++
++  it('keeps the URL visible when a route param cannot be serialized', () => {
++    const circular: Record<string, unknown> = {};
++    circular.self = circular;
++
++    expect(getNavigationMetricParams(true, { id: '42', circular }, '/users/42')).toEqual({
++      routeParams: { id: '42' },
++      url: '/users/42',
++    });
++  });
++});
+diff --git a/src/integrations/expo-router/__tests__/optionalImport.test.ts b/src/integrations/expo-router/__tests__/optionalImport.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a97257962801b88f3b167655eee661c06701c742
+--- /dev/null
++++ b/src/integrations/expo-router/__tests__/optionalImport.test.ts
+@@ -0,0 +1,26 @@
++// `expo-router` is an optional peer dependency. The integration must reach it ONLY
++// through the `router` wrapper (a try/catch require), never via a direct
++// `import { x } from 'expo-router'`
++jest.mock('expo-router', () => {
++  throw new Error('simulated: expo-router is not installed');
++});
++
++jest.mock('../router', () => ({
++  __esModule: true,
++  isRouterInstalled: true,
++  optionalRouter: {
++    useRoute: jest.fn(),
++    useNavigation: jest.fn(),
++    useCurrentRouteInfo: jest.fn(),
++    unstable_navigationEvents: {
++      enable: jest.fn(),
++      addListener: jest.fn(() => ({ remove: jest.fn() })),
++    },
++  },
++}));
++
++describe('expo-router integration optional imports', () => {
++  it('loads its entry point without expo-router installed', () => {
++    expect(() => require('../index')).not.toThrow();
++  });
++});
+diff --git a/src/integrations/expo-router/__tests__/routeName.test.ts b/src/integrations/expo-router/__tests__/routeName.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1e178dd81a88756c051d0fea0f5081c65f372a6a
+--- /dev/null
++++ b/src/integrations/expo-router/__tests__/routeName.test.ts
+@@ -0,0 +1,18 @@
++import { buildRoutePattern } from '../routeName';
++
++describe('buildRoutePattern', () => {
++  it('returns undefined when segments is undefined', () => {
++    expect(buildRoutePattern(undefined)).toBeNull();
++  });
++
++  it.each([
++    [[], '/'],
++    [['(tabs)'], '/(tabs)'],
++    [['(tabs)', '(home)'], '/(tabs)/(home)'],
++    [['users', '[id]'], '/users/[id]'],
++    [['files', '[...path]'], '/files/[...path]'],
++    [['(tabs)', 'sessions', '[sessionId]'], '/(tabs)/sessions/[sessionId]'],
++  ])('buildRoutePattern(%s) = %s', (segments, expected) => {
++    expect(buildRoutePattern(segments as string[])).toBe(expected);
++  });
++});
+diff --git a/src/integrations/expo-router/__tests__/storage.test.ts b/src/integrations/expo-router/__tests__/storage.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..dd1b2250e985f3650086e54890cb1615870f01f8
+--- /dev/null
++++ b/src/integrations/expo-router/__tests__/storage.test.ts
+@@ -0,0 +1,22 @@
++import { createRouterIntegrationStorage } from '../storage';
++
++describe('createRouterIntegrationStorage', () => {
++  it('returns isolated instances', () => {
++    const a = createRouterIntegrationStorage();
++    const b = createRouterIntegrationStorage();
++    expect(a).not.toBe(b);
++    expect(a.screenTimes).not.toBe(b.screenTimes);
++    expect(a.interactiveScreensIds).not.toBe(b.interactiveScreensIds);
++    expect(a.renderedScreensIds).not.toBe(b.renderedScreensIds);
++    expect(a.pendingActions).not.toBe(b.pendingActions);
++  });
++
++  it('initializes empty collections and default flags', () => {
++    const storage = createRouterIntegrationStorage();
++    expect(storage.pendingActions).toEqual([]);
++    expect(storage.renderedScreensIds.size).toBe(0);
++    expect(storage.hasRecordedInitialTtr).toBe(false);
++    expect(storage.screenTimes).toEqual({});
++    expect(storage.interactiveScreensIds.size).toBe(0);
++  });
++});
+diff --git a/src/integrations/expo-router/__tests__/useObserveForRouter.test.native.tsx b/src/integrations/expo-router/__tests__/useObserveForRouter.test.native.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..52af38fade21efd83ed817adeed2d3ad0ec21eb1
+--- /dev/null
++++ b/src/integrations/expo-router/__tests__/useObserveForRouter.test.native.tsx
+@@ -0,0 +1,404 @@
++/* eslint-disable @typescript-eslint/no-require-imports */
++import { renderHook, act } from '@testing-library/react-native';
++import AppMetrics from 'expo-app-metrics';
++import { type ReactNode } from 'react';
++
++import { ObserveRouterIntegrationContext } from '../ObserveRouterIntegrationProvider';
++import * as routerModule from '../router';
++import { createRouterIntegrationStorage, type RouterIntegrationStorage } from '../storage';
++import { useObserveForRouter } from '../useObserveForRouter';
++
++jest.mock('expo-app-metrics', () => {
++  const mainSession = {
++    id: 'session-1',
++    type: 'main',
++    startDate: '2026-01-01T00:00:00.000Z',
++    addMetric: jest.fn(),
++  };
++  return {
++    __esModule: true,
++    default: {
++      markInteractive: jest.fn(),
++      getMainSession: jest.fn(() => mainSession),
++    },
++  };
++});
++
++jest.mock('../init', () => ({
++  __esModule: true,
++  isInitialized: jest.fn(() => true),
++  getRouterIntegrationConfig: jest.fn(() => undefined),
++  initListeners: jest.fn(() => () => {}),
++  initRouterIntegration: jest.fn(),
++}));
++
++jest.mock('../router', () => {
++  const useRoute = jest.fn(() => ({ key: 'screen-a' }));
++  const useNavigation = jest.fn(() => ({ isFocused: () => true }));
++  const useCurrentRouteInfo = jest.fn(() => ({
++    pathname: '/test',
++    params: { x: '1' },
++    segments: ['test'],
++  }));
++  return {
++    optionalRouter: {
++      useRoute,
++      useNavigation,
++      useCurrentRouteInfo,
++      unstable_navigationEvents: { addListener: jest.fn(), emit: jest.fn() },
++    },
++    isRouterInstalled: true,
++    __useRoute: useRoute,
++    __useNavigation: useNavigation,
++    __useCurrentRouteInfo: useCurrentRouteInfo,
++  };
++});
++
++const mockAddMetric = AppMetrics.getMainSession().addMetric as jest.Mock;
++const mockUseRoute = (routerModule as unknown as { __useRoute: jest.Mock }).__useRoute;
++const mockUseNavigation = (routerModule as unknown as { __useNavigation: jest.Mock })
++  .__useNavigation;
++const mockUseCurrentRouteInfo = (routerModule as unknown as { __useCurrentRouteInfo: jest.Mock })
++  .__useCurrentRouteInfo;
++const initModule = require('../init') as { getRouterIntegrationConfig: jest.Mock };
++
++function wrapper(storage: RouterIntegrationStorage | null) {
++  return ({ children }: { children: ReactNode }) => (
++    <ObserveRouterIntegrationContext.Provider value={storage}>
++      {children}
++    </ObserveRouterIntegrationContext.Provider>
++  );
++}
++
++let storage: RouterIntegrationStorage;
++
++beforeEach(() => {
++  jest.clearAllMocks();
++  initModule.getRouterIntegrationConfig.mockReturnValue(undefined);
++  jest.spyOn(console, 'log').mockImplementation(() => {});
++  jest.spyOn(console, 'warn').mockImplementation(() => {});
++  mockUseRoute.mockReturnValue({ key: 'screen-a' });
++  mockUseNavigation.mockReturnValue({ isFocused: () => true });
++  mockUseCurrentRouteInfo.mockReturnValue({
++    pathname: '/test',
++    params: { x: '1' },
++    segments: ['test'],
++  });
++  storage = createRouterIntegrationStorage();
++});
++
++describe('useObserveForRouter', () => {
++  it('records TTI from dispatchTime on the first call when focused', async () => {
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000, isAppLaunch: false };
++    jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++    expect(mockAddMetric).toHaveBeenCalledWith({
++      timestamp: expect.any(String),
++      category: 'navigation',
++      routeName: '/test',
++      name: 'tti',
++      value: 0.3,
++      params: { isAppLaunch: false, routeParams: { x: '1' }, url: '/test' },
++    });
++  });
++
++  it.each<[string[], string, Record<string, string | string[]>, string]>([
++    [[], '/', {}, '/'],
++    [['(tabs)'], '/', {}, '/(tabs)'],
++    [['(tabs)', '(home)'], '/', {}, '/(tabs)/(home)'],
++    [['users', '[id]'], '/users/42', { id: '42' }, '/users/[id]'],
++    [['files', '[...path]'], '/files/a/b/c', { path: ['a', 'b', 'c'] }, '/files/[...path]'],
++    [
++      ['(tabs)', 'sessions', '[sessionId]'],
++      '/sessions/1234',
++      { sessionId: '1234' },
++      '/(tabs)/sessions/[sessionId]',
++    ],
++  ])(
++    'useCurrentRouteInfo(segments=%s, pathname=%s, params=%s) records routeName=%s',
++    async (segments, pathname, routeParams, expectedRouteName) => {
++      mockUseCurrentRouteInfo.mockReturnValue({ pathname, params: routeParams, segments });
++      storage.screenTimes['screen-a'] = { dispatchTime: 1000 };
++      jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++      const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++      await act(async () => {
++        await result.current!();
++      });
++
++      expect(AppMetrics.markInteractive).toHaveBeenCalledWith({
++        routeName: expectedRouteName,
++        params: { routeParams, url: pathname },
++      });
++      expect(mockAddMetric).toHaveBeenCalledWith({
++        timestamp: expect.any(String),
++        category: 'navigation',
++        routeName: expectedRouteName,
++        name: 'tti',
++        value: 0.3,
++        params: { isAppLaunch: false, routeParams, url: pathname },
++      });
++    }
++  );
++
++  it('records TTI with isAppLaunch=true when the initial screen was seeded by app launch', async () => {
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000, isAppLaunch: true };
++    jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(mockAddMetric).toHaveBeenCalledWith(
++      expect.objectContaining({
++        name: 'tti',
++        value: 0.3,
++        params: { isAppLaunch: true, routeParams: { x: '1' }, url: '/test' },
++      })
++    );
++  });
++
++  it('filters route params from hook-emitted TTI', async () => {
++    initModule.getRouterIntegrationConfig.mockReturnValue({ filteredParams: ['x'] });
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000, isAppLaunch: false };
++    jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(mockAddMetric).toHaveBeenCalledWith(
++      expect.objectContaining({
++        params: { isAppLaunch: false, routeParams: {}, urlHidden: true },
++      })
++    );
++  });
++
++  it('omits non-serializable route params from markInteractive and hook-emitted TTI', async () => {
++    const circular: Record<string, unknown> = {};
++    circular.self = circular;
++    mockUseCurrentRouteInfo.mockReturnValue({
++      pathname: '/test',
++      params: { id: '42', callback: () => {}, circular },
++      segments: ['test'],
++    });
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000, isAppLaunch: false };
++    jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(AppMetrics.markInteractive).toHaveBeenCalledWith({
++      routeName: '/test',
++      params: { routeParams: { id: '42' }, url: '/test' },
++    });
++    expect(mockAddMetric).toHaveBeenCalledWith(
++      expect.objectContaining({
++        params: { isAppLaunch: false, routeParams: { id: '42' }, url: '/test' },
++      })
++    );
++  });
++
++  it('hides URL for markInteractive and hook-emitted TTI when a route param is filtered', async () => {
++    initModule.getRouterIntegrationConfig.mockReturnValue({ filteredParams: ['x'] });
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000, isAppLaunch: false };
++    jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(AppMetrics.markInteractive).toHaveBeenCalledWith({
++      routeName: '/test',
++      params: { routeParams: {}, urlHidden: true },
++    });
++    expect(mockAddMetric).toHaveBeenCalledWith(
++      expect.objectContaining({
++        params: { isAppLaunch: false, routeParams: {}, urlHidden: true },
++      })
++    );
++  });
++
++  it('calls AppMetrics.markInteractive when the screen is focused', async () => {
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000, isAppLaunch: false };
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++    const arg = { params: { x: 'payload' } };
++    await act(async () => {
++      await result.current!({ ...arg });
++    });
++    expect(AppMetrics.markInteractive).toHaveBeenCalledWith({
++      params: { x: 'payload', routeParams: { x: '1' }, url: '/test' },
++      routeName: '/test',
++    });
++  });
++
++  it('drops caller-provided URL from markInteractive params when a route param is filtered', async () => {
++    initModule.getRouterIntegrationConfig.mockReturnValue({ filteredParams: ['x'] });
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000, isAppLaunch: false };
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++
++    await act(async () => {
++      await result.current!({ params: { url: '/unsafe', custom: 'value' } });
++    });
++
++    expect(AppMetrics.markInteractive).toHaveBeenCalledWith({
++      params: { custom: 'value', routeParams: {}, urlHidden: true },
++      routeName: '/test',
++    });
++  });
++
++  it('records the navigation TTI metric only once when markInteractive is called twice without a new navigation', async () => {
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000, isAppLaunch: false };
++    const nowSpy = jest.spyOn(performance, 'now');
++
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++
++    nowSpy.mockReturnValue(1300);
++    await act(async () => {
++      await result.current!();
++    });
++    nowSpy.mockReturnValue(1500);
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++  });
++
++  it('does not record TTI metric when the screen is re-focused after navigating away (A → B → A)', async () => {
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000, isAppLaunch: false };
++    const nowSpy = jest.spyOn(performance, 'now');
++
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++
++    nowSpy.mockReturnValue(1300);
++    await act(async () => {
++      await result.current!();
++    });
++
++    // Simulate navigating away to B and back to A: the focus listener would
++    // overwrite dispatchTime on screen-a with the new action's dispatch time.
++    storage.screenTimes['screen-a'] = {
++      ...storage.screenTimes['screen-a'],
++      dispatchTime: 2000,
++    };
++
++    nowSpy.mockReturnValue(2300);
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++    expect(mockAddMetric).toHaveBeenNthCalledWith(1, expect.objectContaining({ value: 0.3 }));
++  });
++
++  it('records lastInteractiveCall when the screen is not focused (skips markInteractive and TTI)', async () => {
++    mockUseNavigation.mockReturnValue({ isFocused: () => false });
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000, isAppLaunch: false };
++    jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(AppMetrics.markInteractive).not.toHaveBeenCalled();
++    expect(mockAddMetric).not.toHaveBeenCalled();
++    expect(storage.screenTimes['screen-a'].lastInteractiveCall).toBe(1300);
++    expect(storage.interactiveScreensIds.has('screen-a')).toBe(false);
++  });
++
++  it('stores lastInteractiveCall and defers TTI emission when dispatchTime is not yet recorded', async () => {
++    // markInteractive runs before the pageFocused handler has seeded dispatchTime.
++    jest.spyOn(performance, 'now').mockReturnValue(1234);
++
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(AppMetrics.markInteractive).toHaveBeenCalled();
++    expect(mockAddMetric).not.toHaveBeenCalled();
++    expect(storage.screenTimes['screen-a']).toEqual({ lastInteractiveCall: 1234 });
++    expect(storage.interactiveScreensIds.has('screen-a')).toBe(true);
++  });
++
++  it('skips TTI calculation silently when no dispatchTime is recorded for the screen', async () => {
++    const warnSpy = jest.spyOn(console, 'warn');
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++    await act(async () => {
++      await result.current!();
++    });
++    expect(mockAddMetric).not.toHaveBeenCalled();
++    expect(warnSpy).not.toHaveBeenCalled();
++  });
++
++  it('warns and skips when called on an unmounted screen', async () => {
++    const warnSpy = jest.spyOn(console, 'warn');
++    const { result, unmount } = renderHook(() => useObserveForRouter(), {
++      wrapper: wrapper(storage),
++    });
++    const fn = result.current!;
++    unmount();
++    await act(async () => {
++      await fn();
++    });
++    expect(warnSpy).toHaveBeenCalledWith(
++      '[expo-observe] Calling markInteractive on unmounted screen'
++    );
++    expect(AppMetrics.markInteractive).not.toHaveBeenCalled();
++  });
++
++  it('warns when there is no screenId on the route', async () => {
++    mockUseRoute.mockReturnValue({ key: undefined });
++    const warnSpy = jest.spyOn(console, 'warn');
++    const { result } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++    await act(async () => {
++      await result.current!();
++    });
++    expect(warnSpy).toHaveBeenCalledWith(
++      '[expo-observe] No metadata available for the current screen. Make sure to call useObserve inside a screen component.'
++    );
++    expect(AppMetrics.markInteractive).not.toHaveBeenCalled();
++  });
++
++  it('warns when the screen ID changes between renders', () => {
++    const warnSpy = jest.spyOn(console, 'warn');
++    mockUseRoute.mockReturnValue({ key: 'screen-a' });
++    const { rerender } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++
++    mockUseRoute.mockReturnValue({ key: 'screen-b' });
++    rerender(undefined);
++
++    expect(warnSpy).toHaveBeenCalledWith(
++      '[expo-observe] Screen ID changed between renders. This is most likely an expo-router bug.'
++    );
++  });
++
++  it('throws when isInitialized() flips mid-lifetime', () => {
++    const init = require('../init') as typeof import('../init');
++    const isInitMock = init.isInitialized as jest.Mock;
++    isInitMock.mockReturnValue(false);
++    // Suppress React's own console.error for the unhandled render error so the
++    // test output stays focused on the assertion.
++    jest.spyOn(console, 'error').mockImplementation(() => {});
++
++    const { rerender } = renderHook(() => useObserveForRouter(), { wrapper: wrapper(storage) });
++
++    isInitMock.mockReturnValue(true);
++    expect(() => rerender(undefined)).toThrow(
++      "[expo-observe] Router integration was toggled during a screen's lifecycle. Call `Observe.configure({ integrations: { 'expo-router': true } })` once at startup before any screen mounts."
++    );
++  });
++});
+diff --git a/src/integrations/react-native-reanimated/init.ts b/src/integrations/react-native-reanimated/init.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b40277c8e2bf0b837e61e0e69d397eb21dde594e
+--- /dev/null
++++ b/src/integrations/react-native-reanimated/init.ts
+@@ -0,0 +1,142 @@
++import AppMetrics from 'expo-app-metrics';
++
++import { reportCaughtError } from '../../reportCaughtError';
++import { loadReanimated, type OptionalWorklets } from './reanimated';
++
++// Reanimated keeps its logger config on a per-runtime global and calls its internal
++// `logFunction` for every log that passes the `level` and `strict` filters. `logFunction` is
++// not part of the public API, so this mirrors the internal shape. It was verified against
++// Reanimated 4.6 and 4.7: both keep `logFunction` when `configureReanimatedLogger` runs later.
++type ReanimatedLogData = { level: number; message: string };
++type ReanimatedLogFunction = (data: ReanimatedLogData) => void;
++type ReanimatedLoggerConfig = {
++  logFunction: ReanimatedLogFunction;
++  level: number;
++  strict: boolean;
++};
++type ReanimatedGlobal = { __reanimatedLoggerConfig?: ReanimatedLoggerConfig };
++
++// Values of Reanimated's `ReanimatedLogLevel` enum and its default logger config.
++const LOG_LEVEL_WARN = 1;
++const LOG_LEVEL_ERROR = 2;
++const DEFAULT_STRICT = true;
++
++const SUPPORTED_VERSION = /^4\.[67]\./;
++
++const REANIMATED_ERROR_NAME = 'reanimated.error';
++const REANIMATED_WARNING_EVENT = 'reanimated.warning';
++
++// A UI-runtime log can repeat every frame, so each distinct message is reported once. The cap
++// bounds the set when messages embed varying values.
++const MAX_DISTINCT_MESSAGES = 100;
++// Attribute values are sent on every dispatch, and strict-mode messages append a docs
++// reference, so the copied message is capped.
++const MAX_MESSAGE_LENGTH = 500;
++
++const reportedMessages = new Set<string>();
++let installed = false;
++
++/**
++ * A Reanimated error reported to Observe. The stack is set explicitly because it is captured
++ * at the log site, before the hand-off to the React Native runtime unwinds those frames.
++ */
++class ReanimatedError extends Error {
++  constructor(message: string, stack: string | undefined) {
++    super(message);
++    this.name = REANIMATED_ERROR_NAME;
++    if (stack !== undefined) {
++      this.stack = stack;
++    }
++  }
++}
++
++function shouldReport(message: string): boolean {
++  if (reportedMessages.has(message) || reportedMessages.size >= MAX_DISTINCT_MESSAGES) {
++    return false;
++  }
++  reportedMessages.add(message);
++  return true;
++}
++
++function reportReanimatedError(message: string, stack: string | undefined): void {
++  if (shouldReport(message)) {
++    reportCaughtError(new ReanimatedError(message, stack));
++  }
++}
++
++function reportReanimatedWarning(message: string): void {
++  if (shouldReport(message)) {
++    AppMetrics.logEvent(REANIMATED_WARNING_EVENT, {
++      displayName: 'Reanimated warning',
++      body: message,
++      severity: 'warn',
++      // `eas observe:events` and `observe:session` show `attributes` but not `body`, so the
++      // message is copied here to stay queryable.
++      attributes: { message: message.slice(0, MAX_MESSAGE_LENGTH) },
++    });
++  }
++}
++
++// Created in a factory, after the optional `require`, because a worklet captures its closure
++// when it is created: a module-level worklet would capture `scheduleOnRN` before it is loaded.
++function createLogFunction(scheduleOnRN: OptionalWorklets['scheduleOnRN']): ReanimatedLogFunction {
++  return (data) => {
++    'worklet';
++    // `scheduleOnRN` works from both runtimes: on the React Native runtime it queues a
++    // microtask, and on the UI runtime it moves the call to the React Native runtime, where
++    // the native module is available.
++    if (data.level === LOG_LEVEL_ERROR) {
++      console.error(data.message);
++      scheduleOnRN(reportReanimatedError, data.message, new Error(data.message).stack);
++    } else {
++      console.warn(data.message);
++      scheduleOnRN(reportReanimatedWarning, data.message);
++    }
++  };
++}
++
++// Runs on each runtime. It keeps the `level`, `strict` and any other fields that runtime
++// already has, and only replaces `logFunction`.
++function installLogFunction(logFunction: ReanimatedLogFunction): void {
++  'worklet';
++  const target = globalThis as ReanimatedGlobal;
++  target.__reanimatedLoggerConfig = {
++    level: LOG_LEVEL_WARN,
++    strict: DEFAULT_STRICT,
++    ...target.__reanimatedLoggerConfig,
++    logFunction,
++  };
++}
++
++/**
++ * Reports Reanimated errors to Observe as `reanimated.error` errors, and Reanimated warnings as
++ * `reanimated.warning` events. Console output is kept. Installs once per app launch.
++ */
++export function initReanimatedIntegration(): void {
++  if (installed) {
++    return;
++  }
++
++  const reanimated = loadReanimated();
++  if (!reanimated) {
++    console.warn(
++      "[expo-observe] `integrations: { 'react-native-reanimated': true }` was set, but " +
++        '`react-native-reanimated` or `react-native-worklets` is not installed. The integration will not initialize.'
++    );
++    return;
++  }
++
++  if (!SUPPORTED_VERSION.test(reanimated.version)) {
++    console.warn(
++      `[expo-observe] The 'react-native-reanimated' integration supports Reanimated 4.6 and 4.7, ` +
++        `but Reanimated ${reanimated.version} is installed. Reanimated errors and warnings will not be ` +
++        'reported to EAS Observe. Install a supported Reanimated version, or update expo-observe.'
++    );
++    return;
++  }
++
++  const logFunction = createLogFunction(reanimated.worklets.scheduleOnRN);
++  installLogFunction(logFunction);
++  reanimated.worklets.runOnUISync(installLogFunction, logFunction);
++  installed = true;
++}
+diff --git a/src/integrations/react-native-reanimated/reanimated.ts b/src/integrations/react-native-reanimated/reanimated.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ed975fe56798b5cc1f7dc414dd12c5c2765a6a3c
+--- /dev/null
++++ b/src/integrations/react-native-reanimated/reanimated.ts
+@@ -0,0 +1,27 @@
++// react-native-reanimated and react-native-worklets are optional peerDependencies of
++// expo-observe. They are required lazily, only when the integration is enabled, so an app
++// that doesn't enable it never loads Reanimated through expo-observe. This lives in its own
++// file because a `require` wrapped in try/catch doesn't work with Metro's `inlineRequires`
++// when it shares a file with other imports (see expo-gl's `GLWorkletContextManager`).
++
++export interface OptionalWorklets {
++  runOnUISync<A extends unknown[]>(worklet: (...args: A) => void, ...args: A): void;
++  scheduleOnRN<A extends unknown[]>(fn: (...args: A) => void, ...args: A): void;
++}
++
++export interface LoadedReanimated {
++  version: string;
++  worklets: OptionalWorklets;
++}
++
++export function loadReanimated(): LoadedReanimated | null {
++  try {
++    const { reanimatedVersion } = require('react-native-reanimated') as {
++      reanimatedVersion: string;
++    };
++    const { runOnUISync, scheduleOnRN } = require('react-native-worklets') as OptionalWorklets;
++    return { version: reanimatedVersion, worklets: { runOnUISync, scheduleOnRN } };
++  } catch {
++    return null;
++  }
++}
+diff --git a/src/integrations/react-navigation/__tests__/ObserveNavigationContainer.test.native.tsx b/src/integrations/react-navigation/__tests__/ObserveNavigationContainer.test.native.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..7739180788de36333f5be1ec61e00aa155127979
+--- /dev/null
++++ b/src/integrations/react-navigation/__tests__/ObserveNavigationContainer.test.native.tsx
+@@ -0,0 +1,256 @@
++/* eslint-disable @typescript-eslint/no-require-imports */
++import { render } from '@testing-library/react-native';
++import { createRef, use } from 'react';
++import { Text } from 'react-native';
++
++import {
++  ObserveReactNavigationIntegrationContext,
++  type ReactNavigationIntegrationContextValue,
++} from '../context';
++import * as initModule from '../init';
++
++jest.mock('expo-app-metrics', () => ({
++  __esModule: true,
++  default: {
++    markInteractive: jest.fn(),
++    getMainSession: jest.fn(() => ({
++      id: 'session-1',
++      type: 'main',
++      startDate: '2026-01-01T00:00:00.000Z',
++      addMetric: jest.fn(),
++    })),
++  },
++}));
++
++jest.mock('../init', () => ({
++  __esModule: true,
++  isInitialized: jest.fn(() => true),
++  initReactNavigationIntegration: jest.fn(),
++}));
++
++jest.mock('../actionListener', () => {
++  const cleanup = jest.fn();
++  return {
++    __esModule: true,
++    attachActionListener: jest.fn(() => cleanup),
++    __cleanup: cleanup,
++  };
++});
++
++jest.mock('../handleStateChange', () => {
++  const handler = jest.fn();
++  return {
++    __esModule: true,
++    createStateChangeHandler: jest.fn(() => handler),
++    __handler: handler,
++  };
++});
++
++jest.mock('@react-navigation/native', () => {
++  const mockNavigationContainerFn = jest.fn(
++    ({ children }: { children: React.ReactNode }) => children
++  );
++  const mockNavRef = {
++    addListener: jest.fn(() => () => {}),
++    getRootState: jest.fn(() => undefined),
++    isReady: jest.fn(() => false),
++  };
++  return {
++    __esModule: true,
++    NavigationContainer: (props: { children: React.ReactNode }) => mockNavigationContainerFn(props),
++    useNavigationContainerRef: jest.fn(() => mockNavRef),
++    __navigationContainerFn: mockNavigationContainerFn,
++    __navigationRef: mockNavRef,
++  };
++});
++
++// Import the component AFTER setting up all mocks so it picks them up.
++const { ObserveNavigationContainer } =
++  require('../ObserveNavigationContainer') as typeof import('../ObserveNavigationContainer');
++const actionListenerModule = require('../actionListener') as {
++  attachActionListener: jest.Mock;
++  __cleanup: jest.Mock;
++};
++const handleStateChangeModule = require('../handleStateChange') as {
++  createStateChangeHandler: jest.Mock;
++  __handler: jest.Mock;
++};
++const reactNavigationMock = require('@react-navigation/native') as {
++  __navigationContainerFn: jest.Mock;
++  __navigationRef: { addListener: jest.Mock; getRootState: jest.Mock; isReady: jest.Mock };
++};
++
++const mockIsInitialized = initModule.isInitialized as jest.Mock;
++const mockNavigationContainer = reactNavigationMock.__navigationContainerFn;
++const fakeNavigationRef = reactNavigationMock.__navigationRef;
++const attachActionListenerMock = actionListenerModule.attachActionListener;
++const attachActionListenerCleanup = actionListenerModule.__cleanup;
++const createStateChangeHandlerMock = handleStateChangeModule.createStateChangeHandler;
++const stateChangeHandler = handleStateChangeModule.__handler;
++
++function ContextProbe({ onRead }: { onRead: (value: unknown) => void }) {
++  const value = use(ObserveReactNavigationIntegrationContext);
++  onRead(value);
++  return <Text>probe</Text>;
++}
++
++beforeEach(() => {
++  jest.clearAllMocks();
++  mockIsInitialized.mockReturnValue(true);
++  fakeNavigationRef.isReady.mockReturnValue(false);
++  fakeNavigationRef.getRootState.mockReturnValue(undefined);
++  jest.spyOn(console, 'warn').mockImplementation(() => {});
++});
++
++describe('ObserveNavigationContainer', () => {
++  it('renders NavigationContainer with the same children', () => {
++    const { getByText } = render(
++      <ObserveNavigationContainer>
++        <Text>child</Text>
++      </ObserveNavigationContainer>
++    );
++    expect(getByText('child')).toBeTruthy();
++    expect(mockNavigationContainer).toHaveBeenCalled();
++  });
++
++  it('exposes a non-null context when isInitialized() is true', () => {
++    const reads: unknown[] = [];
++    render(
++      <ObserveNavigationContainer>
++        <ContextProbe onRead={(v) => reads.push(v)} />
++      </ObserveNavigationContainer>
++    );
++    expect(reads[0]).toBeTruthy();
++    expect(
++      (reads[0] as ReactNavigationIntegrationContextValue).storage.interactiveScreensIds
++    ).toBeInstanceOf(Set);
++  });
++
++  it('exposes a null context and skips attachActionListener when not initialized', () => {
++    mockIsInitialized.mockReturnValue(false);
++    const reads: unknown[] = [];
++    render(
++      <ObserveNavigationContainer>
++        <ContextProbe onRead={(v) => reads.push(v)} />
++      </ObserveNavigationContainer>
++    );
++    expect(reads[0]).toBeNull();
++    expect(attachActionListenerMock).not.toHaveBeenCalled();
++  });
++
++  it('attaches the action listener with the internal navigationRef and runs cleanup on unmount', () => {
++    const { unmount } = render(
++      <ObserveNavigationContainer>
++        <Text>child</Text>
++      </ObserveNavigationContainer>
++    );
++    expect(attachActionListenerMock).toHaveBeenCalledTimes(1);
++    expect(attachActionListenerMock.mock.calls[0][0]).toBe(fakeNavigationRef);
++
++    expect(attachActionListenerCleanup).not.toHaveBeenCalled();
++    unmount();
++    expect(attachActionListenerCleanup).toHaveBeenCalledTimes(1);
++  });
++
++  it('forwards a user-supplied ref to the internal navigationRef', () => {
++    const ref = createRef<unknown>();
++    render(
++      <ObserveNavigationContainer ref={ref as never}>
++        <Text>child</Text>
++      </ObserveNavigationContainer>
++    );
++    expect(ref.current).toBe(fakeNavigationRef);
++  });
++
++  it('forwards user onStateChange and onReady to NavigationContainer unchanged', () => {
++    // Instrumentation rides the ref's `state` listener (via
++    // ObserveNavigationProvider), so the container must not wrap the user's
++    // callbacks — wrapping would double-drive the metrics handler.
++    const userOnStateChange = jest.fn();
++    const userOnReady = jest.fn();
++    render(
++      <ObserveNavigationContainer onStateChange={userOnStateChange} onReady={userOnReady}>
++        <Text>child</Text>
++      </ObserveNavigationContainer>
++    );
++    const props =
++      mockNavigationContainer.mock.calls[mockNavigationContainer.mock.calls.length - 1][0];
++    expect(props.onStateChange).toBe(userOnStateChange);
++    expect(props.onReady).toBe(userOnReady);
++  });
++
++  it('does not inject its own onStateChange or onReady when the user omits them', () => {
++    render(
++      <ObserveNavigationContainer>
++        <Text>child</Text>
++      </ObserveNavigationContainer>
++    );
++    const props =
++      mockNavigationContainer.mock.calls[mockNavigationContainer.mock.calls.length - 1][0];
++    expect(props.onStateChange).toBeUndefined();
++    expect(props.onReady).toBeUndefined();
++  });
++
++  it('drives the state handler from the `state` ref event', () => {
++    render(
++      <ObserveNavigationContainer>
++        <Text>child</Text>
++      </ObserveNavigationContainer>
++    );
++    const stateCall = fakeNavigationRef.addListener.mock.calls.find(([event]) => event === 'state');
++    expect(stateCall).toBeDefined();
++
++    const rootState = { index: 0, routes: [{ key: 'a', name: 'A' }] };
++    fakeNavigationRef.getRootState.mockReturnValueOnce(rootState);
++    stateCall![1]();
++    expect(stateChangeHandler).toHaveBeenCalledWith(rootState);
++  });
++
++  it('passes other NavigationContainer props through (e.g. theme)', () => {
++    const theme = { dark: true, colors: {} } as unknown as never;
++    render(
++      <ObserveNavigationContainer theme={theme}>
++        <Text>child</Text>
++      </ObserveNavigationContainer>
++    );
++    const props =
++      mockNavigationContainer.mock.calls[mockNavigationContainer.mock.calls.length - 1][0];
++    expect(props.theme).toBe(theme);
++  });
++
++  it('uses the same createStateChangeHandler for the entire mount lifetime', () => {
++    const { rerender } = render(
++      <ObserveNavigationContainer>
++        <Text>child</Text>
++      </ObserveNavigationContainer>
++    );
++    rerender(
++      <ObserveNavigationContainer>
++        <Text>child</Text>
++      </ObserveNavigationContainer>
++    );
++    expect(createStateChangeHandlerMock).toHaveBeenCalledTimes(1);
++  });
++
++  it('throws when isInitialized() flips during the container lifetime', () => {
++    mockIsInitialized.mockReturnValue(false);
++    jest.spyOn(console, 'error').mockImplementation(() => {});
++
++    const { rerender } = render(
++      <ObserveNavigationContainer>
++        <Text>child</Text>
++      </ObserveNavigationContainer>
++    );
++
++    mockIsInitialized.mockReturnValue(true);
++    expect(() =>
++      rerender(
++        <ObserveNavigationContainer>
++          <Text>child</Text>
++        </ObserveNavigationContainer>
++      )
++    ).toThrow(
++      "[expo-observe] React Navigation integration was toggled after ObserveNavigationContainer mounted. Call `Observe.configure({ integrations: { 'react-navigation': true } })` before rendering ObserveNavigationContainer."
++    );
++  });
++});
+diff --git a/src/integrations/react-navigation/__tests__/ObserveNavigationProvider.test.native.tsx b/src/integrations/react-navigation/__tests__/ObserveNavigationProvider.test.native.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..b3afe2adc235e5f1e1395ebbdd79f4d9c0fb4a03
+--- /dev/null
++++ b/src/integrations/react-navigation/__tests__/ObserveNavigationProvider.test.native.tsx
+@@ -0,0 +1,428 @@
++/* eslint-disable @typescript-eslint/no-require-imports */
++import { render } from '@testing-library/react-native';
++import { use } from 'react';
++import { Text } from 'react-native';
++
++import {
++  ObserveReactNavigationIntegrationContext,
++  type ReactNavigationIntegrationContextValue,
++} from '../context';
++import * as initModule from '../init';
++
++jest.mock('expo-app-metrics', () => {
++  const mainSession = {
++    id: 'session-1',
++    type: 'main',
++    startDate: '2026-01-01T00:00:00.000Z',
++    addMetric: jest.fn(),
++  };
++  return {
++    __esModule: true,
++    default: {
++      markInteractive: jest.fn(),
++      getMainSession: jest.fn(() => mainSession),
++    },
++  };
++});
++
++jest.mock('../init', () => ({
++  __esModule: true,
++  getReactNavigationIntegrationConfig: jest.fn(() => undefined),
++  isInitialized: jest.fn(() => true),
++  initReactNavigationIntegration: jest.fn(),
++}));
++
++jest.mock('../actionListener', () => {
++  const cleanup = jest.fn();
++  return {
++    __esModule: true,
++    attachActionListener: jest.fn(() => cleanup),
++    __cleanup: cleanup,
++  };
++});
++
++jest.mock('../handleStateChange', () => {
++  const handler = jest.fn();
++  return {
++    __esModule: true,
++    createStateChangeHandler: jest.fn(() => handler),
++    __handler: handler,
++  };
++});
++
++// Mutable mock so individual tests can simulate @react-navigation/native being
++// missing. The component reads the export at use time (CJS interop), so the
++// getter is consulted on every render.
++jest.mock('../reactNavigation', () => {
++  const state = { optionalReactNavigation: {} as unknown };
++  return {
++    __esModule: true,
++    get optionalReactNavigation() {
++      return state.optionalReactNavigation;
++    },
++    get isReactNavigationInstalled() {
++      return !!state.optionalReactNavigation;
++    },
++    __setOptionalReactNavigation: (value: unknown) => {
++      state.optionalReactNavigation = value;
++    },
++  };
++});
++
++// Import the component AFTER setting up all mocks so it picks them up.
++const { ObserveNavigationProvider } =
++  require('../ObserveNavigationProvider') as typeof import('../ObserveNavigationProvider');
++const actionListenerModule = require('../actionListener') as {
++  attachActionListener: jest.Mock;
++  __cleanup: jest.Mock;
++};
++const handleStateChangeModule = require('../handleStateChange') as {
++  createStateChangeHandler: jest.Mock;
++  __handler: jest.Mock;
++};
++const reactNavigationModule = require('../reactNavigation') as {
++  __setOptionalReactNavigation: (value: unknown) => void;
++};
++const mockAddMetric = (
++  require('expo-app-metrics').default as {
++    getMainSession: () => { addMetric: jest.Mock };
++  }
++).getMainSession().addMetric;
++
++const mockIsInitialized = initModule.isInitialized as jest.Mock;
++const attachActionListenerMock = actionListenerModule.attachActionListener;
++const attachActionListenerCleanup = actionListenerModule.__cleanup;
++const createStateChangeHandlerMock = handleStateChangeModule.createStateChangeHandler;
++const stateChangeHandler = handleStateChangeModule.__handler;
++
++// A user-created ref, as returned by `useNavigationContainerRef()` /
++// `createNavigationContainerRef()`.
++const stateListenerCleanup = jest.fn();
++const fakeNavigationRef = {
++  addListener: jest.fn((event: string, _cb: (e?: unknown) => void) =>
++    event === 'state' ? stateListenerCleanup : () => {}
++  ),
++  getRootState: jest.fn((): unknown => undefined),
++  isReady: jest.fn(() => false),
++};
++
++type NavigationRefProp = Parameters<typeof ObserveNavigationProvider>[0]['navigationRef'];
++
++function getStateListener(): ((e?: unknown) => void) | undefined {
++  const call = fakeNavigationRef.addListener.mock.calls.find(([event]) => event === 'state');
++  return call?.[1] as ((e?: unknown) => void) | undefined;
++}
++
++function ContextProbe({
++  onRead,
++}: {
++  onRead: (value: ReactNavigationIntegrationContextValue | null) => void;
++}) {
++  const value = use(ObserveReactNavigationIntegrationContext);
++  onRead(value);
++  return <Text>probe</Text>;
++}
++
++function flushAsync() {
++  return new Promise((resolve) => setImmediate(resolve));
++}
++
++beforeEach(() => {
++  jest.clearAllMocks();
++  mockIsInitialized.mockReturnValue(true);
++  reactNavigationModule.__setOptionalReactNavigation({});
++  fakeNavigationRef.isReady.mockReturnValue(false);
++  fakeNavigationRef.getRootState.mockReturnValue(undefined);
++  // mockReset (not just clear) so the real-implementation swap done by the
++  // exactly-once test below can never leak into other tests.
++  createStateChangeHandlerMock.mockReset().mockReturnValue(stateChangeHandler);
++  jest.spyOn(console, 'warn').mockImplementation(() => {});
++});
++
++describe('ObserveNavigationProvider', () => {
++  it('renders its children', () => {
++    const { getByText } = render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++    expect(getByText('child')).toBeTruthy();
++  });
++
++  it('exposes a non-null context when isInitialized() is true', () => {
++    const reads: unknown[] = [];
++    render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <ContextProbe onRead={(v) => reads.push(v)} />
++      </ObserveNavigationProvider>
++    );
++    expect(reads[0]).toBeTruthy();
++    expect(
++      (reads[0] as ReactNavigationIntegrationContextValue).storage.interactiveScreensIds
++    ).toBeInstanceOf(Set);
++  });
++
++  it('exposes a null context and attaches no listeners when not initialized', () => {
++    mockIsInitialized.mockReturnValue(false);
++    const reads: unknown[] = [];
++    render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <ContextProbe onRead={(v) => reads.push(v)} />
++      </ObserveNavigationProvider>
++    );
++    expect(reads[0]).toBeNull();
++    expect(attachActionListenerMock).not.toHaveBeenCalled();
++    expect(fakeNavigationRef.addListener).not.toHaveBeenCalled();
++  });
++
++  it('attaches the action listener with the provided ref and detaches both listeners on unmount', () => {
++    const { unmount } = render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++    expect(attachActionListenerMock).toHaveBeenCalledTimes(1);
++    expect(attachActionListenerMock.mock.calls[0][0]).toBe(fakeNavigationRef);
++    expect(getStateListener()).toBeDefined();
++
++    expect(attachActionListenerCleanup).not.toHaveBeenCalled();
++    expect(stateListenerCleanup).not.toHaveBeenCalled();
++    unmount();
++    expect(attachActionListenerCleanup).toHaveBeenCalledTimes(1);
++    expect(stateListenerCleanup).toHaveBeenCalledTimes(1);
++  });
++
++  it('drives the state handler from the `state` ref event, reading getRootState() over the event payload', () => {
++    render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++    const stateListener = getStateListener();
++    expect(stateListener).toBeDefined();
++    expect(stateChangeHandler).not.toHaveBeenCalled();
++
++    // The `state` event payload can be partial on the initial commit, so the
++    // listener must read the hydrated state from getRootState() instead.
++    const rootState = { index: 0, routes: [{ key: 'a', name: 'A' }] };
++    const staleEventState = { index: 0, routes: [] };
++    fakeNavigationRef.getRootState.mockReturnValue(rootState);
++    stateListener!({ data: { state: staleEventState } });
++
++    expect(stateChangeHandler).toHaveBeenCalledTimes(1);
++    expect(stateChangeHandler).toHaveBeenCalledWith(rootState);
++  });
++
++  it('forwards each subsequent state change to the handler', () => {
++    render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++    const stateListener = getStateListener()!;
++
++    const first = { index: 0, routes: [{ key: 'a', name: 'A' }] };
++    const second = {
++      index: 1,
++      routes: [
++        { key: 'a', name: 'A' },
++        { key: 'b', name: 'B' },
++      ],
++    };
++    fakeNavigationRef.getRootState.mockReturnValueOnce(first).mockReturnValueOnce(second);
++    stateListener();
++    stateListener();
++
++    expect(stateChangeHandler).toHaveBeenNthCalledWith(1, first);
++    expect(stateChangeHandler).toHaveBeenNthCalledWith(2, second);
++  });
++
++  it('catches up on the initial state when the container is already ready at mount', () => {
++    // By the time the provider effect runs, the container (a child) has
++    // already emitted its initial `state` event, so the listener missed it.
++    const initialState = { index: 0, routes: [{ key: 'a', name: 'A' }] };
++    fakeNavigationRef.isReady.mockReturnValue(true);
++    fakeNavigationRef.getRootState.mockReturnValue(initialState);
++
++    render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++
++    expect(stateChangeHandler).toHaveBeenCalledTimes(1);
++    expect(stateChangeHandler).toHaveBeenCalledWith(initialState);
++  });
++
++  it('skips the catch-up when the container is not ready yet and relies on the state listener', () => {
++    fakeNavigationRef.isReady.mockReturnValue(false);
++    render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++    expect(stateChangeHandler).not.toHaveBeenCalled();
++
++    const initialState = { index: 0, routes: [{ key: 'a', name: 'A' }] };
++    fakeNavigationRef.getRootState.mockReturnValue(initialState);
++    getStateListener()!();
++    expect(stateChangeHandler).toHaveBeenCalledWith(initialState);
++  });
++
++  it('does not invoke the handler from the catch-up when there is no root state', () => {
++    fakeNavigationRef.isReady.mockReturnValue(true);
++    fakeNavigationRef.getRootState.mockReturnValue(undefined);
++    render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++    expect(stateChangeHandler).not.toHaveBeenCalled();
++  });
++
++  it('records the initial screen exactly once when both the catch-up and the state listener fire for the same state', async () => {
++    // Integration-level dedupe contract: use the REAL handleStateChange (only
++    // expo-app-metrics stays mocked) so this asserts the net effect — a single
++    // cold_ttr — rather than trusting unit tests to compose.
++    const actualHandleStateChange = jest.requireActual(
++      '../handleStateChange'
++    ) as typeof import('../handleStateChange');
++    createStateChangeHandlerMock.mockImplementation(
++      actualHandleStateChange.createStateChangeHandler
++    );
++
++    const initialState = {
++      type: 'stack',
++      index: 0,
++      routes: [{ key: 'home', name: 'Home' }],
++      routeNames: [],
++      stale: false,
++      key: 'root',
++    };
++    fakeNavigationRef.isReady.mockReturnValue(true);
++    fakeNavigationRef.getRootState.mockReturnValue(initialState);
++
++    render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++    // The same initial state also arrives through the `state` listener.
++    getStateListener()!();
++    await flushAsync();
++
++    const coldTtrCalls = mockAddMetric.mock.calls.filter((c) => c[0].name === 'cold_ttr');
++    expect(coldTtrCalls).toHaveLength(1);
++    expect(coldTtrCalls[0][0].routeName).toBe('/Home');
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++  });
++
++  it('moves all listeners to a new ref when navigationRef identity changes between renders', () => {
++    const { rerender } = render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++    expect(attachActionListenerMock).toHaveBeenLastCalledWith(fakeNavigationRef, expect.anything());
++
++    const secondStateListenerCleanup = jest.fn();
++    const secondNavigationRef = {
++      addListener: jest.fn((event: string) =>
++        event === 'state' ? secondStateListenerCleanup : () => {}
++      ),
++      getRootState: jest.fn((): unknown => undefined),
++      isReady: jest.fn(() => true),
++    };
++    const initialState = { index: 0, routes: [{ key: 'a', name: 'A' }] };
++    secondNavigationRef.getRootState.mockReturnValue(initialState);
++
++    rerender(
++      <ObserveNavigationProvider navigationRef={secondNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++
++    // The old ref's listeners are detached, the new ref gets fresh ones, and
++    // the catch-up runs against the new ref's state.
++    expect(attachActionListenerCleanup).toHaveBeenCalledTimes(1);
++    expect(stateListenerCleanup).toHaveBeenCalledTimes(1);
++    expect(attachActionListenerMock).toHaveBeenLastCalledWith(
++      secondNavigationRef,
++      expect.anything()
++    );
++    expect(secondNavigationRef.addListener.mock.calls.some(([event]) => event === 'state')).toBe(
++      true
++    );
++    expect(stateChangeHandler).toHaveBeenCalledWith(initialState);
++  });
++
++  it('uses the same createStateChangeHandler for the entire mount lifetime', () => {
++    const { rerender } = render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++    rerender(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++    expect(createStateChangeHandlerMock).toHaveBeenCalledTimes(1);
++  });
++
++  it('throws when @react-navigation/native is not installed', () => {
++    reactNavigationModule.__setOptionalReactNavigation(undefined);
++    jest.spyOn(console, 'error').mockImplementation(() => {});
++
++    expect(() =>
++      render(
++        <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++          <Text>child</Text>
++        </ObserveNavigationProvider>
++      )
++    ).toThrow(
++      "[expo-observe] ObserveNavigationProvider requires @react-navigation/native, but the package couldn't be resolved. Install @react-navigation/native, or remove the React Navigation integration if it's not needed."
++    );
++  });
++
++  it.each([
++    ['null', null],
++    ['a plain object', {}],
++    ['a React ref object', { current: null }],
++    ['a ref without isReady', { addListener: () => {}, getRootState: () => undefined }],
++  ])('throws when given an invalid navigationRef (%s)', (_label, badRef) => {
++    jest.spyOn(console, 'error').mockImplementation(() => {});
++
++    expect(() =>
++      render(
++        <ObserveNavigationProvider navigationRef={badRef as never as NavigationRefProp}>
++          <Text>child</Text>
++        </ObserveNavigationProvider>
++      )
++    ).toThrow(
++      '[expo-observe] ObserveNavigationProvider received a `navigationRef` that is not a navigation container ref, so it cannot listen to navigation events. Create the ref with `useNavigationContainerRef()` (or `createNavigationContainerRef()`) and pass the same ref to both your navigation container and ObserveNavigationProvider.'
++    );
++  });
++
++  it('throws when isInitialized() flips during the provider lifetime', () => {
++    mockIsInitialized.mockReturnValue(false);
++    jest.spyOn(console, 'error').mockImplementation(() => {});
++
++    const { rerender } = render(
++      <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++        <Text>child</Text>
++      </ObserveNavigationProvider>
++    );
++
++    mockIsInitialized.mockReturnValue(true);
++    expect(() =>
++      rerender(
++        <ObserveNavigationProvider navigationRef={fakeNavigationRef as never}>
++          <Text>child</Text>
++        </ObserveNavigationProvider>
++      )
++    ).toThrow(
++      "[expo-observe] React Navigation integration was toggled after ObserveNavigationProvider mounted. Call `Observe.configure({ integrations: { 'react-navigation': true } })` before rendering ObserveNavigationProvider."
++    );
++  });
++});
+diff --git a/src/integrations/react-navigation/__tests__/actionListener.test.ts b/src/integrations/react-navigation/__tests__/actionListener.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..bdce47d7b6f4012fdb2659286168d1828b9d2f5b
+--- /dev/null
++++ b/src/integrations/react-navigation/__tests__/actionListener.test.ts
+@@ -0,0 +1,72 @@
++import { attachActionListener } from '../actionListener';
++import {
++  createReactNavigationIntegrationStorage,
++  type ReactNavigationIntegrationStorage,
++} from '../storage';
++
++type ActionEvent = {
++  data: { action: { type: string; payload?: object }; noop: boolean };
++};
++
++interface FakeNavigationRef {
++  addListener(event: '__unsafe_action__', cb: (e: ActionEvent) => void): () => void;
++  fire(e: ActionEvent): void;
++}
++
++function createFakeNavigationRef(): FakeNavigationRef {
++  const listeners = new Set<(e: ActionEvent) => void>();
++  return {
++    addListener(_event, cb) {
++      listeners.add(cb);
++      return () => listeners.delete(cb);
++    },
++    fire(e) {
++      listeners.forEach((cb) => cb(e));
++    },
++  };
++}
++
++function action(type: string, opts?: { noop?: boolean }): ActionEvent {
++  return {
++    data: { action: { type, payload: undefined }, noop: opts?.noop ?? false },
++  };
++}
++
++let storage: ReactNavigationIntegrationStorage;
++let ref: FakeNavigationRef;
++let cleanup: () => void;
++
++beforeEach(() => {
++  storage = createReactNavigationIntegrationStorage();
++  ref = createFakeNavigationRef();
++  cleanup = attachActionListener(ref, storage);
++});
++
++afterEach(() => {
++  cleanup?.();
++});
++
++describe('attachActionListener', () => {
++  it('pushes a pending action for a non-noop NAVIGATE', () => {
++    ref.fire(action('NAVIGATE'));
++    expect(storage.pendingActions).toHaveLength(1);
++    expect(storage.pendingActions[0]!.actionType).toBe('NAVIGATE');
++  });
++
++  it('drops noop actions', () => {
++    ref.fire(action('NAVIGATE', { noop: true }));
++    expect(storage.pendingActions).toHaveLength(0);
++  });
++
++  it('drops PRELOAD actions', () => {
++    ref.fire(action('PRELOAD'));
++    expect(storage.pendingActions).toHaveLength(0);
++  });
++
++  it('cleanup unsubscribes the listener', () => {
++    cleanup();
++    ref.fire(action('NAVIGATE'));
++    expect(storage.pendingActions).toHaveLength(0);
++    cleanup = () => {};
++  });
++});
+diff --git a/src/integrations/react-navigation/__tests__/getPathname.test.native.ts b/src/integrations/react-navigation/__tests__/getPathname.test.native.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..68f339693389ed72da7c4a61223b45dafda48b16
+--- /dev/null
++++ b/src/integrations/react-navigation/__tests__/getPathname.test.native.ts
+@@ -0,0 +1,108 @@
++import { getPathname } from '../getPathname';
++import type { NavigationRouteLike, NavigationStateLike } from '../types';
++
++type RouteSpec = {
++  name: string;
++  params?: object;
++  state?: NavigationStateLike;
++};
++
++function state(
++  type: 'stack' | 'tab',
++  routes: RouteSpec[],
++  index = routes.length - 1
++): NavigationStateLike {
++  const navRoutes: NavigationRouteLike[] = routes.map((route, i) => ({
++    key: `${route.name}-${i}`,
++    name: route.name,
++    params: route.params,
++    state: route.state,
++  }));
++  return {
++    type,
++    index,
++    key: `${type}-key`,
++    routeNames: routes.map((route) => route.name),
++    stale: false,
++    routes: navRoutes,
++  } as NavigationStateLike;
++}
++
++describe('getPathname', () => {
++  it('returns undefined for an undefined state', () => {
++    expect(getPathname(undefined)).toBeUndefined();
++  });
++
++  it('returns undefined for a state with no routes', () => {
++    expect(getPathname(state('stack', []))).toBeUndefined();
++  });
++
++  it('resolves a flat single-screen state to its route name', () => {
++    expect(getPathname(state('stack', [{ name: 'Home' }]))).toBe('/Home');
++  });
++
++  it('uses the focused route within a stack', () => {
++    expect(getPathname(state('stack', [{ name: 'Home' }, { name: 'Details' }]))).toBe('/Details');
++  });
++
++  it('joins the focused route names of nested navigators', () => {
++    const nested = state('stack', [
++      {
++        name: 'Group',
++        state: state('stack', [{ name: 'Home' }, { name: 'Details' }]),
++      },
++    ]);
++    expect(getPathname(nested)).toBe('/Group/Details');
++  });
++
++  it('follows non-zero indexes at every level of deep nesting', () => {
++    const deep = state('stack', [
++      { name: 'Other' },
++      {
++        name: 'Tabs',
++        state: state(
++          'tab',
++          [
++            { name: 'Home' },
++            {
++              name: 'Sessions',
++              state: state('stack', [{ name: 'List' }, { name: 'Details' }], 1),
++            },
++          ],
++          1
++        ),
++      },
++    ]);
++    expect(getPathname(deep)).toBe('/Tabs/Sessions/Details');
++  });
++
++  it('returns undefined when the index points past the routes array', () => {
++    const outOfBounds = { ...state('stack', [{ name: 'Home' }]), index: 5 };
++    expect(getPathname(outOfBounds)).toBeUndefined();
++  });
++
++  it('does not serialize route params into the pathname', () => {
++    expect(getPathname(state('stack', [{ name: 'Details', params: { id: '42' } }]))).toBe(
++      '/Details'
++    );
++  });
++
++  it('picks the focused tab when given a tab navigator state', () => {
++    expect(getPathname(state('tab', [{ name: 'Home' }, { name: 'Profile' }], 1))).toBe('/Profile');
++  });
++
++  it('walks a useStateForPath subtree where index is undefined at every level', () => {
++    // `useStateForPath` returns a minimal chain to the current screen: each
++    // level holds a single route and omits `index`.
++    const subtree = {
++      routes: [
++        {
++          key: 'Group-0',
++          name: 'Group',
++          state: { routes: [{ key: 'Details-0', name: 'Details' }] },
++        },
++      ],
++    } as unknown as NavigationStateLike;
++    expect(getPathname(subtree)).toBe('/Group/Details');
++  });
++});
+diff --git a/src/integrations/react-navigation/__tests__/handleStateChange.test.native.ts b/src/integrations/react-navigation/__tests__/handleStateChange.test.native.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..40d3eb62e68148b5def4f28f255de87be5425b69
+--- /dev/null
++++ b/src/integrations/react-navigation/__tests__/handleStateChange.test.native.ts
+@@ -0,0 +1,336 @@
++import AppMetrics from 'expo-app-metrics';
++
++import { createStateChangeHandler } from '../handleStateChange';
++import {
++  createReactNavigationIntegrationStorage,
++  type ReactNavigationIntegrationStorage,
++} from '../storage';
++import type { NavigationStateLike } from '../types';
++
++jest.mock('expo-app-metrics', () => {
++  const mainSession = {
++    id: 'session-1',
++    type: 'main',
++    startDate: '2026-01-01T00:00:00.000Z',
++    addMetric: jest.fn(),
++  };
++  return {
++    __esModule: true,
++    default: {
++      markInteractive: jest.fn(),
++      getMainSession: jest.fn(() => mainSession),
++    },
++  };
++});
++
++jest.mock('../init', () => ({
++  __esModule: true,
++  getReactNavigationIntegrationConfig: jest.fn(() => undefined),
++}));
++
++const mockAddMetric = AppMetrics.getMainSession().addMetric as jest.Mock;
++const initModule = require('../init') as { getReactNavigationIntegrationConfig: jest.Mock };
++
++function stackState(
++  routes: { key: string; name?: string; params?: object }[],
++  index = routes.length - 1
++): NavigationStateLike {
++  return {
++    type: 'stack',
++    index,
++    routes: routes.map((r) => ({ key: r.key, name: r.name ?? r.key, params: r.params })),
++    routeNames: [],
++    stale: false,
++    key: 'test',
++  } as NavigationStateLike;
++}
++
++function tabState(routes: { key: string; name?: string }[], index: number): NavigationStateLike {
++  return {
++    type: 'tab',
++    index,
++    routes: routes.map((r) => ({ key: r.key, name: r.name ?? r.key })),
++    routeNames: [],
++    stale: false,
++    key: 'test',
++  } as NavigationStateLike;
++}
++
++function flushAsync() {
++  return new Promise((resolve) => setImmediate(resolve));
++}
++
++let storage: ReactNavigationIntegrationStorage;
++let handle: (state: NavigationStateLike | undefined) => void;
++let appLaunchTime: number;
++let logSpy: jest.SpyInstance;
++let warnSpy: jest.SpyInstance;
++
++beforeEach(() => {
++  jest.clearAllMocks();
++  initModule.getReactNavigationIntegrationConfig.mockReturnValue(undefined);
++  logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
++  warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
++  storage = createReactNavigationIntegrationStorage();
++  appLaunchTime = performance.now();
++  handle = createStateChangeHandler(storage, appLaunchTime);
++});
++
++afterEach(() => {
++  expect(logSpy).not.toHaveBeenCalled();
++  expect(warnSpy).not.toHaveBeenCalled();
++});
++
++describe('createStateChangeHandler', () => {
++  it('records cold_ttr with isAppLaunch=true on the first focused state', async () => {
++    jest.spyOn(performance, 'now').mockReturnValue(appLaunchTime + 100);
++    handle(stackState([{ key: 'a' }]));
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++    expect(mockAddMetric).toHaveBeenCalledWith({
++      timestamp: expect.any(String),
++      category: 'navigation',
++      name: 'cold_ttr',
++      routeName: '/a',
++      value: expect.closeTo(0.1, 2),
++      params: { isAppLaunch: true, routeParams: {} },
++    });
++  });
++
++  it('records cold_ttr with isAppLaunch=false on subsequent navigations to a new screen', async () => {
++    handle(stackState([{ key: 'a' }], 0));
++    await flushAsync();
++    mockAddMetric.mockClear();
++
++    storage.pendingActions.push({ actionType: 'NAVIGATE', dispatchTime: performance.now() });
++    handle(stackState([{ key: 'a' }, { key: 'b' }], 1));
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++    expect(mockAddMetric.mock.calls[0][0].name).toBe('cold_ttr');
++    expect(mockAddMetric.mock.calls[0][0].params).toEqual({
++      isAppLaunch: false,
++      routeParams: {},
++    });
++  });
++
++  it('records warm_ttr when revisiting a previously focused screen', async () => {
++    handle(stackState([{ key: 'a' }], 0));
++    await flushAsync();
++
++    storage.pendingActions.push({ actionType: 'NAVIGATE', dispatchTime: performance.now() });
++    handle(stackState([{ key: 'a' }, { key: 'b' }], 1));
++    await flushAsync();
++
++    storage.pendingActions.push({ actionType: 'GO_BACK', dispatchTime: performance.now() });
++    handle(stackState([{ key: 'a' }], 0));
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(3);
++    expect(mockAddMetric.mock.calls[0][0].name).toBe('cold_ttr');
++    expect(mockAddMetric.mock.calls[0][0].params.isAppLaunch).toBe(true);
++    expect(mockAddMetric.mock.calls[1][0].name).toBe('cold_ttr');
++    expect(mockAddMetric.mock.calls[1][0].params.isAppLaunch).toBe(false);
++    expect(mockAddMetric.mock.calls[2][0].name).toBe('warm_ttr');
++  });
++
++  it('joins the focused route-name chain of nested navigators into the routeName', async () => {
++    const nested: NavigationStateLike = {
++      type: 'stack',
++      index: 0,
++      routes: [
++        {
++          key: 'group',
++          name: 'Group',
++          state: stackState([
++            { key: 'list', name: 'List' },
++            { key: 'details', name: 'Details' },
++          ]),
++        },
++      ],
++      routeNames: [],
++      stale: false,
++      key: 'root',
++    } as NavigationStateLike;
++    handle(nested);
++    await flushAsync();
++
++    expect(mockAddMetric.mock.calls[0][0].routeName).toBe('/Group/Details');
++  });
++
++  it('does not emit when the focused key is unchanged (param-only state update)', async () => {
++    handle(stackState([{ key: 'a' }]));
++    await flushAsync();
++    mockAddMetric.mockClear();
++
++    handle(stackState([{ key: 'a', params: { x: '1' } }]));
++    await flushAsync();
++    expect(mockAddMetric).not.toHaveBeenCalled();
++  });
++
++  it('emits cold_ttr for first focus of each tab; tab siblings are not preemptively marked', async () => {
++    handle(tabState([{ key: 'home' }, { key: 'settings' }], 0));
++    await flushAsync();
++    mockAddMetric.mockClear();
++
++    storage.pendingActions.push({ actionType: 'JUMP_TO', dispatchTime: performance.now() });
++    handle(tabState([{ key: 'home' }, { key: 'settings' }], 1));
++    await flushAsync();
++
++    storage.pendingActions.push({ actionType: 'JUMP_TO', dispatchTime: performance.now() });
++    handle(tabState([{ key: 'home' }, { key: 'settings' }], 0));
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(2);
++    expect(mockAddMetric.mock.calls[0][0].name).toBe('cold_ttr');
++    expect(mockAddMetric.mock.calls[1][0].name).toBe('warm_ttr');
++  });
++
++  it('passes the focused route params through as routeParams on the emitted metric', async () => {
++    handle(stackState([{ key: 'a', name: 'A', params: { id: '42' } }]));
++    await flushAsync();
++
++    expect(mockAddMetric.mock.calls[0][0].params).toEqual({
++      isAppLaunch: true,
++      routeParams: { id: '42' },
++    });
++  });
++
++  it('filters focused route params from TTR and deferred TTI metrics', async () => {
++    initModule.getReactNavigationIntegrationConfig.mockReturnValue({
++      filteredParams: ['userId', 'token'],
++    });
++    const circular: Record<string, unknown> = {};
++    circular.self = circular;
++    storage.screenTimes['a'] = { lastInteractiveCall: performance.now() };
++
++    handle(
++      stackState([
++        {
++          key: 'a',
++          params: { userId: '1', tab: 'home', callback: () => {}, circular },
++        },
++      ])
++    );
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(2);
++    expect(mockAddMetric.mock.calls[0][0].params).toEqual({
++      isAppLaunch: true,
++      routeParams: { tab: 'home' },
++      urlHidden: true,
++    });
++    expect(mockAddMetric.mock.calls[1][0].params).toEqual({
++      routeParams: { tab: 'home' },
++      urlHidden: true,
++    });
++  });
++
++  it('backfills dispatchTime on every mounted screen during a warm focus change', async () => {
++    handle(stackState([{ key: 'a' }], 0));
++    await flushAsync();
++
++    const dispatchTime = performance.now();
++    storage.pendingActions.push({ actionType: 'NAVIGATE', dispatchTime });
++    handle(stackState([{ key: 'a' }, { key: 'b' }], 1));
++    await flushAsync();
++
++    expect(storage.screenTimes['a']?.dispatchTime).toBe(appLaunchTime);
++    expect(storage.screenTimes['b']?.dispatchTime).toBe(dispatchTime);
++  });
++
++  it('treats undefined state as a no-op', async () => {
++    handle(undefined);
++    await flushAsync();
++    expect(mockAddMetric).not.toHaveBeenCalled();
++  });
++
++  it('adds non-focused mounted stack screens to renderedScreensIds so revisits become warm_ttr', async () => {
++    handle(stackState([{ key: 'a' }, { key: 'b' }], 1));
++    await flushAsync();
++    expect(storage.renderedScreensIds.has('a')).toBe(true);
++    expect(storage.renderedScreensIds.has('b')).toBe(true);
++
++    mockAddMetric.mockClear();
++    storage.pendingActions.push({ actionType: 'GO_BACK', dispatchTime: performance.now() });
++    handle(stackState([{ key: 'a' }], 0));
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++    expect(mockAddMetric.mock.calls[0][0].name).toBe('warm_ttr');
++  });
++
++  it('emits tti alongside the TTR when a pending interactive was waiting (post-cold-launch)', async () => {
++    // Cold-launch the first screen so the next focus runs through the warm branch.
++    handle(stackState([{ key: 'a' }], 0));
++    await flushAsync();
++    mockAddMetric.mockClear();
++
++    // markInteractive ran before onStateChange — wrote lastInteractiveCall
++    // with no dispatchTime.
++    storage.screenTimes['b'] = { lastInteractiveCall: performance.now() };
++
++    const dispatchTime = performance.now();
++    storage.pendingActions.push({ actionType: 'NAVIGATE', dispatchTime });
++    jest.spyOn(performance, 'now').mockReturnValue(dispatchTime + 50);
++    handle(stackState([{ key: 'a' }, { key: 'b' }], 1));
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(2);
++    const ttrCall = mockAddMetric.mock.calls[0][0];
++    const ttiCall = mockAddMetric.mock.calls[1][0];
++    expect(ttrCall.name).toBe('cold_ttr');
++    expect(ttrCall.params.isAppLaunch).toBe(false);
++    expect(ttiCall.name).toBe('tti');
++    expect(ttiCall.value).toBe(ttrCall.value);
++    expect(ttiCall.routeName).toBe('/b');
++    expect(ttiCall.params).toEqual({ routeParams: {} });
++  });
++
++  it('emits tti = cold_ttr when a pending interactive was waiting during cold launch', async () => {
++    storage.screenTimes['a'] = { lastInteractiveCall: performance.now() };
++    jest.spyOn(performance, 'now').mockReturnValue(appLaunchTime + 200);
++    handle(stackState([{ key: 'a' }], 0));
++    await flushAsync();
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(2);
++    const ttrCall = mockAddMetric.mock.calls.find((c) => c[0].name === 'cold_ttr')?.[0];
++    const ttiCall = mockAddMetric.mock.calls.find((c) => c[0].name === 'tti')?.[0];
++    expect(ttrCall.params.isAppLaunch).toBe(true);
++    expect(ttiCall.value).toBe(ttrCall.value);
++    expect(ttiCall.routeName).toBe('/a');
++  });
++
++  it('marks lastInteractiveCall after a deferred emit so a follow-up markInteractive is deduped', async () => {
++    handle(stackState([{ key: 'a' }], 0));
++    await flushAsync();
++
++    storage.screenTimes['b'] = { lastInteractiveCall: 1000 };
++    storage.pendingActions.push({ actionType: 'NAVIGATE', dispatchTime: 2000 });
++    jest.spyOn(performance, 'now').mockReturnValue(2100);
++    handle(stackState([{ key: 'a' }, { key: 'b' }], 1));
++    await flushAsync();
++
++    // After handleStateChange: lastInteractiveCall > dispatchTime, which
++    // satisfies the duplicate-detection branch in useObserveForReactNavigation
++    // (`dispatchTime < previousInteractiveCall`).
++    const entry = storage.screenTimes['b'];
++    expect(entry?.dispatchTime).toBe(2000);
++    expect(entry?.lastInteractiveCall).toBe(2100);
++    expect(entry!.dispatchTime!).toBeLessThan(entry!.lastInteractiveCall!);
++  });
++
++  it('does not emit tti when no pending interactive is waiting', async () => {
++    handle(stackState([{ key: 'a' }], 0));
++    await flushAsync();
++    mockAddMetric.mockClear();
++
++    storage.pendingActions.push({ actionType: 'NAVIGATE', dispatchTime: performance.now() });
++    handle(stackState([{ key: 'a' }, { key: 'b' }], 1));
++    await flushAsync();
++
++    const ttiCalls = mockAddMetric.mock.calls.filter((c) => c[0].name === 'tti');
++    expect(ttiCalls).toHaveLength(0);
++  });
++});
+diff --git a/src/integrations/react-navigation/__tests__/integration.test.native.tsx b/src/integrations/react-navigation/__tests__/integration.test.native.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..3a71cb500b830a5a86bf806ef7665f7831fd0f19
+--- /dev/null
++++ b/src/integrations/react-navigation/__tests__/integration.test.native.tsx
+@@ -0,0 +1,366 @@
++/**
++ * Integration tests that exercise the real `@react-navigation/native` pipeline
++ */
++import {
++  createNavigatorFactory,
++  StackRouter,
++  TabRouter,
++  useNavigationBuilder,
++  type LinkingOptions,
++  type NavigationContainerRef,
++  type NavigatorScreenParams,
++} from '@react-navigation/native';
++import { act, fireEvent, render } from '@testing-library/react-native';
++import AppMetrics from 'expo-app-metrics';
++import { createRef } from 'react';
++import { Pressable, Text } from 'react-native';
++
++import { ObserveNavigationContainer } from '../ObserveNavigationContainer';
++import { useObserveForReactNavigation } from '../useObserveForReactNavigation';
++
++jest.mock('expo-app-metrics', () => {
++  const mainSession = {
++    id: 'session-1',
++    type: 'main',
++    startDate: '2026-01-01T00:00:00.000Z',
++    addMetric: jest.fn(async () => {}),
++  };
++  return {
++    __esModule: true,
++    default: {
++      markInteractive: jest.fn(),
++      getMainSession: jest.fn(() => mainSession),
++    },
++  };
++});
++
++jest.mock('../init', () => ({
++  __esModule: true,
++  isInitialized: jest.fn(() => true),
++  getReactNavigationIntegrationConfig: jest.fn(() => undefined),
++  initReactNavigationIntegration: jest.fn(),
++}));
++
++const mockAddMetric = AppMetrics.getMainSession().addMetric as jest.Mock;
++const mockMarkInteractive = AppMetrics.markInteractive as jest.Mock;
++const initModule = require('../init') as { getReactNavigationIntegrationConfig: jest.Mock };
++
++type EmittedMetric = {
++  name: string;
++  routeName: string;
++  value: number;
++  params: { isAppLaunch?: boolean; routeParams: object };
++};
++
++function emittedMetrics(name?: string): EmittedMetric[] {
++  const all = mockAddMetric.mock.calls.map((call) => call[0] as EmittedMetric);
++  return name ? all.filter((metric) => metric.name === name) : all;
++}
++
++function flushAsync() {
++  return new Promise((resolve) => setImmediate(resolve));
++}
++
++// Minimal JS-only navigators built from react-navigation's public primitives.
++// Rendering only the focused descriptor matches `lazy: true` tab navigators
++// (the v7 default); the mounted-but-unfocused sibling case (`lazy: false`) is
++// covered by the stateTraversal unit tests, not here.
++function createTestNavigator(router: typeof StackRouter) {
++  function TestNavigator({ initialRouteName, children }: any) {
++    const { state, descriptors, NavigationContent } = useNavigationBuilder(router, {
++      children,
++      initialRouteName,
++    });
++    const focused = state.routes[state.index]!;
++    return <NavigationContent>{descriptors[focused.key]!.render()}</NavigationContent>;
++  }
++  return createNavigatorFactory(TestNavigator)();
++}
++
++const Stack = createTestNavigator(StackRouter);
++const Tab = createTestNavigator(TabRouter as unknown as typeof StackRouter);
++
++function PlainScreen({ title }: { title: string }) {
++  return <Text>{title}</Text>;
++}
++
++const HomeScreen = () => <PlainScreen title="Home" />;
++const DetailsScreen = () => <PlainScreen title="Details" />;
++const FeedScreen = () => <PlainScreen title="Feed" />;
++const ListScreen = () => <PlainScreen title="List" />;
++
++function InteractiveDetailsScreen() {
++  const markInteractive = useObserveForReactNavigation();
++  return (
++    <Pressable testID="mark" onPress={() => markInteractive?.()}>
++      <Text>Details</Text>
++    </Pressable>
++  );
++}
++
++type SessionsParamList = {
++  List: undefined;
++  Details: { id: string };
++};
++
++type TabsParamList = {
++  Feed: undefined;
++  Sessions: NavigatorScreenParams<SessionsParamList> | undefined;
++};
++
++type RootParamList = {
++  Home: { from?: string } | undefined;
++  Details: { id: string };
++  Tabs: NavigatorScreenParams<TabsParamList> | undefined;
++};
++
++type ContainerRef = NavigationContainerRef<RootParamList>;
++
++// `enabled: false` keeps NavigationContainer from subscribing to URL handling
++// in jest;
++const linking: LinkingOptions<RootParamList> = {
++  enabled: false,
++  prefixes: [],
++  config: {
++    screens: {
++      Home: 'home/:from?',
++      Details: 'details/:id',
++      Tabs: {
++        path: 'tabs',
++        screens: {
++          Feed: 'feed',
++          Sessions: {
++            path: 'sessions/:sessionId?',
++            screens: {
++              List: 'list',
++              Details: 'details/:id',
++            },
++          },
++        },
++      },
++    },
++  },
++};
++
++async function renderApp(children: React.ReactNode) {
++  const ref = createRef<ContainerRef>();
++  const result = render(
++    <ObserveNavigationContainer ref={ref as never} linking={linking}>
++      {children}
++    </ObserveNavigationContainer>
++  );
++  // The initial cold metric fires from the provider's `isReady()` catch-up /
++  // `state` ref listener and resolves an awaited `getMainSession()` before
++  // emitting — flush microtasks before asserting.
++  await act(async () => {
++    await flushAsync();
++  });
++  return { ref, ...result };
++}
++
++async function navigate(ref: React.RefObject<ContainerRef | null>, name: string, params?: object) {
++  await act(async () => {
++    // The test navigates by dynamic name/params, so bypass the per-route
++    // navigate() overloads with a loose call signature.
++    const navigate = ref.current!.navigate as (name: string, params?: object) => void;
++    navigate(name, params);
++    await flushAsync();
++  });
++}
++
++beforeEach(() => {
++  jest.clearAllMocks();
++  initModule.getReactNavigationIntegrationConfig.mockReturnValue(undefined);
++  jest.spyOn(console, 'warn').mockImplementation(() => {});
++});
++
++describe('react-navigation integration (real navigation tree)', () => {
++  describe('single stack', () => {
++    function app() {
++      return renderApp(
++        <Stack.Navigator>
++          <Stack.Screen name="Home" component={HomeScreen} initialParams={{ from: 'launch' }} />
++          <Stack.Screen name="Details" component={DetailsScreen} />
++        </Stack.Navigator>
++      );
++    }
++
++    it('emits cold_ttr for the initial screen with a params-free routeName', async () => {
++      await app();
++
++      const [metric, ...rest] = emittedMetrics('cold_ttr');
++      expect(rest).toHaveLength(0);
++      expect(metric).toEqual({
++        timestamp: expect.any(String),
++        category: 'navigation',
++        name: 'cold_ttr',
++        routeName: '/Home',
++        value: expect.any(Number),
++        params: { isAppLaunch: true, routeParams: { from: 'launch' } },
++      });
++      expect(metric!.routeName).not.toContain('launch');
++    });
++
++    it('does not bake navigate() params into the routeName and reports them as routeParams', async () => {
++      const { ref } = await app();
++
++      await navigate(ref, 'Details', { id: 'abc' });
++
++      const metric = emittedMetrics().at(-1)!;
++      expect(metric.name).toBe('cold_ttr');
++      expect(metric.routeName).toBe('/Details');
++      expect(metric.routeName).not.toContain('abc');
++      expect(metric.params).toEqual({ isAppLaunch: false, routeParams: { id: 'abc' } });
++    });
++
++    it('filters route params from real navigation metrics', async () => {
++      initModule.getReactNavigationIntegrationConfig.mockReturnValue({ filteredParams: ['id'] });
++      const { ref } = await app();
++
++      await navigate(ref, 'Details', { id: 'abc', tab: 'posts' });
++
++      const metric = emittedMetrics().at(-1)!;
++      expect(metric.routeName).toBe('/Details');
++      expect(metric.params).toEqual({
++        isAppLaunch: false,
++        routeParams: { tab: 'posts' },
++        urlHidden: true,
++      });
++    });
++
++    it('emits warm_ttr with a params-free routeName when revisiting a screen', async () => {
++      const { ref } = await app();
++
++      await navigate(ref, 'Details', { id: 'abc' });
++      // goBack() refocuses the existing Home instance — navigate('Home') would
++      // push a fresh instance in react-navigation 7, which is correctly cold.
++      await act(async () => {
++        ref.current!.goBack();
++        await flushAsync();
++      });
++
++      const metric = emittedMetrics().at(-1)!;
++      expect(metric.name).toBe('warm_ttr');
++      expect(metric.routeName).toBe('/Home');
++      expect(metric.params).toEqual({ isAppLaunch: false, routeParams: { from: 'launch' } });
++    });
++  });
++
++  describe('nested navigators', () => {
++    function SessionsNavigator() {
++      return (
++        <Stack.Navigator>
++          <Stack.Screen name="List" component={ListScreen} />
++          <Stack.Screen name="Details" component={DetailsScreen} />
++        </Stack.Navigator>
++      );
++    }
++
++    function TabsNavigator() {
++      return (
++        <Tab.Navigator>
++          <Tab.Screen name="Feed" component={FeedScreen} />
++          <Tab.Screen name="Sessions" component={SessionsNavigator} />
++        </Tab.Navigator>
++      );
++    }
++
++    function app() {
++      return renderApp(
++        <Stack.Navigator>
++          <Stack.Screen name="Tabs" component={TabsNavigator} />
++        </Stack.Navigator>
++      );
++    }
++
++    it('joins route names of the whole focused chain into the routeName', async () => {
++      await app();
++
++      const metric = emittedMetrics().at(-1)!;
++      expect(metric.routeName).toBe('/Tabs/Feed');
++    });
++
++    it('keeps params of a deeply nested screen out of the routeName', async () => {
++      const { ref } = await app();
++
++      await navigate(ref, 'Tabs', {
++        screen: 'Sessions',
++        params: { screen: 'Details', params: { id: 'abc' } },
++      });
++
++      const metric = emittedMetrics().at(-1)!;
++      expect(metric.routeName).toBe('/Tabs/Sessions/Details');
++      expect(metric.routeName).not.toContain('abc');
++      expect(metric.params.routeParams).toEqual({ id: 'abc' });
++    });
++
++    it('keeps params of an intermediate route out of the routeName', async () => {
++      const { ref } = await app();
++
++      // Param lands on the intermediate `Sessions` route; the focused leaf is
++      // its initial `List` screen.
++      await navigate(ref, 'Tabs', { screen: 'Sessions', params: { sessionId: 'abc' } });
++
++      const metric = emittedMetrics().at(-1)!;
++      expect(metric.routeName).toBe('/Tabs/Sessions/List');
++      expect(metric.routeName).not.toContain('abc');
++      // Only the focused leaf's params are reported; intermediate-route params
++      // are not part of `routeParams`.
++      expect(metric.params.routeParams).toEqual({});
++    });
++  });
++
++  describe('tti via markInteractive', () => {
++    it('emits tti and markInteractive with a params-free routeName', async () => {
++      const { ref, getByTestId } = await renderApp(
++        <Stack.Navigator>
++          <Stack.Screen name="Home" component={HomeScreen} />
++          <Stack.Screen name="Details" component={InteractiveDetailsScreen} />
++        </Stack.Navigator>
++      );
++      await navigate(ref, 'Details', { id: 'abc' });
++
++      await act(async () => {
++        fireEvent.press(getByTestId('mark'));
++        await flushAsync();
++      });
++
++      expect(mockMarkInteractive).toHaveBeenCalledWith({ routeName: '/Details' });
++      const [tti, ...rest] = emittedMetrics('tti');
++      expect(rest).toHaveLength(0);
++      expect(tti!.routeName).toBe('/Details');
++      expect(tti!.routeName).not.toContain('abc');
++      expect(tti!.params).toEqual({ routeParams: { id: 'abc' } });
++    });
++  });
++
++  it('never includes any param value in any emitted routeName', async () => {
++    const paramValues = ['launch', 'abc', 'xyz'];
++    const { ref, getByTestId } = await renderApp(
++      <Stack.Navigator>
++        <Stack.Screen name="Home" component={HomeScreen} initialParams={{ from: 'launch' }} />
++        <Stack.Screen name="Details" component={InteractiveDetailsScreen} />
++      </Stack.Navigator>
++    );
++    await navigate(ref, 'Details', { id: 'abc' });
++    await act(async () => {
++      fireEvent.press(getByTestId('mark'));
++      await flushAsync();
++    });
++    await navigate(ref, 'Home', { from: 'xyz' });
++
++    const routeNames = [
++      ...emittedMetrics().map((metric) => metric.routeName),
++      ...mockMarkInteractive.mock.calls.map((call) => call[0].routeName as string),
++    ];
++    // cold_ttr /Home, cold_ttr /Details, markInteractive + tti /Details,
++    // cold_ttr /Home (navigate pushes a fresh instance in react-navigation 7).
++    expect(routeNames).toHaveLength(5);
++    for (const routeName of routeNames) {
++      expect(routeName).toMatch(/^\//);
++      for (const value of paramValues) {
++        expect(routeName).not.toContain(value);
++      }
++    }
++  });
++});
+diff --git a/src/integrations/react-navigation/__tests__/navigationConfig.test.ts b/src/integrations/react-navigation/__tests__/navigationConfig.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2b6e7689c76ed9ed322fc0efafc57f3d51f922a9
+--- /dev/null
++++ b/src/integrations/react-navigation/__tests__/navigationConfig.test.ts
+@@ -0,0 +1,53 @@
++import { getNavigationRouteParams } from '../../navigationConfig';
++
++describe('react-navigation navigation config', () => {
++  it('filters configured route param keys', () => {
++    const circular: Record<string, unknown> = {};
++    circular.self = circular;
++
++    expect(
++      getNavigationRouteParams(
++        { filteredParams: ['userId', 'token', null as unknown as string] },
++        { userId: '1', tab: 'posts', token: circular }
++      ).routeParams
++    ).toEqual({ tab: 'posts' });
++  });
++
++  it('returns an empty object when every param is filtered', () => {
++    expect(
++      getNavigationRouteParams({ filteredParams: ['token'] }, { token: 'secret' }).routeParams
++    ).toEqual({});
++  });
++
++  it('omits only route param values that cannot be serialized', () => {
++    const circular: Record<string, unknown> = {};
++    circular.self = circular;
++    const symbol = Symbol('value');
++
++    expect(
++      getNavigationRouteParams(true, {
++        id: '42',
++        callback: () => {},
++        circular,
++        nested: { ok: true, callback: () => {} },
++        none: null,
++        symbol,
++        unset: undefined,
++      })
++    ).toEqual({ routeParams: { id: '42', nested: { ok: true }, none: null } });
++  });
++
++  it('keeps params by default', () => {
++    const params = { userId: '1' };
++    expect(getNavigationRouteParams(true, params).routeParams).toEqual(params);
++  });
++
++  it('sets urlHidden when a route param is filtered', () => {
++    expect(
++      getNavigationRouteParams({ filteredParams: ['token'] }, { token: 'secret', tab: 'posts' })
++    ).toEqual({
++      routeParams: { tab: 'posts' },
++      urlHidden: true,
++    });
++  });
++});
+diff --git a/src/integrations/react-navigation/__tests__/optionalImport.test.ts b/src/integrations/react-navigation/__tests__/optionalImport.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..c01038d14280b8ada9bfbca4c9c3f3285e6d11ba
+--- /dev/null
++++ b/src/integrations/react-navigation/__tests__/optionalImport.test.ts
+@@ -0,0 +1,24 @@
++// `@react-navigation/native` is an optional peer dependency. The integration must
++// reach it ONLY through the `reactNavigation` wrapper (a try/catch require), never
++// via a direct `import { x } from '@react-navigation/native'`
++jest.mock('@react-navigation/native', () => {
++  throw new Error('simulated: @react-navigation/native is not installed');
++});
++
++jest.mock('../reactNavigation', () => ({
++  __esModule: true,
++  isReactNavigationInstalled: true,
++  optionalReactNavigation: {
++    NavigationContainer: () => null,
++    useNavigationContainerRef: jest.fn(),
++    useRoute: jest.fn(),
++    useNavigation: jest.fn(),
++    useStateForPath: jest.fn(),
++  },
++}));
++
++describe('react-navigation integration optional imports', () => {
++  it('loads its entry point without @react-navigation/native installed', () => {
++    expect(() => require('../index')).not.toThrow();
++  });
++});
+diff --git a/src/integrations/react-navigation/__tests__/stateTraversal.test.ts b/src/integrations/react-navigation/__tests__/stateTraversal.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3478bd0bb071bd51c055c3fd04c504afa6c1f0e0
+--- /dev/null
++++ b/src/integrations/react-navigation/__tests__/stateTraversal.test.ts
+@@ -0,0 +1,173 @@
++import { collectMountedKeys, findFocusedLeaf } from '../stateTraversal';
++import type { NavigationStateLike } from '../types';
++
++function stackState(
++  routes: { key: string; name: string; state?: NavigationStateLike }[],
++  index: number | undefined
++): NavigationStateLike {
++  return {
++    type: 'stack',
++    index,
++    routes,
++    key: 'test',
++    routeNames: [],
++    stale: false,
++  } as NavigationStateLike;
++}
++
++function tabState(
++  routes: { key: string; name: string; state?: NavigationStateLike }[],
++  index = 0
++): NavigationStateLike {
++  return {
++    type: 'tab',
++    index,
++    routes,
++    key: 'test',
++    routeNames: [],
++    stale: false,
++  } as NavigationStateLike;
++}
++
++function drawerState(
++  routes: { key: string; name: string; state?: NavigationStateLike }[],
++  index = 0
++): NavigationStateLike {
++  return {
++    type: 'drawer',
++    index,
++    routes,
++    key: 'test',
++    routeNames: [],
++    stale: false,
++  } as NavigationStateLike;
++}
++
++describe('findFocusedLeaf', () => {
++  it('returns null when index points past the routes array', () => {
++    const state = stackState([{ key: 'a', name: 'A' }], 5);
++    expect(findFocusedLeaf(state)).toBeNull();
++  });
++
++  it('returns first router when index is undefined the routes array', () => {
++    const state = stackState([{ key: 'a', name: 'A' }], undefined);
++    expect(findFocusedLeaf(state)).toEqual({
++      route: { key: 'a', name: 'A' },
++      key: 'a',
++    });
++  });
++
++  it('returns the focused route in a flat stack', () => {
++    const state = stackState(
++      [
++        { key: 'a', name: 'A' },
++        { key: 'b', name: 'B' },
++      ],
++      1
++    );
++    expect(findFocusedLeaf(state)).toEqual({
++      route: state.routes[1],
++      key: 'b',
++    });
++  });
++
++  it('descends into a nested stack to find the leaf', () => {
++    const inner = stackState([{ key: 'b', name: 'B' }], 0);
++    const outer = stackState([{ key: 'a', name: 'A', state: inner }], 0);
++    expect(findFocusedLeaf(outer)).toEqual({ route: inner.routes[0], key: 'b' });
++  });
++
++  it('descends through tabs to find the focused screen', () => {
++    const tabs = tabState(
++      [
++        { key: 't1', name: 'Home' },
++        { key: 't2', name: 'Settings' },
++      ],
++      1
++    );
++    const outer = stackState([{ key: 'root', name: 'Root', state: tabs }], 0);
++    expect(findFocusedLeaf(outer)).toEqual({ route: tabs.routes[1], key: 't2' });
++  });
++
++  it('stops when the focused route has no nested state', () => {
++    const state = stackState([{ key: 'a', name: 'A' }], 0);
++    expect(findFocusedLeaf(state)).toEqual({ route: state.routes[0], key: 'a' });
++  });
++});
++
++describe('collectMountedKeys', () => {
++  it('collects every key in a flat stack', () => {
++    const state = stackState(
++      [
++        { key: 'a', name: 'A' },
++        { key: 'b', name: 'B' },
++        { key: 'c', name: 'C' },
++      ],
++      2
++    );
++    expect([...collectMountedKeys(state).keys()]).toEqual(['a', 'b', 'c']);
++  });
++
++  it('recurses into nested stack subtrees', () => {
++    const inner = stackState([{ key: 'inner', name: 'Inner' }], 0);
++    const outer = stackState([{ key: 'a', name: 'A', state: inner }], 0);
++    expect([...collectMountedKeys(outer).keys()].sort()).toEqual(['a', 'inner']);
++  });
++
++  it('treats drawer subtrees as mounted (drawer is not a tab)', () => {
++    const drawer = drawerState([
++      { key: 'd1', name: 'D1' },
++      { key: 'd2', name: 'D2' },
++    ]);
++    const outer = stackState([{ key: 'root', name: 'Root', state: drawer }], 0);
++    expect([...collectMountedKeys(outer).keys()].sort()).toEqual(['d1', 'd2', 'root']);
++  });
++
++  it('includes the focused tab and its subtree, but skips sibling tabs', () => {
++    const innerStack = stackState(
++      [
++        { key: 'tabStack1', name: 'TabScreen1' },
++        { key: 'tabStack2', name: 'TabScreen2' },
++      ],
++      0
++    );
++    const tabs = tabState(
++      [
++        { key: 't1', name: 'Home', state: innerStack },
++        { key: 't2', name: 'Settings' },
++      ],
++      0
++    );
++    const outer = stackState([{ key: 'root', name: 'Root', state: tabs }], 0);
++    expect([...collectMountedKeys(outer).keys()].sort()).toEqual([
++      'root',
++      't1',
++      'tabStack1',
++      'tabStack2',
++    ]);
++  });
++
++  it('returns only the focused tab when the root navigator is a tab navigator', () => {
++    const tabs = tabState(
++      [
++        { key: 't1', name: 'Home' },
++        { key: 't2', name: 'Settings' },
++      ],
++      0
++    );
++    expect([...collectMountedKeys(tabs).keys()]).toEqual(['t1']);
++  });
++
++  it('maps each key to its route object', () => {
++    const state = stackState(
++      [
++        { key: 'a', name: 'A' },
++        { key: 'b', name: 'B' },
++      ],
++      0
++    );
++    const map = collectMountedKeys(state);
++    expect(map.get('a')).toBe(state.routes[0]);
++    expect(map.get('b')).toBe(state.routes[1]);
++  });
++});
+diff --git a/src/integrations/react-navigation/__tests__/useObserveForReactNavigation.test.native.tsx b/src/integrations/react-navigation/__tests__/useObserveForReactNavigation.test.native.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..eb70abc7295328a1b83298fae9ee8735380ce493
+--- /dev/null
++++ b/src/integrations/react-navigation/__tests__/useObserveForReactNavigation.test.native.tsx
+@@ -0,0 +1,307 @@
++/* eslint-disable @typescript-eslint/no-require-imports */
++import { renderHook, act } from '@testing-library/react-native';
++import AppMetrics from 'expo-app-metrics';
++import { type ReactNode } from 'react';
++
++import { ObserveReactNavigationIntegrationContext } from '../context';
++import {
++  createReactNavigationIntegrationStorage,
++  type ReactNavigationIntegrationStorage,
++} from '../storage';
++import { useObserveForReactNavigation } from '../useObserveForReactNavigation';
++
++jest.mock('expo-app-metrics', () => {
++  const mainSession = {
++    id: 'session-1',
++    type: 'main',
++    startDate: '2026-01-01T00:00:00.000Z',
++    addMetric: jest.fn(),
++  };
++  return {
++    __esModule: true,
++    default: {
++      markInteractive: jest.fn(),
++      getMainSession: jest.fn(() => mainSession),
++    },
++  };
++});
++
++jest.mock('../init', () => ({
++  __esModule: true,
++  isInitialized: jest.fn(() => true),
++  getReactNavigationIntegrationConfig: jest.fn(() => undefined),
++  initReactNavigationIntegration: jest.fn(),
++}));
++
++jest.mock('@react-navigation/native', () => {
++  const useRoute = jest.fn(() => ({ key: 'screen-a', name: 'A', params: { x: '1' } }));
++  const useNavigation = jest.fn(() => ({ isFocused: () => true }));
++  const useStateForPath = jest.fn(() => ({
++    index: 0,
++    routes: [{ key: 'screen-a', name: 'A', params: { x: '1' } }],
++  }));
++  return {
++    __esModule: true,
++    useRoute,
++    useNavigation,
++    useStateForPath,
++    __useRoute: useRoute,
++    __useNavigation: useNavigation,
++  };
++});
++
++const reactNavigationModule = require('@react-navigation/native') as {
++  __useRoute: jest.Mock;
++  __useNavigation: jest.Mock;
++  useStateForPath: jest.Mock;
++};
++const mockUseRoute = reactNavigationModule.__useRoute;
++const mockUseNavigation = reactNavigationModule.__useNavigation;
++const mockUseStateForPath = reactNavigationModule.useStateForPath;
++const initModule = require('../init') as {
++  isInitialized: jest.Mock;
++  getReactNavigationIntegrationConfig: jest.Mock;
++};
++
++const mockAddMetric = AppMetrics.getMainSession().addMetric as jest.Mock;
++
++function wrapper(value: { storage: ReactNavigationIntegrationStorage } | null) {
++  const contextValue = value ? { storage: value.storage } : null;
++  return ({ children }: { children: ReactNode }) => (
++    <ObserveReactNavigationIntegrationContext.Provider value={contextValue}>
++      {children}
++    </ObserveReactNavigationIntegrationContext.Provider>
++  );
++}
++
++let storage: ReactNavigationIntegrationStorage;
++
++beforeEach(() => {
++  jest.clearAllMocks();
++  initModule.getReactNavigationIntegrationConfig.mockReturnValue(undefined);
++  jest.spyOn(console, 'log').mockImplementation(() => {});
++  jest.spyOn(console, 'warn').mockImplementation(() => {});
++  initModule.isInitialized.mockReturnValue(true);
++  mockUseRoute.mockReturnValue({ key: 'screen-a', name: 'A', params: { x: '1' } });
++  mockUseNavigation.mockReturnValue({ isFocused: () => true });
++  mockUseStateForPath.mockReturnValue({
++    index: 0,
++    routes: [{ key: 'screen-a', name: 'A', params: { x: '1' } }],
++  });
++  storage = createReactNavigationIntegrationStorage();
++});
++
++describe('useObserveForReactNavigation', () => {
++  it('records TTI from dispatchTime on the first call when focused', async () => {
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000 };
++    jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++    const { result } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++    expect(mockAddMetric).toHaveBeenCalledWith({
++      timestamp: expect.any(String),
++      category: 'navigation',
++      routeName: '/A',
++      name: 'tti',
++      value: 0.3,
++      params: { routeParams: { x: '1' } },
++    });
++  });
++
++  it('calls AppMetrics.markInteractive when the screen is focused', async () => {
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000 };
++    const { result } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++    await act(async () => {
++      await result.current!({ params: { x: 'payload' } });
++    });
++    expect(AppMetrics.markInteractive).toHaveBeenCalledWith({
++      params: { x: 'payload' },
++      routeName: '/A',
++    });
++  });
++
++  it('filters route params from hook-emitted TTI', async () => {
++    initModule.getReactNavigationIntegrationConfig.mockReturnValue({ filteredParams: ['x'] });
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000 };
++    jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++    const { result } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(mockAddMetric).toHaveBeenCalledWith(
++      expect.objectContaining({ params: { routeParams: {}, urlHidden: true } })
++    );
++  });
++
++  it('omits non-serializable route params from hook-emitted TTI', async () => {
++    const circular: Record<string, unknown> = {};
++    circular.self = circular;
++    mockUseRoute.mockReturnValue({
++      key: 'screen-a',
++      name: 'A',
++      params: { id: '42', callback: () => {}, circular },
++    });
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000 };
++    jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++    const { result } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(mockAddMetric).toHaveBeenCalledWith(
++      expect.objectContaining({ params: { routeParams: { id: '42' } } })
++    );
++  });
++
++  it('still records lastInteractiveCall when the screen is not focused (skips markInteractive and TTI)', async () => {
++    mockUseNavigation.mockReturnValue({ isFocused: () => false });
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000 };
++    jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++    const { result } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(AppMetrics.markInteractive).not.toHaveBeenCalled();
++    expect(mockAddMetric).not.toHaveBeenCalled();
++    expect(storage.screenTimes['screen-a'].lastInteractiveCall).toBe(1300);
++    expect(storage.interactiveScreensIds.has('screen-a')).toBe(true);
++  });
++
++  it('skips TTI silently when no dispatchTime is recorded for the screen', async () => {
++    const warnSpy = jest.spyOn(console, 'warn');
++    const { result } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++    await act(async () => {
++      await result.current!();
++    });
++    expect(mockAddMetric).not.toHaveBeenCalled();
++    expect(warnSpy).not.toHaveBeenCalled();
++  });
++
++  it('warns and skips when called on an unmounted screen', async () => {
++    const warnSpy = jest.spyOn(console, 'warn');
++    const { result, unmount } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++    const fn = result.current!;
++    unmount();
++    await act(async () => {
++      await fn();
++    });
++    expect(warnSpy).toHaveBeenCalledWith(
++      '[expo-observe] Calling markInteractive on unmounted screen'
++    );
++    expect(AppMetrics.markInteractive).not.toHaveBeenCalled();
++  });
++
++  it('warns when there is no screenId on the route', async () => {
++    mockUseRoute.mockReturnValue({ key: undefined, name: 'A', params: {} });
++    const warnSpy = jest.spyOn(console, 'warn');
++    const { result } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++    await act(async () => {
++      await result.current!();
++    });
++    expect(warnSpy).toHaveBeenCalledWith(
++      '[expo-observe] No metadata available for the current screen. Make sure to call useObserve inside a screen component.'
++    );
++    expect(AppMetrics.markInteractive).not.toHaveBeenCalled();
++  });
++
++  it('warns when the screen ID changes between renders', () => {
++    const warnSpy = jest.spyOn(console, 'warn');
++    mockUseRoute.mockReturnValue({ key: 'screen-a', name: 'A', params: {} });
++    const { rerender } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++
++    mockUseRoute.mockReturnValue({ key: 'screen-b', name: 'A', params: {} });
++    rerender(undefined);
++
++    expect(warnSpy).toHaveBeenCalledWith(
++      '[expo-observe] Screen ID changed between renders. The hook should be called inside the screen component, not a higher wrapper.'
++    );
++  });
++
++  it('throws when isInitialized() flips mid-lifetime', () => {
++    initModule.isInitialized.mockReturnValue(false);
++    jest.spyOn(console, 'error').mockImplementation(() => {});
++
++    const { rerender } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++
++    initModule.isInitialized.mockReturnValue(true);
++    expect(() => rerender(undefined)).toThrow(
++      "[expo-observe] React Navigation integration was toggled during a screen's lifecycle. Call `Observe.configure({ integrations: { 'react-navigation': true } })` once at startup before any screen mounts."
++    );
++  });
++
++  it('records interactive only once per navigation (skips duplicate calls)', async () => {
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000 };
++    jest.spyOn(performance, 'now').mockReturnValue(1300);
++
++    const { result } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++    await act(async () => {
++      await result.current!();
++    });
++    await act(async () => {
++      await result.current!();
++    });
++    expect(mockAddMetric).toHaveBeenCalledTimes(1);
++  });
++
++  it('falls back to route.name when useStateForPath returns undefined', async () => {
++    mockUseStateForPath.mockReturnValue(undefined);
++    storage.screenTimes['screen-a'] = { dispatchTime: 1000 };
++    jest.spyOn(performance, 'now').mockReturnValue(1100);
++
++    const { result } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(AppMetrics.markInteractive).toHaveBeenCalledWith({ routeName: 'A' });
++  });
++
++  it('stores lastInteractiveCall and defers TTI emission when dispatchTime is not yet recorded', async () => {
++    // markInteractive runs before handleStateChange has recorded the dispatch.
++    jest.spyOn(performance, 'now').mockReturnValue(1234);
++
++    const { result } = renderHook(() => useObserveForReactNavigation(), {
++      wrapper: wrapper({ storage }),
++    });
++    await act(async () => {
++      await result.current!();
++    });
++
++    expect(mockAddMetric).not.toHaveBeenCalled();
++    expect(storage.screenTimes['screen-a']).toEqual({ lastInteractiveCall: 1234 });
++    expect(storage.interactiveScreensIds.has('screen-a')).toBe(true);
++  });
++});
+diff --git a/src/module.ts b/src/module.ts
+index 821e611efd4bb04256e03d8616650f78f448f05f..814027fb11be07750af64ca9a830a13dea60f4a5 100644
+--- a/src/module.ts
++++ b/src/module.ts
+@@ -3,6 +3,7 @@ import AppMetrics, { setErrorHandlerEnabled } from 'expo-app-metrics';
+ 
+ import { initRouterIntegration } from './integrations/expo-router/init';
+ import { isRouterInstalled } from './integrations/expo-router/router';
++import { initReanimatedIntegration } from './integrations/react-native-reanimated/init';
+ import { initReactNavigationIntegration } from './integrations/react-navigation/init';
+ import { isReactNavigationInstalled } from './integrations/react-navigation/reactNavigation';
+ import { reportCaughtError } from './reportCaughtError';
+@@ -80,6 +81,9 @@ const Observe: ObserveModule = new Proxy(native, {
+         } else if (shouldInitReactNavigationIntegration) {
+           initReactNavigationIntegration(config.integrations?.['react-navigation']);
+         }
++        if (config.integrations?.['react-native-reanimated']) {
++          initReanimatedIntegration();
++        }
+         return target.configure(config);
+       };
+     }
+diff --git a/src/types.ts b/src/types.ts
+index 3b675db2a5d41a43fa0b91b64641017e3565d491..f2632e1d3daf5d25c0e06613702e057101bdd48a 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -150,6 +150,17 @@ export interface ObserveIntegrationsConfig {
+    * @default false
+    */
+   'react-navigation'?: boolean | ObserveNavigationIntegrationConfig;
++  /**
++   * Enables the `react-native-reanimated` integration, which reports Reanimated errors as
++   * `reanimated.error` errors and Reanimated warnings as `reanimated.warning` events. Logs are
++   * still printed to the console. Each distinct message is reported once per app launch.
++   *
++   * Requires `react-native-reanimated` 4.6 or 4.7 and `react-native-worklets` to be installed.
++   * Reanimated's `level` and `strict` logger settings still decide which logs are reported.
++   *
++   * @default false
++   */
++  'react-native-reanimated'?: boolean;
+ }
+ 
+ /**
