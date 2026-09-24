@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
 // App-specific root layout. Not managed by scripts/sync-routes.js (no
 // @generated marker), so edits here are preserved across syncs.
 Observe.configure({
-  integrations: { 'expo-router': true },
+  integrations: { 'expo-router': true, 'react-native-reanimated': true },
   environment: 'production',
   dispatchingEnabled: true,
   dispatchInDebug: true,
