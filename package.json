@@ -7,7 +7,6 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "patch-package",
     "sync-routes": "node ./scripts/sync-routes.js",
     "lint": "expo lint"
   },
@@ -18,8 +17,6 @@
     "@types/react-test-renderer": "^18.0.7",
     "eslint": "^9",
     "eslint-config-expo": "~56.0.4",
-    "patch-package": "^8.0.0",
-    "postinstall-postinstall": "^2.1.0",
     "typescript": "~6.0.3"
   }
 }

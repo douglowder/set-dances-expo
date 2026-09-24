@@ -1,8 +1,9 @@
 packages:
   - apps/*
   - packages/*
+patchedDependencies:
+  "expo-dev-launcher": "patches/expo-dev-launcher.patch"
 allowBuilds:
-  postinstall-postinstall: true
   unrs-resolver: true
 minimumReleaseAgeExclude:
   - '@expo/cli@57.0.17'
