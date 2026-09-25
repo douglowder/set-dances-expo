@@ -1,7 +1,6 @@
 // App-specific route for testing the expo-observe Reanimated integration
 // (https://github.com/expo/expo/pull/50576). No @generated marker, so
 // scripts/sync-routes.js leaves this file alone.
-import { Drawer } from 'expo-router/drawer';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { withSequence, withSpring } from 'react-native-reanimated';
@@ -86,9 +85,6 @@ export default function ReanimatedTest() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Drawer.Screen
-        options={{ title: 'Reanimated test', drawerLabel: 'Reanimated test' }}
-      />
       <Text style={styles.note}>
         Each button triggers a Reanimated log. Warnings become
         `reanimated.warning` events and errors become `reanimated.error`
