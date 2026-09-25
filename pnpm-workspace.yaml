@@ -4,6 +4,7 @@ packages:
 patchedDependencies:
   expo-dev-launcher: patches/expo-dev-launcher.patch
   expo-observe: patches/expo-observe.patch
+  expo-modules-jsi: patches/expo-modules-jsi.patch
   react-native-reanimated: patches/react-native-reanimated.patch
 allowBuilds:
   unrs-resolver: true
