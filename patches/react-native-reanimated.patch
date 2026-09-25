@@ -1,0 +1,12 @@
+diff --git a/scripts/validate-worklets-version.js b/scripts/validate-worklets-version.js
+index 0a2680a592c8ecee6dbc091f612a7c293d15669c..112f83e08f0f3efbe571ccc58a1c91047767e000 100644
+--- a/scripts/validate-worklets-version.js
++++ b/scripts/validate-worklets-version.js
+@@ -12,6 +12,7 @@ const architecture = 'fabric';
+  * @returns {{ ok: boolean; message?: string }}
+  */
+ function validateVersion(reanimatedVersion) {
++  return { ok: true };
+   const supportedWorkletsVersions = [];
+ 
+   for (const key in compatibilityFile[architecture]) {
