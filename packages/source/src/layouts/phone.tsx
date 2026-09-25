@@ -120,6 +120,24 @@ export default function PhoneLayout() {
                 headerTintColor,
               }}
             />
+            {/* Mobile-only test route: it exists in apps/mobile, not in apps/tv. */}
+            <Drawer.Screen
+              name="reanimated-test"
+              options={{
+                drawerLabel: 'Reanimated test',
+                title: 'Reanimated test',
+                headerTitleStyle: {
+                  fontSize: 25 * scale,
+                },
+                headerStyle: {
+                  height: 100 * scale,
+                },
+                drawerLabelStyle: {
+                  fontSize: 25 * scale,
+                },
+                headerTintColor,
+              }}
+            />
           </Drawer>
         </GestureHandlerRootView>
       </ThemeProvider>
