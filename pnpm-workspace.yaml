@@ -11,3 +11,9 @@ allowBuilds:
 nodeLinker: hoisted
 overrides:
   react-native-reanimated: 4.6.0
+  react-native: npm:react-native-tvos@0.88.0-0rc2
+  react-native-tvos: 0.88.0-0rc2
+  react-native-worklets: 0.12.2
+minimumReleaseAgeExclude:
+  - '@react-native-tvos/virtualized-lists@0.88.0-0rc2'
+  - react-native-tvos@0.88.0-0rc2
