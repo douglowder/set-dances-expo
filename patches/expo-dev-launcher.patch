@@ -1,30 +1,471 @@
-diff --git a/ios/SwiftUI/DevServersView.swift b/ios/SwiftUI/DevServersView.swift
-index b54a66dfe2a..9221e413ef4 100644
---- a/ios/SwiftUI/DevServersView.swift
-+++ b/ios/SwiftUI/DevServersView.swift
-@@ -112,6 +112,17 @@ struct DevServersView: View {
-         #endif
-           .disableAutocorrection(true)
-           .toolbar {
-+            #if os(tvOS)
-+            ToolbarItemGroup(placement: .automatic) {
-+              ForEach(keyboardShortcuts, id: \.self) { shortcut in
-+                Button {
-+                  urlText += shortcut
-+                } label: {
-+                  Text(shortcut)
-+                }
-+              }
+diff --git a/ios/SwiftUI/AccountSheet.swift b/ios/SwiftUI/AccountSheet.swift
+index 769d015202300cb778836f16c6ef5d840bdc8267..7f40be28626677c605934ef7967b507518087ae3 100644
+--- a/ios/SwiftUI/AccountSheet.swift
++++ b/ios/SwiftUI/AccountSheet.swift
+@@ -1,6 +1,9 @@
+ // Copyright 2015-present 650 Industries. All rights reserved.
+ 
+ import SwiftUI
++#if os(tvOS)
++import CoreImage.CIFilterBuiltins
++#endif
+ 
+ struct AccountSheet: View {
+   @Environment(\.dismiss) private var dismiss
+@@ -33,6 +36,11 @@ struct AccountSheet: View {
+     #if !os(tvOS) && !os(macOS)
+     .background(Color(.systemGroupedBackground))
+     #endif
++    #if os(tvOS)
++    .onDisappear {
++      viewModel.cancelDeviceLogin()
++    }
++    #endif
+   }
+ 
+   private var accountScreenHeader: some View {
+@@ -113,9 +121,7 @@ struct AccountSheet: View {
+         .foregroundColor(.secondary)
+ 
+       #if os(tvOS)
+-      VStack(spacing: 8) {
+-        Text("Login and signup are not yet available on tvOS")
+-      }
++      deviceLoginCard
+       #else
+       VStack(spacing: 8) {
+         signInButton
+@@ -154,6 +160,93 @@ struct AccountSheet: View {
+     .disabled(viewModel.isAuthenticating)
+   }
+ 
++  #if os(tvOS)
++  @ViewBuilder
++  private var deviceLoginCard: some View {
++    switch viewModel.deviceLoginStep {
++    case nil:
++      VStack(spacing: 8) {
++        signInButton
++        Text("You will approve the login on your phone or computer.")
++          .font(.caption)
++          .foregroundColor(.secondary)
++      }
++    case .waitingForApproval(let userCode, let verificationURL):
++      HStack(alignment: .center, spacing: 40) {
++        if let qrCode = qrCodeImage(for: verificationURL) {
++          Image(uiImage: qrCode)
++            .interpolation(.none)
++            .resizable()
++            .frame(width: 240, height: 240)
++        }
++        VStack(alignment: .leading, spacing: 12) {
++          Text("Scan the QR code, or go to")
++            .foregroundColor(.secondary)
++          Text(verificationURL.host.map { "\($0)\(verificationURL.path)" } ?? verificationURL.absoluteString)
++            .font(.headline)
++          Text("and enter this code:")
++            .foregroundColor(.secondary)
++          Text(userCode)
++            .font(.system(size: 56, weight: .bold, design: .monospaced))
++          HStack(spacing: 12) {
++            ProgressView()
++            Text("Waiting for approval…")
++              .foregroundColor(.secondary)
++          }
++        }
++      }
++      cancelDeviceLoginButton
++    case .matching(let options):
++      VStack(spacing: 24) {
++        Text("Select the number shown in your browser")
++          .font(.headline)
++        HStack(spacing: 24) {
++          ForEach(options, id: \.self) { option in
++            Button {
++              viewModel.selectDeviceLoginMatch(option)
++            } label: {
++              Text(option)
++                .font(.system(size: 40, weight: .bold, design: .monospaced))
++                .frame(minWidth: 120)
 +            }
-+            #else
-             ToolbarItemGroup(placement: .keyboard) {
-               ForEach(keyboardShortcuts, id: \.self) { shortcut in
-                 Button {
-@@ -121,6 +132,7 @@ struct DevServersView: View {
-                 }
-               }
-             }
-+            #endif
-           }
-           .padding(.horizontal, 16)
-           .padding(.vertical, 12)
++          }
++        }
++        cancelDeviceLoginButton
++      }
++    case .verifying:
++      HStack(spacing: 12) {
++        ProgressView()
++        Text("Logging in…")
++      }
++    case .failed(let message):
++      VStack(spacing: 16) {
++        Text(message)
++          .foregroundColor(.red)
++        Button("Try again") {
++          viewModel.startDeviceLogin()
++        }
++      }
++    }
++  }
++
++  private var cancelDeviceLoginButton: some View {
++    Button("Cancel") {
++      viewModel.cancelDeviceLogin()
++    }
++  }
++
++  private func qrCodeImage(for url: URL) -> UIImage? {
++    let filter = CIFilter.qrCodeGenerator()
++    filter.message = Data(url.absoluteString.utf8)
++    filter.correctionLevel = "M"
++    guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 10, y: 10)),
++      let cgImage = CIContext().createCGImage(output, from: output.extent) else {
++      return nil
++    }
++    return UIImage(cgImage: cgImage)
++  }
++  #endif
++
+   private var signUpButton: some View {
+     Button {
+       Task {
+diff --git a/ios/SwiftUI/DevLauncherViewModel.swift b/ios/SwiftUI/DevLauncherViewModel.swift
+index c8d199f2f66f9f5a4ff4d728ca851c9e4ccbd8d7..d90e660d1b7a7cfefb6bbb00124b324c3bd8eb4b 100644
+--- a/ios/SwiftUI/DevLauncherViewModel.swift
++++ b/ios/SwiftUI/DevLauncherViewModel.swift
+@@ -61,6 +61,11 @@ class DevLauncherViewModel: ObservableObject {
+   }
+   @Published var isAuthenticated = false
+   @Published var isAuthenticating = false
++  #if os(tvOS)
++  @Published var deviceLoginStep: DeviceLoginStep?
++  private var deviceLoginTask: Task<Void, Never>?
++  private var deviceLoginGrant: DeviceAuthClient.Grant?
++  #endif
+   @Published var user: User? {
+     didSet {
+       applyDevServerFilters()
+@@ -642,6 +647,9 @@ class DevLauncherViewModel: ObservableObject {
+   }
+ 
+   func signIn() async {
++    #if os(tvOS)
++    startDeviceLogin()
++    #else
+     isAuthenticating = true
+ 
+     do {
+@@ -658,6 +666,7 @@ class DevLauncherViewModel: ObservableObject {
+         isAuthenticating = false
+       }
+     }
++    #endif
+   }
+ 
+   func signUp() async {
+@@ -679,6 +688,109 @@ class DevLauncherViewModel: ObservableObject {
+     }
+   }
+ 
++  #if os(tvOS)
++  func startDeviceLogin() {
++    cancelDeviceLogin()
++    isAuthenticating = true
++    deviceLoginTask = Task { [weak self] in
++      do {
++        let grant = try await DeviceAuthClient().startAsync()
++        guard let self, !Task.isCancelled else { return }
++        self.deviceLoginGrant = grant
++        self.deviceLoginStep = .waitingForApproval(
++          userCode: grant.userCode,
++          verificationURL: grant.verificationURLWithCode
++        )
++        await self.pollDeviceLogin(grant: grant, match: nil)
++      } catch {
++        guard let self, !Task.isCancelled else { return }
++        self.failDeviceLogin(error.localizedDescription)
++      }
++    }
++  }
++
++  func selectDeviceLoginMatch(_ value: String) {
++    guard let grant = deviceLoginGrant else { return }
++    deviceLoginTask?.cancel()
++    deviceLoginStep = .verifying
++    deviceLoginTask = Task { [weak self] in
++      await self?.pollDeviceLogin(grant: grant, match: value)
++    }
++  }
++
++  func cancelDeviceLogin() {
++    deviceLoginTask?.cancel()
++    deviceLoginTask = nil
++    deviceLoginGrant = nil
++    deviceLoginStep = nil
++    isAuthenticating = false
++  }
++
++  private func pollDeviceLogin(grant: DeviceAuthClient.Grant, match: String?) async {
++    let client = DeviceAuthClient()
++    var interval = grant.interval
++    var match = match
++
++    while !Task.isCancelled {
++      if Date() >= grant.expiresAt {
++        failDeviceLogin("The login code expired.")
++        return
++      }
++      // A selected number is sent right away; the previous poll already waited out the interval.
++      if match == nil {
++        try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
++        if Task.isCancelled { return }
++      }
++
++      let result: DeviceAuthClient.TokenResult
++      do {
++        result = try await client.pollAsync(grant: grant, match: match)
++      } catch {
++        if !Task.isCancelled {
++          failDeviceLogin(error.localizedDescription)
++        }
++        return
++      }
++      if Task.isCancelled { return }
++      match = nil
++
++      switch result {
++      case .authenticated(let sessionSecret):
++        completeDeviceLogin(sessionSecret: sessionSecret)
++        return
++      case .pending:
++        continue
++      case .slowDown:
++        interval += 5
++      case .matchingRequired(let options):
++        deviceLoginStep = .matching(options: options)
++        return
++      case .failed(let reason):
++        failDeviceLogin(reason)
++        return
++      }
++    }
++  }
++
++  private func completeDeviceLogin(sessionSecret: String) {
++    UserDefaults.standard.set(sessionSecret, forKey: sessionKey)
++    APIClient.shared.setSession(sessionSecret)
++    deviceLoginTask = nil
++    deviceLoginGrant = nil
++    deviceLoginStep = nil
++    isAuthenticating = false
++    isAuthenticated = true
++    loadUserInfo()
++  }
++
++  private func failDeviceLogin(_ message: String) {
++    deviceLoginTask = nil
++    deviceLoginGrant = nil
++    deviceLoginStep = .failed(message: message)
++    isAuthenticating = false
++  }
++  #endif
++
+   func signOut() {
+     UserDefaults.standard.removeObject(forKey: sessionKey)
+     UserDefaults.standard.removeObject(forKey: selectedAccountKey)
+@@ -756,6 +868,15 @@ class DevLauncherViewModel: ObservableObject {
+   }
+ }
+ 
++#if os(tvOS)
++enum DeviceLoginStep: Equatable {
++  case waitingForApproval(userCode: String, verificationURL: URL)
++  case matching(options: [String])
++  case verifying
++  case failed(message: String)
++}
++#endif
++
+ #if !os(tvOS)
+ private class DevLauncherAuthPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
+   func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+diff --git a/ios/SwiftUI/GraphQL/APIClient.swift b/ios/SwiftUI/GraphQL/APIClient.swift
+index 1b6e606cb9bb86a0d131078bfa3e87fc71ae1fef..4e4bf1904c88c9f5e1c322532eac4ef2610efef8 100644
+--- a/ios/SwiftUI/GraphQL/APIClient.swift
++++ b/ios/SwiftUI/GraphQL/APIClient.swift
+@@ -32,6 +32,12 @@ class APIClient {
+       : "https://expo.dev"
+   }
+ 
++  var apiOrigin: String {
++    return useStaging
++      ? "https://staging-api.expo.dev"
++      : "https://api.expo.dev"
++  }
++
+   private var sessionSecret: String?
+ 
+   private init() {}
+diff --git a/ios/SwiftUI/GraphQL/DeviceAuthClient.swift b/ios/SwiftUI/GraphQL/DeviceAuthClient.swift
+new file mode 100644
+index 0000000000000000000000000000000000000000..cc92a88a019dd9db08408a018d82f6ee662e7027
+--- /dev/null
++++ b/ios/SwiftUI/GraphQL/DeviceAuthClient.swift
+@@ -0,0 +1,157 @@
++// Copyright 2015-present 650 Industries. All rights reserved.
++
++#if os(tvOS)
++import Foundation
++import UIKit
++
++/**
++ Client for the EAS device authorization flow (OAuth 2.0 device grant), used on tvOS where
++ there is no browser for `ASWebAuthenticationSession`. The user approves the request on another
++ device, then picks the number shown in their browser on the TV.
++ */
++struct DeviceAuthClient {
++  // Only `eas-cli` is a registered client today. A dedicated dev launcher client ID is needed
++  // before this ships.
++  private static let clientId = "eas-cli"
++  private static let deviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code"
++
++  struct Grant {
++    let deviceCode: String
++    let userCode: String
++    let verificationURL: URL
++    let expiresAt: Date
++    let interval: TimeInterval
++
++    var verificationURLWithCode: URL {
++      guard var components = URLComponents(url: verificationURL, resolvingAgainstBaseURL: false) else {
++        return verificationURL
++      }
++      components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "user_code", value: userCode)]
++      return components.url ?? verificationURL
++    }
++  }
++
++  enum TokenResult {
++    case authenticated(sessionSecret: String)
++    case pending
++    case slowDown
++    case matchingRequired(options: [String])
++    case failed(reason: String)
++  }
++
++  func startAsync() async throws -> Grant {
++    let device = UIDevice.current
++    let data = try await postAsync("device_authorization", body: [
++      "device_name": String(device.name.prefix(255)),
++      "device_platform": "tvos",
++      "device_os_version": String(device.systemVersion.prefix(64))
++    ])
++
++    guard let deviceCode = data["device_code"] as? String,
++      let userCode = data["user_code"] as? String,
++      let verificationURI = data["verification_uri"] as? String,
++      let verificationURL = URL(string: verificationURI),
++      let expiresIn = data["expires_in"] as? Double,
++      let interval = data["interval"] as? Double else {
++      throw DeviceAuthError.unexpectedResponse
++    }
++
++    return Grant(
++      deviceCode: deviceCode,
++      userCode: userCode,
++      verificationURL: verificationURL,
++      expiresAt: Date().addingTimeInterval(expiresIn),
++      interval: max(5, interval)
++    )
++  }
++
++  func pollAsync(grant: Grant, match: String? = nil) async throws -> TokenResult {
++    var body: [String: Any] = [
++      "grant_type": Self.deviceCodeGrantType,
++      "device_code": grant.deviceCode
++    ]
++    if let match {
++      body["match_value"] = match
++    }
++
++    let data: [String: Any]
++    do {
++      data = try await postAsync("token", body: body)
++    } catch DeviceAuthError.rateLimited {
++      return .slowDown
++    }
++
++    if let sessionSecret = data["session_secret"] as? String {
++      return .authenticated(sessionSecret: sessionSecret)
++    }
++
++    switch data["error"] as? String {
++    case "authorization_pending":
++      return .pending
++    case "slow_down":
++      return .slowDown
++    case "matching_required":
++      guard let options = data["match_options"] as? [String], !options.isEmpty else {
++        throw DeviceAuthError.unexpectedResponse
++      }
++      return .matchingRequired(options: options)
++    case "access_denied":
++      return .failed(reason: "The login request was denied.")
++    case "expired_token":
++      return .failed(reason: "The login code expired.")
++    case "invalid_grant":
++      return .failed(reason: "The login request is no longer valid.")
++    default:
++      throw DeviceAuthError.unexpectedResponse
++    }
++  }
++
++  private func postAsync(_ endpoint: String, body: [String: Any]) async throws -> [String: Any] {
++    guard let url = URL(string: "\(APIClient.shared.apiOrigin)/v2/auth/\(endpoint)") else {
++      throw APIError.invalidURL
++    }
++
++    var request = URLRequest(url: url)
++    request.httpMethod = "POST"
++    request.timeoutInterval = 30
++    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
++    request.httpBody = try JSONSerialization.data(
++      withJSONObject: body.merging(["client_id": Self.clientId]) { current, _ in current }
++    )
++
++    let (responseData, response) = try await URLSession.shared.data(for: request)
++    if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 429 {
++      throw DeviceAuthError.rateLimited
++    }
++
++    guard let json = try JSONSerialization.jsonObject(with: responseData) as? [String: Any] else {
++      throw DeviceAuthError.unexpectedResponse
++    }
++    if let data = json["data"] as? [String: Any] {
++      return data
++    }
++    if let errors = json["errors"] as? [[String: Any]],
++      let message = errors.first?["message"] as? String {
++      throw DeviceAuthError.server(message: message)
++    }
++    throw DeviceAuthError.unexpectedResponse
++  }
++}
++
++enum DeviceAuthError: LocalizedError {
++  case unexpectedResponse
++  case rateLimited
++  case server(message: String)
++
++  var errorDescription: String? {
++    switch self {
++    case .unexpectedResponse:
++      return "Unexpected response from EAS. Try again."
++    case .rateLimited:
++      return "Too many requests. Try again in a minute."
++    case .server(let message):
++      return message
++    }
++  }
++}
++#endif
