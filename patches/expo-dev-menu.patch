@@ -1,0 +1,14 @@
+diff --git a/ios/DevMenuManager.swift b/ios/DevMenuManager.swift
+index e80131f0140655e5606a19eae921f73be1dd26b9..2704d5dead65508371ac84d34268812f9bfd18a2 100644
+--- a/ios/DevMenuManager.swift
++++ b/ios/DevMenuManager.swift
+@@ -462,6 +462,9 @@ open class DevMenuManager: NSObject {
+ #if os(macOS)
+         self.window?.makeKeyAndOrderFront(nil)
+ #elseif os(tvOS)
++        if self.window?.windowScene == nil {
++          self.window?.windowScene = SceneGeometry.foregroundActiveScene()
++        }
+         self.window?.makeKeyAndVisible()
+ #else
+         self.updateFABVisibility()

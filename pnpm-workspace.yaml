@@ -6,6 +6,7 @@ patchedDependencies:
   expo-observe: patches/expo-observe.patch
   expo-modules-jsi: patches/expo-modules-jsi.patch
   react-native-reanimated: patches/react-native-reanimated.patch
+  expo-dev-menu: patches/expo-dev-menu.patch
 allowBuilds:
   unrs-resolver: true
 nodeLinker: hoisted
