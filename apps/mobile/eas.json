@@ -59,7 +59,7 @@
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production",
+      "channel": "updates-observe",
       "ios": {
         "simulator": false
       },
