@@ -8,5 +8,3 @@ patchedDependencies:
 allowBuilds:
   unrs-resolver: true
 nodeLinker: hoisted
-overrides:
-  react-native-reanimated: 4.6.0
