@@ -1,6 +1,10 @@
 packages:
   - apps/*
   - packages/*
+patchedDependencies:
+  expo-observe: patches/expo-observe.patch
+  expo-updates: patches/expo-updates.patch
+  expo-updates-interface: patches/expo-updates-interface.patch
 allowBuilds:
   unrs-resolver: true
 nodeLinker: hoisted

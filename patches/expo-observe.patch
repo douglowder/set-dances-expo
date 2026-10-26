@@ -1,0 +1,1401 @@
+diff --git a/android/src/main/java/expo/modules/observe/ExpoUpdatesLogForwarder.kt b/android/src/main/java/expo/modules/observe/ExpoUpdatesLogForwarder.kt
+new file mode 100644
+index 0000000..1c8bac0
+--- /dev/null
++++ b/android/src/main/java/expo/modules/observe/ExpoUpdatesLogForwarder.kt
+@@ -0,0 +1,21 @@
++package expo.modules.observe
++
++import expo.modules.updatesinterface.UpdatesLogEntryListener
++import expo.modules.updatesinterface.UpdatesLogEntryListenerRegistry
++
++/**
++ * Sends the expo-updates log entries from [UpdatesLogEntryListenerRegistry] to [send] while it is
++ * enabled. The expo-updates integration in JS turns it on, so the module listens only while the
++ * integration runs.
++ */
++internal class ExpoUpdatesLogForwarder(private val send: (Map<String, Any>) -> Unit) {
++  private val listener = UpdatesLogEntryListener { entry -> send(entry) }
++
++  fun setEnabled(enabled: Boolean) {
++    if (enabled) {
++      UpdatesLogEntryListenerRegistry.add(listener)
++    } else {
++      UpdatesLogEntryListenerRegistry.remove(listener)
++    }
++  }
++}
+diff --git a/android/src/main/java/expo/modules/observe/ObserveModule.kt b/android/src/main/java/expo/modules/observe/ObserveModule.kt
+index 8dc4d5f..4eecec8 100644
+--- a/android/src/main/java/expo/modules/observe/ObserveModule.kt
++++ b/android/src/main/java/expo/modules/observe/ObserveModule.kt
+@@ -37,11 +37,15 @@ class ObserveModule : Module() {
+ 
+   private var lastIntegrations: Map<String, Any?> = emptyMap()
+ 
++  private val updatesLogForwarder = ExpoUpdatesLogForwarder { entry ->
++    sendEvent(EXPO_UPDATES_LOG_ENTRY_EVENT, entry)
++  }
++
+   override fun definition() =
+     ModuleDefinition {
+       Name("ExpoObserve")
+ 
+-      Events("configure")
++      Events("configure", EXPO_UPDATES_LOG_ENTRY_EVENT)
+ 
+       OnCreate {
+         appMetricsModule = checkNotNull(appContext.registry.getModule<AppMetricsModule>()) {
+@@ -93,6 +97,22 @@ class ObserveModule : Module() {
+         lastIntegrations
+       }
+ 
++      Function("setExpoUpdatesLogListenerEnabled") { enabled: Boolean ->
++        updatesLogForwarder.setEnabled(enabled)
++      }
++
++      OnDestroy {
++        updatesLogForwarder.setEnabled(false)
++      }
++
++      AsyncFunction("getExpoUpdatesLogCursor") {
++        ObservePreferences.getExpoUpdatesLogCursor(context)
++      }
++
++      AsyncFunction("setExpoUpdatesLogCursor") { cursor: String ->
++        ObservePreferences.setExpoUpdatesLogCursor(context, cursor)
++      }
++
+       Function("setBundleDefaults") { defaults: BundleDefaults ->
+         // Empty environment means JS bypassed both `process.env.NODE_ENV` and the
+         // `?? 'production'` fallback. Refuse rather than persist an empty string,
+@@ -113,3 +133,5 @@ class ObserveModule : Module() {
+       }
+     }
+ }
++
++private const val EXPO_UPDATES_LOG_ENTRY_EVENT = "expoUpdatesLogEntry"
+diff --git a/android/src/main/java/expo/modules/observe/ObservePreferences.kt b/android/src/main/java/expo/modules/observe/ObservePreferences.kt
+index 9d23e89..5d85bf2 100644
+--- a/android/src/main/java/expo/modules/observe/ObservePreferences.kt
++++ b/android/src/main/java/expo/modules/observe/ObservePreferences.kt
+@@ -10,6 +10,7 @@ private const val KEY_CONFIG = "config"
+ private const val KEY_BUNDLE_DEFAULTS = "bundleDefaults"
+ private const val KEY_LAST_DISPATCHED_METRIC_ID = "lastDispatchedMetricId"
+ private const val KEY_LAST_DISPATCHED_LOG_ID = "lastDispatchedLogId"
++private const val KEY_EXPO_UPDATES_LOG_CURSOR = "expoUpdatesLogCursor"
+ 
+ /**
+  * Snapshot of the last `configure(...)` payload
+@@ -76,4 +77,17 @@ object ObservePreferences {
+       putLong(KEY_LAST_DISPATCHED_LOG_ID, id)
+     }
+   }
++
++  /**
++   * The expo-updates integration's log cursor, as a JSON string that only the JS integration reads.
++   */
++  fun getExpoUpdatesLogCursor(context: Context): String? =
++    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
++      .getString(KEY_EXPO_UPDATES_LOG_CURSOR, null)
++
++  fun setExpoUpdatesLogCursor(context: Context, cursor: String) {
++    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit(commit = true) {
++      putString(KEY_EXPO_UPDATES_LOG_CURSOR, cursor)
++    }
++  }
+ }
+diff --git a/build/index.d.ts b/build/index.d.ts
+index 569d8cf..1538371 100644
+--- a/build/index.d.ts
++++ b/build/index.d.ts
+@@ -12,5 +12,5 @@ export { ObserveRoot } from './ObserveRoot';
+ export { Observe };
+ /** @deprecated Import the named `Observe` export instead. */
+ export default Observe;
+-export type { ObserveAttribute, ObserveAttributes, ObserveConfig, ObserveIntegrationsConfig, ObserveModule, ObserveModuleEvents, ObserveNavigationIntegrationConfig, ObserveNetworkTracesConfig, ObserveReanimatedIntegrationConfig, } from './types';
++export type { ObserveAttribute, ObserveAttributes, ObserveConfig, ObserveIntegrationsConfig, ObserveModule, ObserveModuleEvents, ObserveNavigationIntegrationConfig, ObserveNetworkTracesConfig, ObserveReanimatedIntegrationConfig, ObserveExpoUpdatesIntegrationConfig, ObserveExpoUpdatesLogEntry, ObserveExpoUpdatesLogEntryCode, } from './types';
+ export { useObserve } from './useObserve';
+diff --git a/build/index.js.map b/build/index.js.map
+index e33b203..afd3012 100644
+--- a/build/index.js.map
++++ b/build/index.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["index.ts"],"sourcesContent":[null],"names":["Observe","default","AppMetrics","ObserveErrorBoundary","ObserveInteractiveMarker","ObserveRoot","setBundleDefaults","environment","process","env","NODE_ENV","isJsDev","__DEV__","useObserve"],"mappings":"AAAA,OAAOA,aAAa,WAAW;AAE/B;;CAEC,GACD,SAASC,WAAWC,UAAU,QAAQ,mBAAmB;AAWzD,SAASC,oBAAoB,QAAQ,yBAAyB;AAK9D,SAASC,wBAAwB,QAAQ,6BAA6B;AAEtE,SAASC,WAAW,QAAQ,gBAAgB;AAE5CL,QAAQM,iBAAiB,CAAC;IACxBC,aAAaC,QAAQC,GAAG,CAACC,QAAQ,IAAI;IACrCC,SAAS,CAAC,CAACC;AACb;AAEA,SAASZ,OAAO,GAAG;AAEnB,2DAA2D,GAC3D,eAAeA,QAAQ;AAavB,SAASa,UAAU,QAAQ,eAAe"}
+\ No newline at end of file
++{"version":3,"sources":["index.ts"],"sourcesContent":[null],"names":["Observe","default","AppMetrics","ObserveErrorBoundary","ObserveInteractiveMarker","ObserveRoot","setBundleDefaults","environment","process","env","NODE_ENV","isJsDev","__DEV__","useObserve"],"mappings":"AAAA,OAAOA,aAAa,WAAW;AAE/B;;CAEC,GACD,SAASC,WAAWC,UAAU,QAAQ,mBAAmB;AAWzD,SAASC,oBAAoB,QAAQ,yBAAyB;AAK9D,SAASC,wBAAwB,QAAQ,6BAA6B;AAEtE,SAASC,WAAW,QAAQ,gBAAgB;AAE5CL,QAAQM,iBAAiB,CAAC;IACxBC,aAAaC,QAAQC,GAAG,CAACC,QAAQ,IAAI;IACrCC,SAAS,CAAC,CAACC;AACb;AAEA,SAASZ,OAAO,GAAG;AAEnB,2DAA2D,GAC3D,eAAeA,QAAQ;AAgBvB,SAASa,UAAU,QAAQ,eAAe"}
+\ No newline at end of file
+diff --git a/build/integrations/expo-updates/init.d.ts b/build/integrations/expo-updates/init.d.ts
+new file mode 100644
+index 0000000..2290762
+--- /dev/null
++++ b/build/integrations/expo-updates/init.d.ts
+@@ -0,0 +1,27 @@
++import type { ObserveIntegrationsConfig } from '../../types';
++import { type UpdatesLogEntry } from './updates';
++/**
++ * The parts of the native `ExpoObserve` module that the integration uses: storage for the log
++ * cursor, so that a log entry is not reported again on a later start, and the live listener for
++ * entries that expo-updates logs while the app runs.
++ */
++export interface ExpoUpdatesNativeModule {
++    getExpoUpdatesLogCursor(): Promise<string | null>;
++    setExpoUpdatesLogCursor(cursor: string): Promise<void>;
++    setExpoUpdatesLogListenerEnabled(enabled: boolean): void;
++    addListener(eventName: 'expoUpdatesLogEntry', listener: (entry: UpdatesLogEntry) => void): {
++        remove(): void;
++    };
++}
++/**
++ * Reports the expo-updates log entries written since the last report, and then each entry as
++ * expo-updates logs it: errors as Observe errors named `expo-updates.<code>` (or
++ * `expo-updates.error_recovery` for a JS error that expo-updates error recovery handled), and, when
++ * `reportWarnings` is set, warnings as `expo-updates.warning` events. Returns when the entries
++ * written since the last report are read and reported.
++ */
++export declare function initExpoUpdatesIntegration(config: NonNullable<ObserveIntegrationsConfig['expo-updates']>, native: ExpoUpdatesNativeModule): Promise<void>;
++/**
++ * Stops reporting expo-updates log entries to Observe, and turns off the native live listener.
++ */
++export declare function disableExpoUpdatesIntegration(): void;
+diff --git a/build/integrations/expo-updates/init.js b/build/integrations/expo-updates/init.js
+new file mode 100644
+index 0000000..0872ce8
+--- /dev/null
++++ b/build/integrations/expo-updates/init.js
+@@ -0,0 +1,293 @@
++import AppMetrics from 'expo-app-metrics';
++import { reportCaughtError } from '../../reportCaughtError';
++import { loadUpdates } from './updates';
++const WARNING_EVENT = 'expo-updates.warning';
++const ERROR_TYPE_PREFIX = 'expo-updates.';
++const ERROR_RECOVERY_TYPE = 'expo-updates.error_recovery';
++// expo-updates logs a JS error that error recovery handles with this code, and with a message that
++// starts with this prefix: "ErrorRecovery fatal exception: ..." on iOS and
++// "ErrorRecovery: exception encountered: ..." on Android.
++const ERROR_RECOVERY_CODE = 'JSRuntimeError';
++const ERROR_RECOVERY_MESSAGE_PREFIX = 'ErrorRecovery';
++// expo-updates keeps log entries for one day and reads back at most one day.
++const MAX_LOOKBACK_MS = 86_400_000;
++// Before expo-updates wrote millisecond timestamps, iOS truncated them to whole seconds, so the
++// read starts one second before the cursor and the keys of that second remove the overlap.
++const CURSOR_OVERLAP_MS = 1000;
++// The same limits as the react-native-reanimated integration: each distinct message is reported at
++// most once per window, at most 20 distinct messages per level per window, and messages are
++// deduplicated by their first 500 characters. Errors and warnings have separate windows.
++const REPORT_WINDOW_MS = 15 * 60_000;
++const MAX_DISTINCT_MESSAGES_PER_WINDOW = 20;
++const MAX_MESSAGE_LENGTH = 500;
++// The levels that the integration can report. The cursor stores keys only for these entries,
++// because an entry at a lower level that is read again is never reported.
++const REPORTABLE_LEVELS = new Set([
++    'warn',
++    'error',
++    'fatal'
++]);
++// Keys of the entries handled in this JS session, so an entry that arrives both live and in the
++// read is reported once. Only the newest keys are kept.
++const MAX_HANDLED_KEYS = 1000;
++// Maps the capped text of each message reported in the current window to the time it was
++// reported, from the monotonic `performance.now()`. A `Map` keeps insertion order, so the oldest
++// report is always first.
++const reportedErrors = new Map();
++const reportedWarnings = new Map();
++let isEnabled = false;
++let settings = {
++    reportWarnings: false,
++    ignoredCodes: [],
++    shouldReport: undefined
++};
++let hasWarnedAboutShouldReport = false;
++let readInProgress = null;
++let nativeModule = null;
++let liveSubscription = null;
++let cursor = null;
++let cursorWrite = Promise.resolve();
++const handledKeys = new Set();
++/**
++ * An expo-updates log entry reported to Observe. The stack is removed, because a stack from this
++ * constructor would point at the integration rather than at the code that logged the entry.
++ */ class ExpoUpdatesLogError extends Error {
++    constructor(type, message){
++        super(message);
++        this.name = type;
++        this.stack = undefined;
++    }
++}
++function removeExpiredReports(reported, now) {
++    for (const [message, reportedAt] of reported){
++        if (now - reportedAt < REPORT_WINDOW_MS) {
++            return;
++        }
++        reported.delete(message);
++    }
++}
++function isWithinLimits(reported, key) {
++    const now = performance.now();
++    removeExpiredReports(reported, now);
++    if (reported.has(key) || reported.size >= MAX_DISTINCT_MESSAGES_PER_WINDOW) {
++        return false;
++    }
++    reported.set(key, now);
++    return true;
++}
++function isErrorRecoveryEntry(entry) {
++    return entry.code === ERROR_RECOVERY_CODE && entry.message.startsWith(ERROR_RECOVERY_MESSAGE_PREFIX);
++}
++function passesFilters(entry) {
++    if (settings.ignoredCodes.includes(entry.code)) {
++        return false;
++    }
++    if (!settings.shouldReport) {
++        return true;
++    }
++    try {
++        return settings.shouldReport(entry);
++    } catch (error) {
++        if (!hasWarnedAboutShouldReport) {
++            hasWarnedAboutShouldReport = true;
++            console.warn("[expo-observe] The 'expo-updates' integration's `shouldReport` function threw, so the " + 'log entry is reported. Fix the function so that it returns a boolean. ' + `Error: ${String(error)}`);
++        }
++        return true;
++    }
++}
++function reportEntry(entry) {
++    const isError = entry.level === 'error' || entry.level === 'fatal';
++    if (!isError && !(entry.level === 'warn' && settings.reportWarnings)) {
++        return;
++    }
++    const isErrorRecovery = isErrorRecoveryEntry(entry);
++    if (!isErrorRecovery && !passesFilters(entry)) {
++        return;
++    }
++    const cappedMessage = entry.message.slice(0, MAX_MESSAGE_LENGTH);
++    if (!isWithinLimits(isError ? reportedErrors : reportedWarnings, cappedMessage)) {
++        return;
++    }
++    if (isError) {
++        const type = isErrorRecovery ? ERROR_RECOVERY_TYPE : `${ERROR_TYPE_PREFIX}${entry.code}`;
++        reportCaughtError(new ExpoUpdatesLogError(type, entry.message), 'integration');
++        return;
++    }
++    AppMetrics.logEvent(WARNING_EVENT, {
++        displayName: 'expo-updates warning',
++        body: entry.message,
++        severity: 'warn',
++        // `eas observe:events` and `observe:session` show `attributes` but not `body`, so the
++        // message is copied here to stay queryable.
++        attributes: {
++            message: cappedMessage,
++            code: entry.code,
++            logTimestamp: entry.timestamp,
++            ...entry.updateId ? {
++                updateId: entry.updateId
++            } : {},
++            ...entry.assetId ? {
++                assetId: entry.assetId
++            } : {}
++        }
++    });
++}
++function entryKey(entry) {
++    return `${entry.timestamp}|${entry.code}|${entry.message}`;
++}
++function parseCursor(value, now) {
++    if (value === null) {
++        return null;
++    }
++    try {
++        const cursor = JSON.parse(value);
++        if (typeof cursor.timestamp !== 'number' || !Array.isArray(cursor.keys)) {
++            return null;
++        }
++        // A cursor in the future comes from a device clock that moved back, and it would hide every
++        // new entry.
++        return cursor.timestamp > now ? null : cursor;
++    } catch  {
++        return null;
++    }
++}
++function lookbackFrom(cursor, now) {
++    if (!cursor) {
++        return MAX_LOOKBACK_MS;
++    }
++    const lookback = now - cursor.timestamp + CURSOR_OVERLAP_MS;
++    return Math.min(Math.max(lookback, CURSOR_OVERLAP_MS), MAX_LOOKBACK_MS);
++}
++function keyTimestamp(key) {
++    return Number(key.slice(0, key.indexOf('|')));
++}
++/**
++ * Combines two cursors: the newer timestamp, and the keys of both that are in the second before it.
++ * So the cursor never moves back, for example when a read ends after a newer live entry.
++ */ function mergeCursors(a, b) {
++    if (!a || !b) {
++        return a ?? b;
++    }
++    const timestamp = Math.max(a.timestamp, b.timestamp);
++    const keys = [
++        ...a.keys,
++        ...b.keys
++    ].filter((key)=>keyTimestamp(key) >= timestamp - CURSOR_OVERLAP_MS);
++    return {
++        timestamp,
++        keys: [
++            ...new Set(keys)
++        ]
++    };
++}
++function cursorFor(entries) {
++    const timestamp = Math.max(...entries.map((entry)=>entry.timestamp));
++    const keys = entries.filter((entry)=>REPORTABLE_LEVELS.has(entry.level)).filter((entry)=>entry.timestamp >= timestamp - CURSOR_OVERLAP_MS).map(entryKey);
++    return {
++        timestamp,
++        keys
++    };
++}
++function rememberHandled(key) {
++    handledKeys.add(key);
++    if (handledKeys.size > MAX_HANDLED_KEYS) {
++        handledKeys.delete(handledKeys.values().next().value);
++    }
++}
++/**
++ * Stores the cursor. The writes run one after another, so an older cursor cannot overwrite a newer
++ * one.
++ */ function storeCursor(native, value) {
++    const serialized = JSON.stringify(value);
++    cursorWrite = cursorWrite.then(()=>native.setExpoUpdatesLogCursor(serialized)).catch((error)=>{
++        console.warn("[expo-observe] The 'expo-updates' integration could not store its log cursor, so some " + 'log entries may be reported again on the next launch. ' + `Error: ${String(error)}`);
++    });
++}
++/**
++ * Reports the entries, in timestamp order, that were not handled yet in this JS session, and moves
++ * the cursor past them.
++ */ function handleEntries(native, entries) {
++    const newEntries = entries.filter((entry)=>!handledKeys.has(entryKey(entry))).sort((a, b)=>a.timestamp - b.timestamp);
++    if (newEntries.length === 0) {
++        return;
++    }
++    for (const entry of newEntries){
++        if (!isEnabled) {
++            return;
++        }
++        rememberHandled(entryKey(entry));
++        reportEntry(entry);
++    }
++    const updatedCursor = mergeCursors(cursor, cursorFor(newEntries));
++    cursor = updatedCursor;
++    storeCursor(native, updatedCursor);
++}
++async function readAndReport(updates, native) {
++    const now = Date.now();
++    const storedCursor = parseCursor(await native.getExpoUpdatesLogCursor(), now);
++    storedCursor?.keys.forEach(rememberHandled);
++    cursor = mergeCursors(cursor, storedCursor);
++    let entries;
++    try {
++        entries = await updates.readLogEntriesAsync(lookbackFrom(storedCursor, now));
++    } catch (error) {
++        console.warn("[expo-observe] The 'expo-updates' integration could not read the expo-updates log, so its " + `entries are not reported in this launch. Error: ${String(error)}`);
++        return;
++    }
++    handleEntries(native, entries.filter((entry)=>!storedCursor || entry.timestamp >= storedCursor.timestamp));
++    await cursorWrite;
++}
++function subscribeToLiveEntries(native) {
++    if (liveSubscription) {
++        return;
++    }
++    liveSubscription = native.addListener('expoUpdatesLogEntry', (entry)=>{
++        handleEntries(native, [
++            entry
++        ]);
++    });
++    native.setExpoUpdatesLogListenerEnabled(true);
++}
++/**
++ * Reports the expo-updates log entries written since the last report, and then each entry as
++ * expo-updates logs it: errors as Observe errors named `expo-updates.<code>` (or
++ * `expo-updates.error_recovery` for a JS error that expo-updates error recovery handled), and, when
++ * `reportWarnings` is set, warnings as `expo-updates.warning` events. Returns when the entries
++ * written since the last report are read and reported.
++ */ export function initExpoUpdatesIntegration(config, native) {
++    const updates = loadUpdates();
++    if (!updates) {
++        console.warn("[expo-observe] `integrations: { 'expo-updates': ... }` was set, but `expo-updates` is not " + 'installed. The integration will not initialize.');
++        return Promise.resolve();
++    }
++    const options = typeof config === 'object' ? config : {};
++    settings = {
++        reportWarnings: options.reportWarnings ?? false,
++        ignoredCodes: options.ignoredCodes ?? [],
++        shouldReport: options.shouldReport
++    };
++    hasWarnedAboutShouldReport = false;
++    isEnabled = true;
++    nativeModule = native;
++    // Subscribe before the read, so no entry falls between the two. `handleEntries` reports an entry
++    // that arrives from both once.
++    subscribeToLiveEntries(native);
++    readInProgress ??= readAndReport(updates, native).catch((error)=>{
++        console.warn("[expo-observe] The 'expo-updates' integration could not read or store its log cursor, " + 'so some log entries may be reported again or not at all. ' + `Error: ${String(error)}`);
++    }).finally(()=>{
++        readInProgress = null;
++    });
++    return readInProgress;
++}
++/**
++ * Stops reporting expo-updates log entries to Observe, and turns off the native live listener.
++ */ export function disableExpoUpdatesIntegration() {
++    isEnabled = false;
++    if (liveSubscription) {
++        liveSubscription.remove();
++        liveSubscription = null;
++        nativeModule?.setExpoUpdatesLogListenerEnabled(false);
++    }
++}
++
++//# sourceMappingURL=init.js.map
+diff --git a/build/integrations/expo-updates/init.js.map b/build/integrations/expo-updates/init.js.map
+new file mode 100644
+index 0000000..8418012
+--- /dev/null
++++ b/build/integrations/expo-updates/init.js.map
+@@ -0,0 +1 @@
++{"version":3,"sources":["integrations/expo-updates/init.ts"],"sourcesContent":[null],"names":["AppMetrics","reportCaughtError","loadUpdates","WARNING_EVENT","ERROR_TYPE_PREFIX","ERROR_RECOVERY_TYPE","ERROR_RECOVERY_CODE","ERROR_RECOVERY_MESSAGE_PREFIX","MAX_LOOKBACK_MS","CURSOR_OVERLAP_MS","REPORT_WINDOW_MS","MAX_DISTINCT_MESSAGES_PER_WINDOW","MAX_MESSAGE_LENGTH","REPORTABLE_LEVELS","Set","MAX_HANDLED_KEYS","reportedErrors","Map","reportedWarnings","isEnabled","settings","reportWarnings","ignoredCodes","shouldReport","undefined","hasWarnedAboutShouldReport","readInProgress","nativeModule","liveSubscription","cursor","cursorWrite","Promise","resolve","handledKeys","ExpoUpdatesLogError","Error","type","message","name","stack","removeExpiredReports","reported","now","reportedAt","delete","isWithinLimits","key","performance","has","size","set","isErrorRecoveryEntry","entry","code","startsWith","passesFilters","includes","error","console","warn","String","reportEntry","isError","level","isErrorRecovery","cappedMessage","slice","logEvent","displayName","body","severity","attributes","logTimestamp","timestamp","updateId","assetId","entryKey","parseCursor","value","JSON","parse","Array","isArray","keys","lookbackFrom","lookback","Math","min","max","keyTimestamp","Number","indexOf","mergeCursors","a","b","filter","cursorFor","entries","map","rememberHandled","add","values","next","storeCursor","native","serialized","stringify","then","setExpoUpdatesLogCursor","catch","handleEntries","newEntries","sort","length","updatedCursor","readAndReport","updates","Date","storedCursor","getExpoUpdatesLogCursor","forEach","readLogEntriesAsync","subscribeToLiveEntries","addListener","setExpoUpdatesLogListenerEnabled","initExpoUpdatesIntegration","config","options","finally","disableExpoUpdatesIntegration","remove"],"mappings":"AAAA,OAAOA,gBAAgB,mBAAmB;AAE1C,SAASC,iBAAiB,QAAQ,0BAA0B;AAE5D,SAASC,WAAW,QAAkD,YAAY;AAElF,MAAMC,gBAAgB;AACtB,MAAMC,oBAAoB;AAC1B,MAAMC,sBAAsB;AAE5B,mGAAmG;AACnG,2EAA2E;AAC3E,0DAA0D;AAC1D,MAAMC,sBAAsB;AAC5B,MAAMC,gCAAgC;AAEtC,6EAA6E;AAC7E,MAAMC,kBAAkB;AACxB,gGAAgG;AAChG,2FAA2F;AAC3F,MAAMC,oBAAoB;AAE1B,mGAAmG;AACnG,4FAA4F;AAC5F,yFAAyF;AACzF,MAAMC,mBAAmB,KAAK;AAC9B,MAAMC,mCAAmC;AACzC,MAAMC,qBAAqB;AAE3B,6FAA6F;AAC7F,0EAA0E;AAC1E,MAAMC,oBAAyC,IAAIC,IAAI;IAAC;IAAQ;IAAS;CAAQ;AAEjF,gGAAgG;AAChG,wDAAwD;AACxD,MAAMC,mBAAmB;AA6BzB,yFAAyF;AACzF,iGAAiG;AACjG,0BAA0B;AAC1B,MAAMC,iBAAiB,IAAIC;AAC3B,MAAMC,mBAAmB,IAAID;AAE7B,IAAIE,YAAY;AAChB,IAAIC,WAAqB;IAAEC,gBAAgB;IAAOC,cAAc,EAAE;IAAEC,cAAcC;AAAU;AAC5F,IAAIC,6BAA6B;AACjC,IAAIC,iBAAuC;AAE3C,IAAIC,eAA+C;AACnD,IAAIC,mBAA8C;AAClD,IAAIC,SAA2B;AAC/B,IAAIC,cAA6BC,QAAQC,OAAO;AAChD,MAAMC,cAAc,IAAInB;AAExB;;;CAGC,GACD,MAAMoB,4BAA4BC;IAChC,YAAYC,IAAY,EAAEC,OAAe,CAAE;QACzC,KAAK,CAACA;QACN,IAAI,CAACC,IAAI,GAAGF;QACZ,IAAI,CAACG,KAAK,GAAGf;IACf;AACF;AAEA,SAASgB,qBAAqBC,QAA6B,EAAEC,GAAW;IACtE,KAAK,MAAM,CAACL,SAASM,WAAW,IAAIF,SAAU;QAC5C,IAAIC,MAAMC,aAAajC,kBAAkB;YACvC;QACF;QACA+B,SAASG,MAAM,CAACP;IAClB;AACF;AAEA,SAASQ,eAAeJ,QAA6B,EAAEK,GAAW;IAChE,MAAMJ,MAAMK,YAAYL,GAAG;IAC3BF,qBAAqBC,UAAUC;IAC/B,IAAID,SAASO,GAAG,CAACF,QAAQL,SAASQ,IAAI,IAAItC,kCAAkC;QAC1E,OAAO;IACT;IACA8B,SAASS,GAAG,CAACJ,KAAKJ;IAClB,OAAO;AACT;AAEA,SAASS,qBAAqBC,KAAsB;IAClD,OACEA,MAAMC,IAAI,KAAK/C,uBAAuB8C,MAAMf,OAAO,CAACiB,UAAU,CAAC/C;AAEnE;AAEA,SAASgD,cAAcH,KAAsB;IAC3C,IAAIhC,SAASE,YAAY,CAACkC,QAAQ,CAACJ,MAAMC,IAAI,GAAG;QAC9C,OAAO;IACT;IACA,IAAI,CAACjC,SAASG,YAAY,EAAE;QAC1B,OAAO;IACT;IACA,IAAI;QACF,OAAOH,SAASG,YAAY,CAAC6B;IAC/B,EAAE,OAAOK,OAAO;QACd,IAAI,CAAChC,4BAA4B;YAC/BA,6BAA6B;YAC7BiC,QAAQC,IAAI,CACV,2FACE,2EACA,CAAC,OAAO,EAAEC,OAAOH,QAAQ;QAE/B;QACA,OAAO;IACT;AACF;AAEA,SAASI,YAAYT,KAAsB;IACzC,MAAMU,UAAUV,MAAMW,KAAK,KAAK,WAAWX,MAAMW,KAAK,KAAK;IAC3D,IAAI,CAACD,WAAW,CAAEV,CAAAA,MAAMW,KAAK,KAAK,UAAU3C,SAASC,cAAc,AAAD,GAAI;QACpE;IACF;IACA,MAAM2C,kBAAkBb,qBAAqBC;IAC7C,IAAI,CAACY,mBAAmB,CAACT,cAAcH,QAAQ;QAC7C;IACF;IACA,MAAMa,gBAAgBb,MAAMf,OAAO,CAAC6B,KAAK,CAAC,GAAGtD;IAC7C,IAAI,CAACiC,eAAeiB,UAAU9C,iBAAiBE,kBAAkB+C,gBAAgB;QAC/E;IACF;IACA,IAAIH,SAAS;QACX,MAAM1B,OAAO4B,kBAAkB3D,sBAAsB,GAAGD,oBAAoBgD,MAAMC,IAAI,EAAE;QACxFpD,kBAAkB,IAAIiC,oBAAoBE,MAAMgB,MAAMf,OAAO,GAAG;QAChE;IACF;IACArC,WAAWmE,QAAQ,CAAChE,eAAe;QACjCiE,aAAa;QACbC,MAAMjB,MAAMf,OAAO;QACnBiC,UAAU;QACV,sFAAsF;QACtF,4CAA4C;QAC5CC,YAAY;YACVlC,SAAS4B;YACTZ,MAAMD,MAAMC,IAAI;YAChBmB,cAAcpB,MAAMqB,SAAS;YAC7B,GAAIrB,MAAMsB,QAAQ,GAAG;gBAAEA,UAAUtB,MAAMsB,QAAQ;YAAC,IAAI,CAAC,CAAC;YACtD,GAAItB,MAAMuB,OAAO,GAAG;gBAAEA,SAASvB,MAAMuB,OAAO;YAAC,IAAI,CAAC,CAAC;QACrD;IACF;AACF;AAEA,SAASC,SAASxB,KAAsB;IACtC,OAAO,GAAGA,MAAMqB,SAAS,CAAC,CAAC,EAAErB,MAAMC,IAAI,CAAC,CAAC,EAAED,MAAMf,OAAO,EAAE;AAC5D;AAEA,SAASwC,YAAYC,KAAoB,EAAEpC,GAAW;IACpD,IAAIoC,UAAU,MAAM;QAClB,OAAO;IACT;IACA,IAAI;QACF,MAAMjD,SAASkD,KAAKC,KAAK,CAACF;QAC1B,IAAI,OAAOjD,OAAO4C,SAAS,KAAK,YAAY,CAACQ,MAAMC,OAAO,CAACrD,OAAOsD,IAAI,GAAG;YACvE,OAAO;QACT;QACA,4FAA4F;QAC5F,aAAa;QACb,OAAOtD,OAAO4C,SAAS,GAAG/B,MAAM,OAAOb;IACzC,EAAE,OAAM;QACN,OAAO;IACT;AACF;AAEA,SAASuD,aAAavD,MAAwB,EAAEa,GAAW;IACzD,IAAI,CAACb,QAAQ;QACX,OAAOrB;IACT;IACA,MAAM6E,WAAW3C,MAAMb,OAAO4C,SAAS,GAAGhE;IAC1C,OAAO6E,KAAKC,GAAG,CAACD,KAAKE,GAAG,CAACH,UAAU5E,oBAAoBD;AACzD;AAEA,SAASiF,aAAa3C,GAAW;IAC/B,OAAO4C,OAAO5C,IAAIoB,KAAK,CAAC,GAAGpB,IAAI6C,OAAO,CAAC;AACzC;AAEA;;;CAGC,GACD,SAASC,aAAaC,CAAmB,EAAEC,CAAmB;IAC5D,IAAI,CAACD,KAAK,CAACC,GAAG;QACZ,OAAOD,KAAKC;IACd;IACA,MAAMrB,YAAYa,KAAKE,GAAG,CAACK,EAAEpB,SAAS,EAAEqB,EAAErB,SAAS;IACnD,MAAMU,OAAO;WAAIU,EAAEV,IAAI;WAAKW,EAAEX,IAAI;KAAC,CAACY,MAAM,CACxC,CAACjD,MAAQ2C,aAAa3C,QAAQ2B,YAAYhE;IAE5C,OAAO;QAAEgE;QAAWU,MAAM;eAAI,IAAIrE,IAAIqE;SAAM;IAAC;AAC/C;AAEA,SAASa,UAAUC,OAA0B;IAC3C,MAAMxB,YAAYa,KAAKE,GAAG,IAAIS,QAAQC,GAAG,CAAC,CAAC9C,QAAUA,MAAMqB,SAAS;IACpE,MAAMU,OAAOc,QACVF,MAAM,CAAC,CAAC3C,QAAUvC,kBAAkBmC,GAAG,CAACI,MAAMW,KAAK,GACnDgC,MAAM,CAAC,CAAC3C,QAAUA,MAAMqB,SAAS,IAAIA,YAAYhE,mBACjDyF,GAAG,CAACtB;IACP,OAAO;QAAEH;QAAWU;IAAK;AAC3B;AAEA,SAASgB,gBAAgBrD,GAAW;IAClCb,YAAYmE,GAAG,CAACtD;IAChB,IAAIb,YAAYgB,IAAI,GAAGlC,kBAAkB;QACvCkB,YAAYW,MAAM,CAACX,YAAYoE,MAAM,GAAGC,IAAI,GAAGxB,KAAK;IACtD;AACF;AAEA;;;CAGC,GACD,SAASyB,YAAYC,MAA+B,EAAE1B,KAAgB;IACpE,MAAM2B,aAAa1B,KAAK2B,SAAS,CAAC5B;IAClChD,cAAcA,YACX6E,IAAI,CAAC,IAAMH,OAAOI,uBAAuB,CAACH,aAC1CI,KAAK,CAAC,CAACpD;QACNC,QAAQC,IAAI,CACV,2FACE,2DACA,CAAC,OAAO,EAAEC,OAAOH,QAAQ;IAE/B;AACJ;AAEA;;;CAGC,GACD,SAASqD,cAAcN,MAA+B,EAAEP,OAA0B;IAChF,MAAMc,aAAad,QAChBF,MAAM,CAAC,CAAC3C,QAAU,CAACnB,YAAYe,GAAG,CAAC4B,SAASxB,SAC5C4D,IAAI,CAAC,CAACnB,GAAGC,IAAMD,EAAEpB,SAAS,GAAGqB,EAAErB,SAAS;IAC3C,IAAIsC,WAAWE,MAAM,KAAK,GAAG;QAC3B;IACF;IACA,KAAK,MAAM7D,SAAS2D,WAAY;QAC9B,IAAI,CAAC5F,WAAW;YACd;QACF;QACAgF,gBAAgBvB,SAASxB;QACzBS,YAAYT;IACd;IACA,MAAM8D,gBAAgBtB,aAAa/D,QAAQmE,UAAUe;IACrDlF,SAASqF;IACTX,YAAYC,QAAQU;AACtB;AAEA,eAAeC,cACbC,OAAsB,EACtBZ,MAA+B;IAE/B,MAAM9D,MAAM2E,KAAK3E,GAAG;IACpB,MAAM4E,eAAezC,YAAY,MAAM2B,OAAOe,uBAAuB,IAAI7E;IACzE4E,cAAcnC,KAAKqC,QAAQrB;IAC3BtE,SAAS+D,aAAa/D,QAAQyF;IAC9B,IAAIrB;IACJ,IAAI;QACFA,UAAU,MAAMmB,QAAQK,mBAAmB,CAACrC,aAAakC,cAAc5E;IACzE,EAAE,OAAOe,OAAO;QACdC,QAAQC,IAAI,CACV,+FACE,CAAC,gDAAgD,EAAEC,OAAOH,QAAQ;QAEtE;IACF;IAEAqD,cACEN,QACAP,QAAQF,MAAM,CAAC,CAAC3C,QAAU,CAACkE,gBAAgBlE,MAAMqB,SAAS,IAAI6C,aAAa7C,SAAS;IAEtF,MAAM3C;AACR;AAEA,SAAS4F,uBAAuBlB,MAA+B;IAC7D,IAAI5E,kBAAkB;QACpB;IACF;IACAA,mBAAmB4E,OAAOmB,WAAW,CAAC,uBAAuB,CAACvE;QAC5D0D,cAAcN,QAAQ;YAACpD;SAAM;IAC/B;IACAoD,OAAOoB,gCAAgC,CAAC;AAC1C;AAEA;;;;;;CAMC,GACD,OAAO,SAASC,2BACdC,MAA8D,EAC9DtB,MAA+B;IAE/B,MAAMY,UAAUlH;IAChB,IAAI,CAACkH,SAAS;QACZ1D,QAAQC,IAAI,CACV,+FACE;QAEJ,OAAO5B,QAAQC,OAAO;IACxB;IAEA,MAAM+F,UAAU,OAAOD,WAAW,WAAWA,SAAS,CAAC;IACvD1G,WAAW;QACTC,gBAAgB0G,QAAQ1G,cAAc,IAAI;QAC1CC,cAAcyG,QAAQzG,YAAY,IAAI,EAAE;QACxCC,cAAcwG,QAAQxG,YAAY;IACpC;IACAE,6BAA6B;IAC7BN,YAAY;IACZQ,eAAe6E;IAEf,iGAAiG;IACjG,+BAA+B;IAC/BkB,uBAAuBlB;IACvB9E,mBAAmByF,cAAcC,SAASZ,QACvCK,KAAK,CAAC,CAACpD;QACNC,QAAQC,IAAI,CACV,2FACE,8DACA,CAAC,OAAO,EAAEC,OAAOH,QAAQ;IAE/B,GACCuE,OAAO,CAAC;QACPtG,iBAAiB;IACnB;IACF,OAAOA;AACT;AAEA;;CAEC,GACD,OAAO,SAASuG;IACd9G,YAAY;IACZ,IAAIS,kBAAkB;QACpBA,iBAAiBsG,MAAM;QACvBtG,mBAAmB;QACnBD,cAAciG,iCAAiC;IACjD;AACF"}
+\ No newline at end of file
+diff --git a/build/integrations/expo-updates/updates.d.ts b/build/integrations/expo-updates/updates.d.ts
+new file mode 100644
+index 0000000..7eaeb9b
+--- /dev/null
++++ b/build/integrations/expo-updates/updates.d.ts
+@@ -0,0 +1,6 @@
++import type { ObserveExpoUpdatesLogEntry } from '../../types';
++export type UpdatesLogEntry = ObserveExpoUpdatesLogEntry;
++export interface LoadedUpdates {
++    readLogEntriesAsync(maxAge: number): Promise<UpdatesLogEntry[]>;
++}
++export declare function loadUpdates(): LoadedUpdates | null;
+diff --git a/build/integrations/expo-updates/updates.js b/build/integrations/expo-updates/updates.js
+new file mode 100644
+index 0000000..b12e9d4
+--- /dev/null
++++ b/build/integrations/expo-updates/updates.js
+@@ -0,0 +1,17 @@
++// expo-updates is an optional peerDependency of expo-observe. It is required lazily, only when the
++// integration is enabled, so an app that doesn't enable it never loads expo-updates through
++// expo-observe. This lives in its own file because a `require` wrapped in try/catch doesn't work
++// with Metro's `inlineRequires` when it shares a file with other imports (see
++// `react-native-reanimated/reanimated.ts`).
++export function loadUpdates() {
++    try {
++        const { readLogEntriesAsync } = require('expo-updates');
++        return {
++            readLogEntriesAsync
++        };
++    } catch  {
++        return null;
++    }
++}
++
++//# sourceMappingURL=updates.js.map
+diff --git a/build/integrations/expo-updates/updates.js.map b/build/integrations/expo-updates/updates.js.map
+new file mode 100644
+index 0000000..a37bcfd
+--- /dev/null
++++ b/build/integrations/expo-updates/updates.js.map
+@@ -0,0 +1 @@
++{"version":3,"sources":["integrations/expo-updates/updates.ts"],"sourcesContent":[null],"names":["loadUpdates","readLogEntriesAsync","require"],"mappings":"AAAA,mGAAmG;AACnG,4FAA4F;AAC5F,iGAAiG;AACjG,8EAA8E;AAC9E,4CAA4C;AAU5C,OAAO,SAASA;IACd,IAAI;QACF,MAAM,EAAEC,mBAAmB,EAAE,GAAGC,QAAQ;QACxC,OAAO;YAAED;QAAoB;IAC/B,EAAE,OAAM;QACN,OAAO;IACT;AACF"}
+\ No newline at end of file
+diff --git a/build/module.js b/build/module.js
+index c8b34e9..9181f3b 100644
+--- a/build/module.js
++++ b/build/module.js
+@@ -2,6 +2,7 @@ import { requireNativeModule } from 'expo';
+ import AppMetrics, { setErrorHandlerEnabled } from 'expo-app-metrics';
+ import { initRouterIntegration } from './integrations/expo-router/init';
+ import { isRouterInstalled } from './integrations/expo-router/router';
++import { disableExpoUpdatesIntegration, initExpoUpdatesIntegration } from './integrations/expo-updates/init';
+ import { disableReanimatedIntegration, initReanimatedIntegration } from './integrations/react-native-reanimated/init';
+ import { initReactNavigationIntegration } from './integrations/react-navigation/init';
+ import { isReactNavigationInstalled } from './integrations/react-navigation/reactNavigation';
+@@ -35,6 +36,24 @@ import { reportCaughtError } from './reportCaughtError';
+         enabled
+     };
+ }
++/**
++ * Removes the `expo-updates` integration's `shouldReport` function from the config before it goes
++ * to the native module, which stores the integrations config and sends it back in `configure`
++ * events. The function only runs in JS.
++ */ function configForNative(config) {
++    const updatesConfig = config.integrations?.['expo-updates'];
++    if (typeof updatesConfig !== 'object' || !('shouldReport' in updatesConfig)) {
++        return config;
++    }
++    const { shouldReport: _shouldReport, ...nativeUpdatesConfig } = updatesConfig;
++    return {
++        ...config,
++        integrations: {
++            ...config.integrations,
++            'expo-updates': nativeUpdatesConfig
++        }
++    };
++}
+ const native = requireNativeModule('ExpoObserve');
+ const Observe = new Proxy(native, {
+     get (target, prop, receiver) {
+@@ -71,7 +90,15 @@ const Observe = new Proxy(native, {
+                 } else {
+                     disableReanimatedIntegration();
+                 }
+-                return target.configure(config);
++                const updatesConfig = config.integrations?.['expo-updates'];
++                if (updatesConfig) {
++                    // The native module implements the integration's functions and event, which are not
++                    // public API.
++                    initExpoUpdatesIntegration(updatesConfig, target);
++                } else {
++                    disableExpoUpdatesIntegration();
++                }
++                return target.configure(configForNative(config));
+             };
+         }
+         if (prop === 'reportError') {
+diff --git a/build/module.js.map b/build/module.js.map
+index 28bd5bf..aa6572b 100644
+--- a/build/module.js.map
++++ b/build/module.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["module.ts"],"sourcesContent":[null],"names":["requireNativeModule","AppMetrics","setErrorHandlerEnabled","initRouterIntegration","isRouterInstalled","disableReanimatedIntegration","initReanimatedIntegration","initReactNavigationIntegration","isReactNavigationInstalled","reportCaughtError","networkTracesConfigFromOption","networkTraces","option","enabled","__DEV__","malformed","filter","hosts","host","test","length","console","warn","join","native","Observe","Proxy","get","target","prop","receiver","config","errorHandlingEnabled","setNetworkTracesConfig","routerEnabled","integrations","reactNavigationEnabled","shouldInitRouterIntegration","shouldInitReactNavigationIntegration","reanimatedConfig","configure","error","name","callback","registerIntegrationImpl","Object","keys","includes","Reflect","getIntegrations","subscription","addListener","remove"],"mappings":"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"}
+\ No newline at end of file
++{"version":3,"sources":["module.ts"],"sourcesContent":[null],"names":["requireNativeModule","AppMetrics","setErrorHandlerEnabled","initRouterIntegration","isRouterInstalled","disableExpoUpdatesIntegration","initExpoUpdatesIntegration","disableReanimatedIntegration","initReanimatedIntegration","initReactNavigationIntegration","isReactNavigationInstalled","reportCaughtError","networkTracesConfigFromOption","networkTraces","option","enabled","__DEV__","malformed","filter","hosts","host","test","length","console","warn","join","configForNative","config","updatesConfig","integrations","shouldReport","_shouldReport","nativeUpdatesConfig","native","Observe","Proxy","get","target","prop","receiver","errorHandlingEnabled","setNetworkTracesConfig","routerEnabled","reactNavigationEnabled","shouldInitRouterIntegration","shouldInitReactNavigationIntegration","reanimatedConfig","configure","error","name","callback","registerIntegrationImpl","Object","keys","includes","Reflect","getIntegrations","subscription","addListener","remove"],"mappings":"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"}
+\ No newline at end of file
+diff --git a/build/types.d.ts b/build/types.d.ts
+index 2fcb1f5..abbd252 100644
+--- a/build/types.d.ts
++++ b/build/types.d.ts
+@@ -156,6 +156,27 @@ export interface ObserveIntegrationsConfig {
+      * @default false
+      */
+     'react-native-reanimated'?: boolean | ObserveReanimatedIntegrationConfig;
++    /**
++     * Enables the `expo-updates` integration, which reports the errors that `expo-updates` logs to
++     * Observe as errors named `expo-updates.<code>`, for example `expo-updates.UpdateFailedToLoad`.
++     * A JS error that `expo-updates` error recovery handled is reported as
++     * `expo-updates.error_recovery`.
++     * To also report warnings as events named `expo-updates.warning`, set `reportWarnings`.
++     *
++     * The integration reads the `expo-updates` log when `configure` is called, and reports the
++     * entries written since the last report, up to one day back. So errors from an earlier launch,
++     * such as a crash that error recovery handled, are reported on the next launch. After that, it
++     * reports each new entry when `expo-updates` logs it. A reported error gets the current session
++     * and time. The time of the log entry is not kept.
++     *
++     * The integration reports each distinct message at most once every 15 minutes. It reports at most
++     * 20 distinct errors and 20 distinct warnings in any 15-minute period.
++     *
++     * Requires `expo-updates` to be installed.
++     *
++     * @default false
++     */
++    'expo-updates'?: boolean | ObserveExpoUpdatesIntegrationConfig;
+ }
+ export type ObserveReanimatedIntegrationConfig = {
+     /**
+@@ -180,6 +201,52 @@ export type ObserveReanimatedIntegrationConfig = {
+      */
+     reportWarnings?: boolean;
+ };
++/**
++ * The code of an `expo-updates` log entry. The same values as `UpdatesLogEntryCode` in
++ * `expo-updates`.
++ */
++export type ObserveExpoUpdatesLogEntryCode = 'None' | 'NoUpdatesAvailable' | 'UpdateAssetsNotAvailable' | 'UpdateServerUnreachable' | 'UpdateHasInvalidSignature' | 'UpdateCodeSigningError' | 'UpdateFailedToLoad' | 'AssetsFailedToLoad' | 'JSRuntimeError' | 'InitializationError' | 'Unknown';
++/**
++ * An `expo-updates` log entry, as `readLogEntriesAsync` in `expo-updates` returns it.
++ */
++export type ObserveExpoUpdatesLogEntry = {
++    /**
++     * The time the entry was written, in milliseconds since Jan 1 1970 UTC.
++     */
++    timestamp: number;
++    message: string;
++    code: ObserveExpoUpdatesLogEntryCode;
++    level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
++    updateId?: string;
++    assetId?: string;
++    /**
++     * A native Android or iOS stack trace.
++     */
++    stacktrace?: string[];
++};
++export type ObserveExpoUpdatesIntegrationConfig = {
++    /**
++     * Whether the integration also reports `expo-updates` warnings to Observe, as events named
++     * `expo-updates.warning`.
++     *
++     * @default false
++     */
++    reportWarnings?: boolean;
++    /**
++     * Log entry codes that the integration does not report. For example, a network error during an
++     * update check is logged with the `Unknown` code on iOS. Errors that error recovery handled are
++     * always reported.
++     *
++     * @default []
++     */
++    ignoredCodes?: ObserveExpoUpdatesLogEntryCode[];
++    /**
++     * A function that decides whether the integration reports a log entry. Return `false` to skip
++     * the entry, for example by its message. It runs after `ignoredCodes`, and errors that error
++     * recovery handled are always reported. If the function throws, the entry is reported.
++     */
++    shouldReport?: (entry: ObserveExpoUpdatesLogEntry) => boolean;
++};
+ /**
+  * Events emitted by the native `ExpoObserve` module.
+  */
+diff --git a/build/types.js.map b/build/types.js.map
+index fb6e4f4..84c0307 100644
+--- a/build/types.js.map
++++ b/build/types.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["types.ts"],"sourcesContent":[null],"names":[],"mappings":"AA8MA,WAyJC"}
+\ No newline at end of file
++{"version":3,"sources":["types.ts"],"sourcesContent":[null],"names":[],"mappings":"AA+RA,WAyJC"}
+\ No newline at end of file
+diff --git a/ios/ExpoObserve.podspec b/ios/ExpoObserve.podspec
+index b7880fd..57462d5 100644
+--- a/ios/ExpoObserve.podspec
++++ b/ios/ExpoObserve.podspec
+@@ -21,6 +21,7 @@ Pod::Spec.new do |s|
+   s.dependency 'ExpoModulesCore'
+   s.dependency 'ExpoAppMetrics'
+   s.dependency 'EASClient'
++  s.dependency 'EXUpdatesInterface'
+ 
+   s.resource_bundles = {'ExpoObserve_privacy' => ['PrivacyInfo.xcprivacy']}
+ 
+diff --git a/ios/ExpoUpdatesLogForwarder.swift b/ios/ExpoUpdatesLogForwarder.swift
+new file mode 100644
+index 0000000..062e666
+--- /dev/null
++++ b/ios/ExpoUpdatesLogForwarder.swift
+@@ -0,0 +1,26 @@
++// Copyright 2026-present 650 Industries. All rights reserved.
++
++import EXUpdatesInterface
++
++/// Sends the expo-updates log entries from `UpdatesLogEntryListenerRegistry` to `send` while it is
++/// enabled. The expo-updates integration in JS turns it on, so the module listens only while the
++/// integration runs.
++internal final class ExpoUpdatesLogForwarder: UpdatesLogEntryListener {
++  private let send: ([String: Any]) -> Void
++
++  init(send: @escaping ([String: Any]) -> Void) {
++    self.send = send
++  }
++
++  func setEnabled(_ enabled: Bool) {
++    if enabled {
++      UpdatesLogEntryListenerRegistry.shared.add(self)
++    } else {
++      UpdatesLogEntryListenerRegistry.shared.remove(self)
++    }
++  }
++
++  func updatesLogEntryWasLogged(_ entry: [String: Any]) {
++    send(entry)
++  }
++}
+diff --git a/ios/ObserveModule.swift b/ios/ObserveModule.swift
+index ec78eea..7707258 100644
+--- a/ios/ObserveModule.swift
++++ b/ios/ObserveModule.swift
+@@ -19,13 +19,19 @@ internal struct BundleDefaults: Record {
+   @Field var isJsDev: Bool = false
+ }
+ 
++private let expoUpdatesLogEntryEvent = "expoUpdatesLogEntry"
++
+ public final class ObserveModule: Module {
+   private var lastIntegrations: [String: Any] = [:]
+ 
++  private lazy var updatesLogForwarder = ExpoUpdatesLogForwarder { [weak self] entry in
++    self?.sendEvent(expoUpdatesLogEntryEvent, entry)
++  }
++
+   public func definition() -> ModuleDefinition {
+     Name("ExpoObserve")
+ 
+-    Events("configure")
++    Events("configure", expoUpdatesLogEntryEvent)
+ 
+     OnCreate {
+       // The observability manager needs to know the project id. Currently it's available only through `expo-constants`,
+@@ -69,6 +75,26 @@ public final class ObserveModule: Module {
+       return self.lastIntegrations
+     }
+ 
++    Function("setExpoUpdatesLogListenerEnabled") { (enabled: Bool) in
++      self.updatesLogForwarder.setEnabled(enabled)
++    }
++
++    OnDestroy {
++      self.updatesLogForwarder.setEnabled(false)
++    }
++
++    AsyncFunction("getExpoUpdatesLogCursor") { () async throws -> String? in
++      return try await AppMetricsActor.isolated {
++        return ObserveUserDefaults.expoUpdatesLogCursor
++      }
++    }
++
++    AsyncFunction("setExpoUpdatesLogCursor") { (cursor: String) async throws in
++      try await AppMetricsActor.isolated {
++        ObserveUserDefaults.expoUpdatesLogCursor = cursor
++      }
++    }
++
+     Function("setBundleDefaults") { (defaults: BundleDefaults) in
+       guard !defaults.environment.isEmpty else {
+         observeLogger.warn(
+diff --git a/ios/ObserveUserDefaults.swift b/ios/ObserveUserDefaults.swift
+index 9375806..7d91f99 100644
+--- a/ios/ObserveUserDefaults.swift
++++ b/ios/ObserveUserDefaults.swift
+@@ -30,6 +30,7 @@ internal final class ObserveUserDefaults: UserDefaults {
+     case lastDispatchDate
+     case config
+     case bundleDefaults
++    case expoUpdatesLogCursor
+   }
+ 
+   private init() {
+@@ -96,6 +97,16 @@ internal final class ObserveUserDefaults: UserDefaults {
+     defaults.set(data, forKey: Keys.bundleDefaults.rawValue)
+   }
+ 
++  /// The expo-updates integration's log cursor, as a JSON string that only the JS integration reads.
++  static var expoUpdatesLogCursor: String? {
++    get {
++      return defaults.string(forKey: Keys.expoUpdatesLogCursor.rawValue)
++    }
++    set {
++      defaults.set(newValue, forKey: Keys.expoUpdatesLogCursor.rawValue)
++    }
++  }
++
+   // MARK: - Legacy keys
+ 
+   /// Keys that older versions wrote and nothing reads anymore.
+diff --git a/package.json b/package.json
+index 00336f6..f71f40e 100644
+--- a/package.json
++++ b/package.json
+@@ -43,7 +43,8 @@
+   },
+   "dependencies": {
+     "expo-app-metrics": "~58.0.14",
+-    "expo-eas-client": "~58.0.2"
++    "expo-eas-client": "~58.0.2",
++    "expo-updates-interface": "~58.0.1"
+   },
+   "devDependencies": {
+     "@expo/internal-scripts": "58.0.4",
+@@ -60,7 +61,8 @@
+     "expo-router": "*",
+     "react": "*",
+     "react-native": "*",
+-    "react-native-reanimated": ">=4.7.0"
++    "react-native-reanimated": ">=4.7.0",
++    "expo-updates": "*"
+   },
+   "peerDependenciesMeta": {
+     "expo-router": {
+@@ -71,6 +73,9 @@
+     },
+     "react-native-reanimated": {
+       "optional": true
++    },
++    "expo-updates": {
++      "optional": true
+     }
+   },
+   "title": "Expo Observe",
+diff --git a/src/index.ts b/src/index.ts
+index e5f856c..38012da 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -43,5 +43,8 @@ export type {
+   ObserveNavigationIntegrationConfig,
+   ObserveNetworkTracesConfig,
+   ObserveReanimatedIntegrationConfig,
++  ObserveExpoUpdatesIntegrationConfig,
++  ObserveExpoUpdatesLogEntry,
++  ObserveExpoUpdatesLogEntryCode,
+ } from './types';
+ export { useObserve } from './useObserve';
+diff --git a/src/integrations/expo-updates/init.ts b/src/integrations/expo-updates/init.ts
+new file mode 100644
+index 0000000..1e0cb13
+--- /dev/null
++++ b/src/integrations/expo-updates/init.ts
+@@ -0,0 +1,372 @@
++import AppMetrics from 'expo-app-metrics';
++
++import { reportCaughtError } from '../../reportCaughtError';
++import type { ObserveIntegrationsConfig } from '../../types';
++import { loadUpdates, type LoadedUpdates, type UpdatesLogEntry } from './updates';
++
++const WARNING_EVENT = 'expo-updates.warning';
++const ERROR_TYPE_PREFIX = 'expo-updates.';
++const ERROR_RECOVERY_TYPE = 'expo-updates.error_recovery';
++
++// expo-updates logs a JS error that error recovery handles with this code, and with a message that
++// starts with this prefix: "ErrorRecovery fatal exception: ..." on iOS and
++// "ErrorRecovery: exception encountered: ..." on Android.
++const ERROR_RECOVERY_CODE = 'JSRuntimeError';
++const ERROR_RECOVERY_MESSAGE_PREFIX = 'ErrorRecovery';
++
++// expo-updates keeps log entries for one day and reads back at most one day.
++const MAX_LOOKBACK_MS = 86_400_000;
++// Before expo-updates wrote millisecond timestamps, iOS truncated them to whole seconds, so the
++// read starts one second before the cursor and the keys of that second remove the overlap.
++const CURSOR_OVERLAP_MS = 1000;
++
++// The same limits as the react-native-reanimated integration: each distinct message is reported at
++// most once per window, at most 20 distinct messages per level per window, and messages are
++// deduplicated by their first 500 characters. Errors and warnings have separate windows.
++const REPORT_WINDOW_MS = 15 * 60_000;
++const MAX_DISTINCT_MESSAGES_PER_WINDOW = 20;
++const MAX_MESSAGE_LENGTH = 500;
++
++// The levels that the integration can report. The cursor stores keys only for these entries,
++// because an entry at a lower level that is read again is never reported.
++const REPORTABLE_LEVELS: ReadonlySet<string> = new Set(['warn', 'error', 'fatal']);
++
++// Keys of the entries handled in this JS session, so an entry that arrives both live and in the
++// read is reported once. Only the newest keys are kept.
++const MAX_HANDLED_KEYS = 1000;
++
++/**
++ * The parts of the native `ExpoObserve` module that the integration uses: storage for the log
++ * cursor, so that a log entry is not reported again on a later start, and the live listener for
++ * entries that expo-updates logs while the app runs.
++ */
++export interface ExpoUpdatesNativeModule {
++  getExpoUpdatesLogCursor(): Promise<string | null>;
++  setExpoUpdatesLogCursor(cursor: string): Promise<void>;
++  setExpoUpdatesLogListenerEnabled(enabled: boolean): void;
++  addListener(
++    eventName: 'expoUpdatesLogEntry',
++    listener: (entry: UpdatesLogEntry) => void
++  ): { remove(): void };
++}
++
++/**
++ * The timestamp of the newest log entry that was read, and the keys of the entries in the second
++ * before it.
++ */
++type LogCursor = { timestamp: number; keys: string[] };
++
++type Settings = {
++  reportWarnings: boolean;
++  ignoredCodes: readonly string[];
++  shouldReport: ((entry: UpdatesLogEntry) => boolean) | undefined;
++};
++
++// Maps the capped text of each message reported in the current window to the time it was
++// reported, from the monotonic `performance.now()`. A `Map` keeps insertion order, so the oldest
++// report is always first.
++const reportedErrors = new Map<string, number>();
++const reportedWarnings = new Map<string, number>();
++
++let isEnabled = false;
++let settings: Settings = { reportWarnings: false, ignoredCodes: [], shouldReport: undefined };
++let hasWarnedAboutShouldReport = false;
++let readInProgress: Promise<void> | null = null;
++
++let nativeModule: ExpoUpdatesNativeModule | null = null;
++let liveSubscription: { remove(): void } | null = null;
++let cursor: LogCursor | null = null;
++let cursorWrite: Promise<void> = Promise.resolve();
++const handledKeys = new Set<string>();
++
++/**
++ * An expo-updates log entry reported to Observe. The stack is removed, because a stack from this
++ * constructor would point at the integration rather than at the code that logged the entry.
++ */
++class ExpoUpdatesLogError extends Error {
++  constructor(type: string, message: string) {
++    super(message);
++    this.name = type;
++    this.stack = undefined;
++  }
++}
++
++function removeExpiredReports(reported: Map<string, number>, now: number): void {
++  for (const [message, reportedAt] of reported) {
++    if (now - reportedAt < REPORT_WINDOW_MS) {
++      return;
++    }
++    reported.delete(message);
++  }
++}
++
++function isWithinLimits(reported: Map<string, number>, key: string): boolean {
++  const now = performance.now();
++  removeExpiredReports(reported, now);
++  if (reported.has(key) || reported.size >= MAX_DISTINCT_MESSAGES_PER_WINDOW) {
++    return false;
++  }
++  reported.set(key, now);
++  return true;
++}
++
++function isErrorRecoveryEntry(entry: UpdatesLogEntry): boolean {
++  return (
++    entry.code === ERROR_RECOVERY_CODE && entry.message.startsWith(ERROR_RECOVERY_MESSAGE_PREFIX)
++  );
++}
++
++function passesFilters(entry: UpdatesLogEntry): boolean {
++  if (settings.ignoredCodes.includes(entry.code)) {
++    return false;
++  }
++  if (!settings.shouldReport) {
++    return true;
++  }
++  try {
++    return settings.shouldReport(entry);
++  } catch (error) {
++    if (!hasWarnedAboutShouldReport) {
++      hasWarnedAboutShouldReport = true;
++      console.warn(
++        "[expo-observe] The 'expo-updates' integration's `shouldReport` function threw, so the " +
++          'log entry is reported. Fix the function so that it returns a boolean. ' +
++          `Error: ${String(error)}`
++      );
++    }
++    return true;
++  }
++}
++
++function reportEntry(entry: UpdatesLogEntry): void {
++  const isError = entry.level === 'error' || entry.level === 'fatal';
++  if (!isError && !(entry.level === 'warn' && settings.reportWarnings)) {
++    return;
++  }
++  const isErrorRecovery = isErrorRecoveryEntry(entry);
++  if (!isErrorRecovery && !passesFilters(entry)) {
++    return;
++  }
++  const cappedMessage = entry.message.slice(0, MAX_MESSAGE_LENGTH);
++  if (!isWithinLimits(isError ? reportedErrors : reportedWarnings, cappedMessage)) {
++    return;
++  }
++  if (isError) {
++    const type = isErrorRecovery ? ERROR_RECOVERY_TYPE : `${ERROR_TYPE_PREFIX}${entry.code}`;
++    reportCaughtError(new ExpoUpdatesLogError(type, entry.message), 'integration');
++    return;
++  }
++  AppMetrics.logEvent(WARNING_EVENT, {
++    displayName: 'expo-updates warning',
++    body: entry.message,
++    severity: 'warn',
++    // `eas observe:events` and `observe:session` show `attributes` but not `body`, so the
++    // message is copied here to stay queryable.
++    attributes: {
++      message: cappedMessage,
++      code: entry.code,
++      logTimestamp: entry.timestamp,
++      ...(entry.updateId ? { updateId: entry.updateId } : {}),
++      ...(entry.assetId ? { assetId: entry.assetId } : {}),
++    },
++  });
++}
++
++function entryKey(entry: UpdatesLogEntry): string {
++  return `${entry.timestamp}|${entry.code}|${entry.message}`;
++}
++
++function parseCursor(value: string | null, now: number): LogCursor | null {
++  if (value === null) {
++    return null;
++  }
++  try {
++    const cursor = JSON.parse(value) as LogCursor;
++    if (typeof cursor.timestamp !== 'number' || !Array.isArray(cursor.keys)) {
++      return null;
++    }
++    // A cursor in the future comes from a device clock that moved back, and it would hide every
++    // new entry.
++    return cursor.timestamp > now ? null : cursor;
++  } catch {
++    return null;
++  }
++}
++
++function lookbackFrom(cursor: LogCursor | null, now: number): number {
++  if (!cursor) {
++    return MAX_LOOKBACK_MS;
++  }
++  const lookback = now - cursor.timestamp + CURSOR_OVERLAP_MS;
++  return Math.min(Math.max(lookback, CURSOR_OVERLAP_MS), MAX_LOOKBACK_MS);
++}
++
++function keyTimestamp(key: string): number {
++  return Number(key.slice(0, key.indexOf('|')));
++}
++
++/**
++ * Combines two cursors: the newer timestamp, and the keys of both that are in the second before it.
++ * So the cursor never moves back, for example when a read ends after a newer live entry.
++ */
++function mergeCursors(a: LogCursor | null, b: LogCursor | null): LogCursor | null {
++  if (!a || !b) {
++    return a ?? b;
++  }
++  const timestamp = Math.max(a.timestamp, b.timestamp);
++  const keys = [...a.keys, ...b.keys].filter(
++    (key) => keyTimestamp(key) >= timestamp - CURSOR_OVERLAP_MS
++  );
++  return { timestamp, keys: [...new Set(keys)] };
++}
++
++function cursorFor(entries: UpdatesLogEntry[]): LogCursor {
++  const timestamp = Math.max(...entries.map((entry) => entry.timestamp));
++  const keys = entries
++    .filter((entry) => REPORTABLE_LEVELS.has(entry.level))
++    .filter((entry) => entry.timestamp >= timestamp - CURSOR_OVERLAP_MS)
++    .map(entryKey);
++  return { timestamp, keys };
++}
++
++function rememberHandled(key: string): void {
++  handledKeys.add(key);
++  if (handledKeys.size > MAX_HANDLED_KEYS) {
++    handledKeys.delete(handledKeys.values().next().value!);
++  }
++}
++
++/**
++ * Stores the cursor. The writes run one after another, so an older cursor cannot overwrite a newer
++ * one.
++ */
++function storeCursor(native: ExpoUpdatesNativeModule, value: LogCursor): void {
++  const serialized = JSON.stringify(value);
++  cursorWrite = cursorWrite
++    .then(() => native.setExpoUpdatesLogCursor(serialized))
++    .catch((error) => {
++      console.warn(
++        "[expo-observe] The 'expo-updates' integration could not store its log cursor, so some " +
++          'log entries may be reported again on the next launch. ' +
++          `Error: ${String(error)}`
++      );
++    });
++}
++
++/**
++ * Reports the entries, in timestamp order, that were not handled yet in this JS session, and moves
++ * the cursor past them.
++ */
++function handleEntries(native: ExpoUpdatesNativeModule, entries: UpdatesLogEntry[]): void {
++  const newEntries = entries
++    .filter((entry) => !handledKeys.has(entryKey(entry)))
++    .sort((a, b) => a.timestamp - b.timestamp);
++  if (newEntries.length === 0) {
++    return;
++  }
++  for (const entry of newEntries) {
++    if (!isEnabled) {
++      return;
++    }
++    rememberHandled(entryKey(entry));
++    reportEntry(entry);
++  }
++  const updatedCursor = mergeCursors(cursor, cursorFor(newEntries))!;
++  cursor = updatedCursor;
++  storeCursor(native, updatedCursor);
++}
++
++async function readAndReport(
++  updates: LoadedUpdates,
++  native: ExpoUpdatesNativeModule
++): Promise<void> {
++  const now = Date.now();
++  const storedCursor = parseCursor(await native.getExpoUpdatesLogCursor(), now);
++  storedCursor?.keys.forEach(rememberHandled);
++  cursor = mergeCursors(cursor, storedCursor);
++  let entries: UpdatesLogEntry[];
++  try {
++    entries = await updates.readLogEntriesAsync(lookbackFrom(storedCursor, now));
++  } catch (error) {
++    console.warn(
++      "[expo-observe] The 'expo-updates' integration could not read the expo-updates log, so its " +
++        `entries are not reported in this launch. Error: ${String(error)}`
++    );
++    return;
++  }
++
++  handleEntries(
++    native,
++    entries.filter((entry) => !storedCursor || entry.timestamp >= storedCursor.timestamp)
++  );
++  await cursorWrite;
++}
++
++function subscribeToLiveEntries(native: ExpoUpdatesNativeModule): void {
++  if (liveSubscription) {
++    return;
++  }
++  liveSubscription = native.addListener('expoUpdatesLogEntry', (entry) => {
++    handleEntries(native, [entry]);
++  });
++  native.setExpoUpdatesLogListenerEnabled(true);
++}
++
++/**
++ * Reports the expo-updates log entries written since the last report, and then each entry as
++ * expo-updates logs it: errors as Observe errors named `expo-updates.<code>` (or
++ * `expo-updates.error_recovery` for a JS error that expo-updates error recovery handled), and, when
++ * `reportWarnings` is set, warnings as `expo-updates.warning` events. Returns when the entries
++ * written since the last report are read and reported.
++ */
++export function initExpoUpdatesIntegration(
++  config: NonNullable<ObserveIntegrationsConfig['expo-updates']>,
++  native: ExpoUpdatesNativeModule
++): Promise<void> {
++  const updates = loadUpdates();
++  if (!updates) {
++    console.warn(
++      "[expo-observe] `integrations: { 'expo-updates': ... }` was set, but `expo-updates` is not " +
++        'installed. The integration will not initialize.'
++    );
++    return Promise.resolve();
++  }
++
++  const options = typeof config === 'object' ? config : {};
++  settings = {
++    reportWarnings: options.reportWarnings ?? false,
++    ignoredCodes: options.ignoredCodes ?? [],
++    shouldReport: options.shouldReport,
++  };
++  hasWarnedAboutShouldReport = false;
++  isEnabled = true;
++  nativeModule = native;
++
++  // Subscribe before the read, so no entry falls between the two. `handleEntries` reports an entry
++  // that arrives from both once.
++  subscribeToLiveEntries(native);
++  readInProgress ??= readAndReport(updates, native)
++    .catch((error) => {
++      console.warn(
++        "[expo-observe] The 'expo-updates' integration could not read or store its log cursor, " +
++          'so some log entries may be reported again or not at all. ' +
++          `Error: ${String(error)}`
++      );
++    })
++    .finally(() => {
++      readInProgress = null;
++    });
++  return readInProgress;
++}
++
++/**
++ * Stops reporting expo-updates log entries to Observe, and turns off the native live listener.
++ */
++export function disableExpoUpdatesIntegration(): void {
++  isEnabled = false;
++  if (liveSubscription) {
++    liveSubscription.remove();
++    liveSubscription = null;
++    nativeModule?.setExpoUpdatesLogListenerEnabled(false);
++  }
++}
+diff --git a/src/integrations/expo-updates/updates.ts b/src/integrations/expo-updates/updates.ts
+new file mode 100644
+index 0000000..2e93730
+--- /dev/null
++++ b/src/integrations/expo-updates/updates.ts
+@@ -0,0 +1,22 @@
++// expo-updates is an optional peerDependency of expo-observe. It is required lazily, only when the
++// integration is enabled, so an app that doesn't enable it never loads expo-updates through
++// expo-observe. This lives in its own file because a `require` wrapped in try/catch doesn't work
++// with Metro's `inlineRequires` when it shares a file with other imports (see
++// `react-native-reanimated/reanimated.ts`).
++
++import type { ObserveExpoUpdatesLogEntry } from '../../types';
++
++export type UpdatesLogEntry = ObserveExpoUpdatesLogEntry;
++
++export interface LoadedUpdates {
++  readLogEntriesAsync(maxAge: number): Promise<UpdatesLogEntry[]>;
++}
++
++export function loadUpdates(): LoadedUpdates | null {
++  try {
++    const { readLogEntriesAsync } = require('expo-updates') as LoadedUpdates;
++    return { readLogEntriesAsync };
++  } catch {
++    return null;
++  }
++}
+diff --git a/src/module.ts b/src/module.ts
+index c16808c..4eea21c 100644
+--- a/src/module.ts
++++ b/src/module.ts
+@@ -3,6 +3,11 @@ import AppMetrics, { setErrorHandlerEnabled } from 'expo-app-metrics';
+ 
+ import { initRouterIntegration } from './integrations/expo-router/init';
+ import { isRouterInstalled } from './integrations/expo-router/router';
++import {
++  disableExpoUpdatesIntegration,
++  initExpoUpdatesIntegration,
++  type ExpoUpdatesNativeModule,
++} from './integrations/expo-updates/init';
+ import {
+   disableReanimatedIntegration,
+   initReanimatedIntegration,
+@@ -39,6 +44,23 @@ function networkTracesConfigFromOption(networkTraces: ObserveConfig['networkTrac
+   return option.filter != null ? { enabled, filter: option.filter } : { enabled };
+ }
+ 
++/**
++ * Removes the `expo-updates` integration's `shouldReport` function from the config before it goes
++ * to the native module, which stores the integrations config and sends it back in `configure`
++ * events. The function only runs in JS.
++ */
++function configForNative(config: ObserveConfig): ObserveConfig {
++  const updatesConfig = config.integrations?.['expo-updates'];
++  if (typeof updatesConfig !== 'object' || !('shouldReport' in updatesConfig)) {
++    return config;
++  }
++  const { shouldReport: _shouldReport, ...nativeUpdatesConfig } = updatesConfig;
++  return {
++    ...config,
++    integrations: { ...config.integrations, 'expo-updates': nativeUpdatesConfig },
++  };
++}
++
+ const native = requireNativeModule<ObserveModule>('ExpoObserve');
+ 
+ const Observe: ObserveModule = new Proxy(native, {
+@@ -90,7 +112,15 @@ const Observe: ObserveModule = new Proxy(native, {
+         } else {
+           disableReanimatedIntegration();
+         }
+-        return target.configure(config);
++        const updatesConfig = config.integrations?.['expo-updates'];
++        if (updatesConfig) {
++          // The native module implements the integration's functions and event, which are not
++          // public API.
++          initExpoUpdatesIntegration(updatesConfig, target as unknown as ExpoUpdatesNativeModule);
++        } else {
++          disableExpoUpdatesIntegration();
++        }
++        return target.configure(configForNative(config));
+       };
+     }
+ 
+diff --git a/src/types.ts b/src/types.ts
+index ff174f3..91c8d5a 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -167,6 +167,27 @@ export interface ObserveIntegrationsConfig {
+    * @default false
+    */
+   'react-native-reanimated'?: boolean | ObserveReanimatedIntegrationConfig;
++  /**
++   * Enables the `expo-updates` integration, which reports the errors that `expo-updates` logs to
++   * Observe as errors named `expo-updates.<code>`, for example `expo-updates.UpdateFailedToLoad`.
++   * A JS error that `expo-updates` error recovery handled is reported as
++   * `expo-updates.error_recovery`.
++   * To also report warnings as events named `expo-updates.warning`, set `reportWarnings`.
++   *
++   * The integration reads the `expo-updates` log when `configure` is called, and reports the
++   * entries written since the last report, up to one day back. So errors from an earlier launch,
++   * such as a crash that error recovery handled, are reported on the next launch. After that, it
++   * reports each new entry when `expo-updates` logs it. A reported error gets the current session
++   * and time. The time of the log entry is not kept.
++   *
++   * The integration reports each distinct message at most once every 15 minutes. It reports at most
++   * 20 distinct errors and 20 distinct warnings in any 15-minute period.
++   *
++   * Requires `expo-updates` to be installed.
++   *
++   * @default false
++   */
++  'expo-updates'?: boolean | ObserveExpoUpdatesIntegrationConfig;
+ }
+ 
+ export type ObserveReanimatedIntegrationConfig = {
+@@ -193,6 +214,66 @@ export type ObserveReanimatedIntegrationConfig = {
+   reportWarnings?: boolean;
+ };
+ 
++/**
++ * The code of an `expo-updates` log entry. The same values as `UpdatesLogEntryCode` in
++ * `expo-updates`.
++ */
++export type ObserveExpoUpdatesLogEntryCode =
++  | 'None'
++  | 'NoUpdatesAvailable'
++  | 'UpdateAssetsNotAvailable'
++  | 'UpdateServerUnreachable'
++  | 'UpdateHasInvalidSignature'
++  | 'UpdateCodeSigningError'
++  | 'UpdateFailedToLoad'
++  | 'AssetsFailedToLoad'
++  | 'JSRuntimeError'
++  | 'InitializationError'
++  | 'Unknown';
++
++/**
++ * An `expo-updates` log entry, as `readLogEntriesAsync` in `expo-updates` returns it.
++ */
++export type ObserveExpoUpdatesLogEntry = {
++  /**
++   * The time the entry was written, in milliseconds since Jan 1 1970 UTC.
++   */
++  timestamp: number;
++  message: string;
++  code: ObserveExpoUpdatesLogEntryCode;
++  level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
++  updateId?: string;
++  assetId?: string;
++  /**
++   * A native Android or iOS stack trace.
++   */
++  stacktrace?: string[];
++};
++
++export type ObserveExpoUpdatesIntegrationConfig = {
++  /**
++   * Whether the integration also reports `expo-updates` warnings to Observe, as events named
++   * `expo-updates.warning`.
++   *
++   * @default false
++   */
++  reportWarnings?: boolean;
++  /**
++   * Log entry codes that the integration does not report. For example, a network error during an
++   * update check is logged with the `Unknown` code on iOS. Errors that error recovery handled are
++   * always reported.
++   *
++   * @default []
++   */
++  ignoredCodes?: ObserveExpoUpdatesLogEntryCode[];
++  /**
++   * A function that decides whether the integration reports a log entry. Return `false` to skip
++   * the entry, for example by its message. It runs after `ignoredCodes`, and errors that error
++   * recovery handled are always reported. If the function throws, the entry is reported.
++   */
++  shouldReport?: (entry: ObserveExpoUpdatesLogEntry) => boolean;
++};
++
+ /**
+  * Events emitted by the native `ExpoObserve` module.
+  */

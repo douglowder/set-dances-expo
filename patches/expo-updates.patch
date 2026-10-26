@@ -1,0 +1,191 @@
+diff --git a/android/src/main/java/expo/modules/updates/errorrecovery/ErrorRecovery.kt b/android/src/main/java/expo/modules/updates/errorrecovery/ErrorRecovery.kt
+index c216e1c..d2559cc 100644
+--- a/android/src/main/java/expo/modules/updates/errorrecovery/ErrorRecovery.kt
++++ b/android/src/main/java/expo/modules/updates/errorrecovery/ErrorRecovery.kt
+@@ -58,7 +58,7 @@ class ErrorRecovery(
+   }
+ 
+   internal fun handleException(exception: Exception) {
+-    logger.error("ErrorRecovery: exception encountered: ${exception.localizedMessage}", exception, UpdatesErrorCode.Unknown)
++    logger.error("ErrorRecovery: exception encountered: ${exception.localizedMessage}", exception, UpdatesErrorCode.JSRuntimeError)
+     handler.sendMessage(handler.obtainMessage(ErrorRecoveryHandler.MessageType.EXCEPTION_ENCOUNTERED, exception))
+   }
+ 
+diff --git a/android/src/main/java/expo/modules/updates/logging/UpdatesLogEntry.kt b/android/src/main/java/expo/modules/updates/logging/UpdatesLogEntry.kt
+index f756950..07c9658 100644
+--- a/android/src/main/java/expo/modules/updates/logging/UpdatesLogEntry.kt
++++ b/android/src/main/java/expo/modules/updates/logging/UpdatesLogEntry.kt
+@@ -42,6 +42,23 @@ data class UpdatesLogEntry(
+     }.toString()
+   }
+ 
++  /**
++   * The entry as a map with the same keys as the JSON string.
++   */
++  fun asMap(): Map<String, Any> =
++    buildMap {
++      put("timestamp", timestamp)
++      put("message", message)
++      put("code", code)
++      put("level", level)
++      duration?.let { put("duration", it) }
++      updateId?.let { put("updateId", it) }
++      assetId?.let { put("assetId", it) }
++      if (!stacktrace.isNullOrEmpty()) {
++        put("stacktrace", stacktrace)
++      }
++    }
++
+   companion object {
+     fun create(json: String): UpdatesLogEntry? {
+       return try {
+diff --git a/android/src/main/java/expo/modules/updates/logging/UpdatesLogger.kt b/android/src/main/java/expo/modules/updates/logging/UpdatesLogger.kt
+index 8d6b151..d2c2e4d 100644
+--- a/android/src/main/java/expo/modules/updates/logging/UpdatesLogger.kt
++++ b/android/src/main/java/expo/modules/updates/logging/UpdatesLogger.kt
+@@ -4,6 +4,7 @@ import expo.modules.core.logging.LogHandlers
+ import expo.modules.core.logging.LogType
+ import expo.modules.core.logging.Logger
+ import expo.modules.core.logging.LoggerTimer
++import expo.modules.updatesinterface.UpdatesLogEntryListenerRegistry
+ import java.io.File
+ import java.util.Date
+ 
+@@ -151,7 +152,7 @@ class UpdatesLogger(filesDirectory: File) : IUpdatesLogger {
+       assetId,
+       stacktrace = exception.stackTrace.take(MAX_FRAMES_IN_STACKTRACE).map { f -> f.toString() }
+     )
+-
++    notifyListeners(logEntry, level)
+     return logEntry.asString()
+   }
+ 
+@@ -174,10 +175,16 @@ class UpdatesLogger(filesDirectory: File) : IUpdatesLogger {
+       assetId,
+       stacktrace = null
+     )
+-
++    notifyListeners(logEntry, level)
+     return logEntry.asString()
+   }
+ 
++  private fun notifyListeners(logEntry: UpdatesLogEntry, level: LogType) {
++    if (level == LogType.Warn || level == LogType.Error || level == LogType.Fatal) {
++      UpdatesLogEntryListenerRegistry.notify(logEntry.asMap())
++    }
++  }
++
+   companion object {
+     const val EXPO_UPDATES_LOGGING_TAG = "dev.expo.updates" // All logs use this tag
+     const val MAX_FRAMES_IN_STACKTRACE = 20
+diff --git a/ios/EXUpdates/DisabledAppController.swift b/ios/EXUpdates/DisabledAppController.swift
+index b152366..062cb43 100644
+--- a/ios/EXUpdates/DisabledAppController.swift
++++ b/ios/EXUpdates/DisabledAppController.swift
+@@ -87,7 +87,7 @@ public class DisabledAppController: InternalAppControllerInterface, UpdatesInter
+     }
+ 
+     if let initializationError = self.initializationError {
+-      ErrorRecovery.writeErrorOrExceptionToLog(initializationError, logger)
++      ErrorRecovery.writeErrorOrExceptionToLog(initializationError, logger, code: .initializationError)
+     }
+   }
+ 
+diff --git a/ios/EXUpdates/ErrorRecovery.swift b/ios/EXUpdates/ErrorRecovery.swift
+index c554369..ab177b2 100644
+--- a/ios/EXUpdates/ErrorRecovery.swift
++++ b/ios/EXUpdates/ErrorRecovery.swift
+@@ -368,6 +368,15 @@ public final class ErrorRecovery: NSObject {
+   }
+ 
+   public static func writeErrorOrExceptionToLog(_ errorOrException: Any, _ logger: UpdatesLogger, dispatchQueue: DispatchQueue = DispatchQueue.global()) {
++    writeErrorOrExceptionToLog(errorOrException, logger, code: .jsRuntimeError, dispatchQueue: dispatchQueue)
++  }
++
++  internal static func writeErrorOrExceptionToLog(
++    _ errorOrException: Any,
++    _ logger: UpdatesLogger,
++    code: UpdatesErrorCode,
++    dispatchQueue: DispatchQueue = DispatchQueue.global()
++  ) {
+     dispatchQueue.async {
+       var serializedError: String
+       if let errorOrException = errorOrException as? UpdatesError {
+@@ -380,7 +389,7 @@ public final class ErrorRecovery: NSObject {
+         return
+       }
+ 
+-      logger.error(cause: UpdatesError.errorRecoveryFatalException(serializedError: serializedError), code: .jsRuntimeError)
++      logger.error(cause: UpdatesError.errorRecoveryFatalException(serializedError: serializedError), code: code)
+       let data = serializedError.data(using: .utf8)!
+       let errorLogFile = ErrorRecovery.errorLogFile()
+       if FileManager.default.fileExists(atPath: errorLogFile.path) {
+diff --git a/ios/EXUpdates/Logging/UpdatesLogReader.swift b/ios/EXUpdates/Logging/UpdatesLogReader.swift
+index 6a10c42..3c9c048 100644
+--- a/ios/EXUpdates/Logging/UpdatesLogReader.swift
++++ b/ios/EXUpdates/Logging/UpdatesLogReader.swift
+@@ -91,6 +91,6 @@ public final class UpdatesLogReader {
+     // instead
+     let earliestDate = Date().addingTimeInterval(-UpdatesLogReader.MAXIMUM_LOOKBACK_INTERVAL)
+     let dateToUse = date.timeIntervalSince1970 < earliestDate.timeIntervalSince1970 ? earliestDate : date
+-    return UInt(dateToUse.timeIntervalSince1970) * 1000
++    return UInt(dateToUse.timeIntervalSince1970 * 1000)
+   }
+ }
+diff --git a/ios/EXUpdates/Logging/UpdatesLogger.swift b/ios/EXUpdates/Logging/UpdatesLogger.swift
+index f4a2690..e21d09b 100644
+--- a/ios/EXUpdates/Logging/UpdatesLogger.swift
++++ b/ios/EXUpdates/Logging/UpdatesLogger.swift
+@@ -2,6 +2,7 @@
+ 
+ // swiftlint:disable function_parameter_count
+ 
++import EXUpdatesInterface
+ import ExpoModulesCore
+ import Foundation
+ import os.log
+@@ -199,7 +200,7 @@ public final class UpdatesLogger: NSObject {
+     //   and the one below
+     let symbols = (level == .error || level == .fatal) ? UpdatesLogEntry.currentStackTrace() : nil
+     let logEntry = UpdatesLogEntry(
+-      timestamp: UInt(Date().timeIntervalSince1970) * 1000,
++      timestamp: UInt(Date().timeIntervalSince1970 * 1000),
+       message: message,
+       code: code.asString,
+       level: "\(level)",
+@@ -208,6 +209,9 @@ public final class UpdatesLogger: NSObject {
+       stacktrace: symbols,
+       duration: duration
+     )
++    if level == .warn || level == .error || level == .fatal {
++      UpdatesLogEntryListenerRegistry.shared.notify(logEntry.asDict())
++    }
+     return "\(logEntry.asString() ?? logEntry.message)"
+   }
+ }
+diff --git a/ios/EXUpdates/Procedures/StartupProcedure.swift b/ios/EXUpdates/Procedures/StartupProcedure.swift
+index ca52648..fd3fd9e 100644
+--- a/ios/EXUpdates/Procedures/StartupProcedure.swift
++++ b/ios/EXUpdates/Procedures/StartupProcedure.swift
+@@ -113,7 +113,7 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
+ 
+     delegate?.startupProcedureDidLaunch(self)
+ 
+-    ErrorRecovery.writeErrorOrExceptionToLog(error, logger)
++    ErrorRecovery.writeErrorOrExceptionToLog(error, logger, code: .initializationError)
+   }
+ 
+   // MARK: - AppLoaderTaskDelegate
+diff --git a/ios/EXUpdates/UpdatesModule.swift b/ios/EXUpdates/UpdatesModule.swift
+index 44af2f6..189595e 100644
+--- a/ios/EXUpdates/UpdatesModule.swift
++++ b/ios/EXUpdates/UpdatesModule.swift
+@@ -95,7 +95,7 @@ public final class UpdatesModule: Module, UpdatesEventManagerObserver {
+     AsyncFunction("readLogEntriesAsync") { (maxAge: Int) -> [[String: Any]] in
+       // maxAge is in milliseconds, convert to seconds
+       do {
+-        return try UpdatesLogReader().getLogEntries(newerThan: Date(timeIntervalSinceNow: TimeInterval(-1 * (maxAge / 1000))))
++        return try UpdatesLogReader().getLogEntries(newerThan: Date(timeIntervalSinceNow: -TimeInterval(maxAge) / 1000))
+       } catch {
+         throw ReadLogEntriesException(error)
+       }

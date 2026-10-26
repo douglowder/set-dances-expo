@@ -1,0 +1,108 @@
+diff --git a/android/src/main/java/expo/modules/updatesinterface/UpdatesLogEntryListenerRegistry.kt b/android/src/main/java/expo/modules/updatesinterface/UpdatesLogEntryListenerRegistry.kt
+new file mode 100644
+index 0000000..9eb5ead
+--- /dev/null
++++ b/android/src/main/java/expo/modules/updatesinterface/UpdatesLogEntryListenerRegistry.kt
+@@ -0,0 +1,48 @@
++package expo.modules.updatesinterface
++
++import android.util.Log
++import java.util.concurrent.CopyOnWriteArrayList
++
++/**
++ * Receives expo-updates log entries at the warning level or higher as they are logged. An entry has
++ * the same fields as the entries that `readLogEntriesAsync` returns: `timestamp`, `message`, `code`,
++ * `level`, and optionally `updateId`, `assetId`, `stacktrace`, and `duration`.
++ */
++fun interface UpdatesLogEntryListener {
++  /**
++   * Called on the thread that logged the entry.
++   */
++  fun onLogEntry(entry: Map<String, Any>)
++}
++
++/**
++ * Delivers expo-updates log entries to listeners in the same process, so other modules can report
++ * them without reading the log file. It does not depend on whether updates are enabled.
++ */
++object UpdatesLogEntryListenerRegistry {
++  private const val TAG = "UpdatesLogEntryListener"
++
++  private val listeners = CopyOnWriteArrayList<UpdatesLogEntryListener>()
++
++  fun add(listener: UpdatesLogEntryListener) {
++    listeners.addIfAbsent(listener)
++  }
++
++  fun remove(listener: UpdatesLogEntryListener) {
++    listeners.remove(listener)
++  }
++
++  /**
++   * Delivers the entry to each listener. A listener that throws does not stop the other listeners
++   * or the code that logged the entry.
++   */
++  fun notify(entry: Map<String, Any>) {
++    for (listener in listeners) {
++      try {
++        listener.onLogEntry(entry)
++      } catch (e: Exception) {
++        Log.e(TAG, "A log entry listener threw an exception", e)
++      }
++    }
++  }
++}
+diff --git a/ios/EXUpdatesInterface/UpdatesLogEntryListenerRegistry.swift b/ios/EXUpdatesInterface/UpdatesLogEntryListenerRegistry.swift
+new file mode 100644
+index 0000000..97d2c41
+--- /dev/null
++++ b/ios/EXUpdatesInterface/UpdatesLogEntryListenerRegistry.swift
+@@ -0,0 +1,48 @@
++//  Copyright © 2026-present 650 Industries. All rights reserved.
++
++import Foundation
++
++/// Receives expo-updates log entries at the warning level or higher as they are logged. An entry has
++/// the same fields as the entries that `readLogEntriesAsync` returns: `timestamp`, `message`, `code`,
++/// `level`, and optionally `updateId`, `assetId`, `stacktrace`, and `duration`.
++public protocol UpdatesLogEntryListener: AnyObject {
++  /// Called on the thread that logged the entry.
++  func updatesLogEntryWasLogged(_ entry: [String: Any])
++}
++
++/// Delivers expo-updates log entries to listeners in the same process, so other modules can report
++/// them without reading the log file. It does not depend on whether updates are enabled. Listeners
++/// are held weakly.
++public final class UpdatesLogEntryListenerRegistry: @unchecked Sendable {
++  public static let shared = UpdatesLogEntryListenerRegistry()
++
++  private struct WeakListener {
++    weak var listener: UpdatesLogEntryListener?
++  }
++
++  private let lock = NSLock()
++  private var listeners: [ObjectIdentifier: WeakListener] = [:]
++
++  public func add(_ listener: UpdatesLogEntryListener) {
++    lock.withLock {
++      listeners[ObjectIdentifier(listener)] = WeakListener(listener: listener)
++    }
++  }
++
++  public func remove(_ listener: UpdatesLogEntryListener) {
++    lock.withLock {
++      listeners[ObjectIdentifier(listener)] = nil
++    }
++  }
++
++  /// Delivers the entry to each listener outside the lock, so a listener can add or remove listeners.
++  public func notify(_ entry: [String: Any]) {
++    let currentListeners = lock.withLock {
++      listeners = listeners.filter { $0.value.listener != nil }
++      return listeners.values.compactMap { $0.listener }
++    }
++    for listener in currentListeners {
++      listener.updatesLogEntryWasLogged(entry)
++    }
++  }
++}
