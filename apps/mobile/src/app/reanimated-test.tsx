@@ -8,6 +8,7 @@ import { withSequence, withSpring } from 'react-native-reanimated';
 // error on demand, because the real `logger.error` call sites are hard to reach.
 import { logger } from 'react-native-reanimated/src/common/logger';
 import { scheduleOnUI } from 'react-native-worklets';
+import { crashNow, crashOnNextLaunch } from '../crashTest';
 
 type Sample = {
   label: string;
@@ -76,6 +77,7 @@ function sampleKey(sample: Sample) {
 
 export default function ReanimatedTest() {
   const [ran, setRan] = useState<Record<string, number>>({});
+  const [crashArmed, setCrashArmed] = useState(false);
 
   const runSample = (sample: Sample) => {
     sample.run();
@@ -115,6 +117,24 @@ export default function ReanimatedTest() {
           </Pressable>
         );
       })}
+      <Text style={styles.note}>
+        expo-updates error recovery handles only the crashes within 10 seconds
+        after launch. To test it, tap the button below, then relaunch the app.
+      </Text>
+      <Pressable
+        style={[styles.button, styles.error]}
+        onPress={() => {
+          crashOnNextLaunch().then(() => setCrashArmed(true));
+        }}
+      >
+        <Text style={styles.buttonText}>Crash on next launch</Text>
+        <Text style={styles.count}>
+          {crashArmed ? 'Set: relaunch the app' : 'Not set'}
+        </Text>
+      </Pressable>
+      <Pressable style={[styles.button, styles.error]} onPress={crashNow}>
+        <Text style={styles.buttonText}>Crash now</Text>
+      </Pressable>
     </ScrollView>
   );
 }
