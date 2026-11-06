@@ -28,3 +28,9 @@ export async function crashIfRequested() {
   await AsyncStorage.removeItem(CRASH_ON_LAUNCH_KEY);
   throwFatalError('Crash test: crash on launch (set-dances test)');
 }
+
+// Thrown while expo-router loads the root layout, before the first render, so
+// expo-updates error recovery marks the update as failed and rolls back.
+export function crashBeforeFirstRender() {
+  throw new Error('Crash test: crash before first render (set-dances test)');
+}

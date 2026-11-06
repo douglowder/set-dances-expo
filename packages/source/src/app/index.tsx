@@ -223,7 +223,7 @@ export default function Index() {
               />
             )}
             <View style={{ flex: 1 }} />
-            <Text style={styles.appName}>Android #2 Set Dances</Text>
+            <Text style={styles.appName}>Android #5 Set Dances</Text>
             <View style={{ flex: 1 }} />
             {Platform.isTV && (
               <CircularButton
