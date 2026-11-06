@@ -70,7 +70,8 @@
       "env": {
         "EXPO_NO_APNS": "1",
         "EXPO_USE_PRECOMPILED_MODULES": "0"
-      }
+      },
+      "pnpm": "12.2.1"
     }
   },
   "submit": {
