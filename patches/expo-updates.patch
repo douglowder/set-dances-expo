@@ -1,8 +1,32 @@
+diff --git a/android/src/main/java/expo/modules/updates/DisabledUpdatesController.kt b/android/src/main/java/expo/modules/updates/DisabledUpdatesController.kt
+index 18b334293e183b534a72f5f7ab7238d8c94eb3e6..a3d83db330633797281ac3a0319fe9c4ca3a1119 100644
+--- a/android/src/main/java/expo/modules/updates/DisabledUpdatesController.kt
++++ b/android/src/main/java/expo/modules/updates/DisabledUpdatesController.kt
+@@ -101,7 +101,7 @@ class DisabledUpdatesController(
+     weakActivity = WeakReference(reactContext.currentActivity)
+   }
+ 
+-  override fun onReactInstanceException(exception: java.lang.Exception) {}
++  override fun onReactInstanceException(exception: java.lang.Exception): Boolean = false
+ 
+   override val isActiveController = false
+ 
 diff --git a/android/src/main/java/expo/modules/updates/EnabledUpdatesController.kt b/android/src/main/java/expo/modules/updates/EnabledUpdatesController.kt
-index 3b3e503c976c3d130b41da7efb8c48fdeec706d8..4753b222c5294431ffda0e0fc794fa83bbaee346 100644
+index 3b3e503c976c3d130b41da7efb8c48fdeec706d8..24e2fdf7f97df6930507a6ce1f727162aa287649 100644
 --- a/android/src/main/java/expo/modules/updates/EnabledUpdatesController.kt
 +++ b/android/src/main/java/expo/modules/updates/EnabledUpdatesController.kt
-@@ -267,7 +267,8 @@ class EnabledUpdatesController(
+@@ -168,9 +168,8 @@ class EnabledUpdatesController(
+     weakActivity = WeakReference(reactContext.currentActivity)
+   }
+ 
+-  override fun onReactInstanceException(exception: Exception) {
++  override fun onReactInstanceException(exception: Exception): Boolean =
+     startupProcedure.onReactInstanceException(exception)
+-  }
+ 
+   override val isActiveController = true
+ 
+@@ -267,7 +266,8 @@ class EnabledUpdatesController(
        try {
          val result = ManifestMetadata.getExtraParams(
            database,
@@ -12,6 +36,23 @@ index 3b3e503c976c3d130b41da7efb8c48fdeec706d8..4753b222c5294431ffda0e0fc794fa83
          )
          val resultMap = when (result) {
            null -> Bundle()
+diff --git a/android/src/main/java/expo/modules/updates/IUpdatesController.kt b/android/src/main/java/expo/modules/updates/IUpdatesController.kt
+index c73996e9834bd8619fbc7d2064766e0ba97a2ee7..ea35b926fb4288721b25297cc73bff3d57c7eeb5 100644
+--- a/android/src/main/java/expo/modules/updates/IUpdatesController.kt
++++ b/android/src/main/java/expo/modules/updates/IUpdatesController.kt
+@@ -58,7 +58,11 @@ interface IUpdatesController {
+ 
+   fun onDidCreateReactInstance(reactContext: ReactContext)
+ 
+-  fun onReactInstanceException(exception: java.lang.Exception)
++  /**
++   * Receives an unhandled React instance exception. Returns whether the controller takes it, so
++   * the React host does not rethrow it.
++   */
++  fun onReactInstanceException(exception: java.lang.Exception): Boolean
+ 
+   /**
+    * Indicates that the controller is in active state.
 diff --git a/android/src/main/java/expo/modules/updates/UpdatesConfiguration.kt b/android/src/main/java/expo/modules/updates/UpdatesConfiguration.kt
 index d2173b26ba98bba854e7c8b437caa428c5149e17..509770584f616e2092ce0c30544874eea1fd4ad5 100644
 --- a/android/src/main/java/expo/modules/updates/UpdatesConfiguration.kt
@@ -109,7 +150,7 @@ index 9abf5b3bb92cda5bc4ab7501c35abe2bffeed59c..a92984e32ac14f2267bad74fd4a92193
    }
  
 diff --git a/android/src/main/java/expo/modules/updates/UpdatesDevLauncherController.kt b/android/src/main/java/expo/modules/updates/UpdatesDevLauncherController.kt
-index 1bebd1f1c109ecf3af947714be78e3da021331c8..7157c1f6dd2cb140880dabe10663260adf6ef71a 100644
+index 1bebd1f1c109ecf3af947714be78e3da021331c8..5dd8ef82eb51bf04cf2c2596e5af9e6bdf596cc2 100644
 --- a/android/src/main/java/expo/modules/updates/UpdatesDevLauncherController.kt
 +++ b/android/src/main/java/expo/modules/updates/UpdatesDevLauncherController.kt
 @@ -19,7 +19,6 @@ import expo.modules.updates.loader.FileDownloader
@@ -136,6 +177,15 @@ index 1bebd1f1c109ecf3af947714be78e3da021331c8..7157c1f6dd2cb140880dabe10663260a
 +      logger.warn(UpdatesLogMessage.DevLauncherLaunchAssetFileCalled)
        return null
      }
+ 
+@@ -116,7 +116,7 @@ class UpdatesDevLauncherController(
+ 
+   override fun onDidCreateReactInstance(reactContext: ReactContext) {}
+ 
+-  override fun onReactInstanceException(exception: java.lang.Exception) {}
++  override fun onReactInstanceException(exception: java.lang.Exception): Boolean = false
+ 
+   override val isActiveController = false
  
 @@ -244,7 +244,7 @@ class UpdatesDevLauncherController(
        createUpdatesConfiguration(configuration)
@@ -189,6 +239,21 @@ index 2db7de2a2898245035b2e3320f7d87ad66875b26..029e8c07853df490509c40278f6eb98e
      }
    }
  
+diff --git a/android/src/main/java/expo/modules/updates/UpdatesPackage.kt b/android/src/main/java/expo/modules/updates/UpdatesPackage.kt
+index cf576ab1c5c910e210a44f6539a36f90ca091fe8..f6c06ff54ee9819b443ef8d813ed4df057ea6055 100644
+--- a/android/src/main/java/expo/modules/updates/UpdatesPackage.kt
++++ b/android/src/main/java/expo/modules/updates/UpdatesPackage.kt
+@@ -59,9 +59,8 @@ class UpdatesPackage : Package {
+         UpdatesController.instance.onDidCreateReactInstance(reactContext)
+       }
+ 
+-      override fun onReactInstanceException(useDeveloperSupport: Boolean, exception: Exception) {
++      override fun handleReactInstanceException(useDeveloperSupport: Boolean, exception: Exception): Boolean =
+         UpdatesController.instance.onReactInstanceException(exception)
+-      }
+     }
+     return listOf(handler)
+   }
 diff --git a/android/src/main/java/expo/modules/updates/UpdatesUtils.kt b/android/src/main/java/expo/modules/updates/UpdatesUtils.kt
 index 2bb2cc1ee826cd904f0032071741a504f3472222..4a7fe3e4d7dd7e8f63f8d4f6b0855cd5a0fb1c6d 100644
 --- a/android/src/main/java/expo/modules/updates/UpdatesUtils.kt
@@ -371,7 +436,7 @@ index ae6847ccd1e35a505f56213d25160817c87f1beb..7b96e78a041078ef2028a9f878843606
 +  private val DELETE_RETURNED_FALSE = "cause" to "File.delete() returned false"
  }
 diff --git a/android/src/main/java/expo/modules/updates/errorrecovery/ErrorRecovery.kt b/android/src/main/java/expo/modules/updates/errorrecovery/ErrorRecovery.kt
-index c216e1cfaff3b6c0bcae4f0fd68f02cadac7aabd..76a802ffbf44885dcb3625dc55073de9afda8b5e 100644
+index c216e1cfaff3b6c0bcae4f0fd68f02cadac7aabd..380f90b98d34f40ee43ff1d653a9371474dfb6ba 100644
 --- a/android/src/main/java/expo/modules/updates/errorrecovery/ErrorRecovery.kt
 +++ b/android/src/main/java/expo/modules/updates/errorrecovery/ErrorRecovery.kt
 @@ -6,8 +6,8 @@ import com.facebook.react.bridge.ReactMarker
@@ -384,7 +449,36 @@ index c216e1cfaff3b6c0bcae4f0fd68f02cadac7aabd..76a802ffbf44885dcb3625dc55073de9
  
  /**
   * Entry point for the error recovery flow. Responsible for initializing the error recovery handler
-@@ -58,7 +58,7 @@ class ErrorRecovery(
+@@ -28,6 +28,8 @@ class ErrorRecovery(
+   internal val handlerThread = HandlerThread("expo-updates-error-recovery")
+   internal lateinit var handler: Handler
+ 
++  // Written on the error recovery thread and read on the thread that reports the exception.
++  @Volatile
+   private var shouldHandleReactInstanceException = false
+ 
+   fun initialize(delegate: ErrorRecoveryDelegate) {
+@@ -45,11 +47,16 @@ class ErrorRecovery(
+   /**
+    * Exception notifications sending from [expo.modules.core.interfaces.ReactNativeHostHandler]
+    * This is only used for bridgeless mode.
++   *
++   * Takes the exception only while error recovery monitors the launch. After that window, it
++   * returns false so the React host rethrows the exception and the process ends.
+    */
+-  internal fun onReactInstanceException(exception: Exception) {
+-    if (shouldHandleReactInstanceException) {
+-      handleException(exception)
++  internal fun onReactInstanceException(exception: Exception): Boolean {
++    if (!shouldHandleReactInstanceException) {
++      return false
+     }
++    handleException(exception)
++    return true
+   }
+ 
+   fun notifyNewRemoteLoadStatus(newStatus: ErrorRecoveryDelegate.RemoteLoadStatus) {
+@@ -58,7 +65,7 @@ class ErrorRecovery(
    }
  
    internal fun handleException(exception: Exception) {
@@ -1974,7 +2068,7 @@ index 724e5c72a34e44e31d45524074776c92abedcbbf..381d8e81e71366a4abdb41d8dc9e0243
      }
    }
 diff --git a/android/src/main/java/expo/modules/updates/procedures/StartupProcedure.kt b/android/src/main/java/expo/modules/updates/procedures/StartupProcedure.kt
-index ecf0c0281ad10268515889b7eb27dd25b6e8658f..632d69a9727ee803ab7cf5c49ca7c6d639fdef1f 100644
+index ecf0c0281ad10268515889b7eb27dd25b6e8658f..8dc7b6e2b5ebc8ba8c1d17170fb860091e9a1937 100644
 --- a/android/src/main/java/expo/modules/updates/procedures/StartupProcedure.kt
 +++ b/android/src/main/java/expo/modules/updates/procedures/StartupProcedure.kt
 @@ -12,6 +12,7 @@ import expo.modules.updates.errorrecovery.ErrorRecovery
@@ -2026,7 +2120,18 @@ index ecf0c0281ad10268515889b7eb27dd25b6e8658f..632d69a9727ee803ab7cf5c49ca7c6d6
                else -> {
                  // .downloading
                  procedureContext.processStateEvent(
-@@ -276,7 +286,13 @@ class StartupProcedure(
+@@ -232,9 +242,8 @@ class StartupProcedure(
+     errorRecovery.startMonitoring(devSupportManager)
+   }
+ 
+-  fun onReactInstanceException(exception: Exception) {
++  fun onReactInstanceException(exception: Exception): Boolean =
+     errorRecovery.onReactInstanceException(exception)
+-  }
+ 
+   private fun setRemoteLoadStatus(status: ErrorRecoveryDelegate.RemoteLoadStatus) {
+     remoteLoadStatus = status
+@@ -276,7 +285,13 @@ class StartupProcedure(
            } catch (e: CancellationException) {
              throw e
            } catch (e: Exception) {
@@ -2041,7 +2146,7 @@ index ecf0c0281ad10268515889b7eb27dd25b6e8658f..632d69a9727ee803ab7cf5c49ca7c6d6
              setRemoteLoadStatus(ErrorRecoveryDelegate.RemoteLoadStatus.IDLE)
            }
          }
-@@ -295,6 +311,11 @@ class StartupProcedure(
+@@ -295,6 +310,11 @@ class StartupProcedure(
          }
          procedureScope.launch {
            val launchedUpdate = launchedUpdate ?: return@launch

@@ -1,0 +1,23 @@
+diff --git a/android/src/main/java/expo/modules/ExpoReactHostFactory.kt b/android/src/main/java/expo/modules/ExpoReactHostFactory.kt
+index 362274ff301447d9b196c8cc4d80030b5736b81c..2c7767e9454cfe7cdf5e5dcbe12a20a6f51fd8a5 100644
+--- a/android/src/main/java/expo/modules/ExpoReactHostFactory.kt
++++ b/android/src/main/java/expo/modules/ExpoReactHostFactory.kt
+@@ -83,12 +83,14 @@ object ExpoReactHostFactory {
+       get() = packageList
+ 
+     override fun handleInstanceException(error: Exception) {
+-      if (hostHandlers.isEmpty()) {
++      // Every handler sees the exception. One that no handler takes is rethrown, as React Native's
++      // default host delegate does, so the process ends and crash reporters record it.
++      val handled = hostHandlers
++        .map { handler -> handler.handleReactInstanceException(hostDelegateUseDeveloperSupport, error) }
++        .any { it }
++      if (!handled) {
+         throw error
+       }
+-      hostHandlers.forEach { handler ->
+-        handler.onReactInstanceException(hostDelegateUseDeveloperSupport, error)
+-      }
+     }
+   }
+ 
