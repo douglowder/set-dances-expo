@@ -547,7 +547,7 @@ index 73d19533d2f863d68ef2a041e9c8da29875e27ea..95fbd085282711a46b9e7ace2e42cffd
          null
        }
      }
-diff --git aandroid/src/main/java/expo/modules/updates/loader/AssetsFailedToLoadException.kt b/android/src/main/java/expo/modules/updates/loader/AssetsFailedToLoadException.kt
+diff --git a/android/src/main/java/expo/modules/updates/loader/AssetsFailedToLoadException.kt b/android/src/main/java/expo/modules/updates/loader/AssetsFailedToLoadException.kt
 new file mode 100644
 index 0000000000000000000000000000000000000000..40bccfeb135ae184a865bc1c6fab2abf90b9094b
 --- /dev/null
@@ -1382,7 +1382,7 @@ index 53d758ce02eacd576a4187e17f7056d4c8b36ef4..8f03abcf3772b697a02e9de1c9d1a800
          false
        }
      }
-diff --git aandroid/src/main/java/expo/modules/updates/logging/LoadFailures.kt b/android/src/main/java/expo/modules/updates/logging/LoadFailures.kt
+diff --git a/android/src/main/java/expo/modules/updates/logging/LoadFailures.kt b/android/src/main/java/expo/modules/updates/logging/LoadFailures.kt
 new file mode 100644
 index 0000000000000000000000000000000000000000..67c4cbfc0495d0bdc2b760bf8da6a6ffd30372b2
 --- /dev/null
@@ -3149,7 +3149,7 @@ index a9a576c36b49b5d85e5102aa8fa8f73388b50190..df47922dd406d68a738bac95b9a13744
      return result
    }
  
-diff --git aios/EXUpdates/Logging/UpdatesLogMessage+LoadFailure.swift b/ios/EXUpdates/Logging/UpdatesLogMessage+LoadFailure.swift
+diff --git a/ios/EXUpdates/Logging/UpdatesLogMessage+LoadFailure.swift b/ios/EXUpdates/Logging/UpdatesLogMessage+LoadFailure.swift
 new file mode 100644
 index 0000000000000000000000000000000000000000..41e479d6a20da4454d13d18d56639b5c1f9a160f
 --- /dev/null

@@ -1,4 +1,4 @@
-diff --git aandroid/src/main/java/expo/modules/observe/ExpoUpdatesLogForwarder.kt b/android/src/main/java/expo/modules/observe/ExpoUpdatesLogForwarder.kt
+diff --git a/android/src/main/java/expo/modules/observe/ExpoUpdatesLogForwarder.kt b/android/src/main/java/expo/modules/observe/ExpoUpdatesLogForwarder.kt
 new file mode 100644
 index 0000000000000000000000000000000000000000..1c8bac017e2c6e600b8125b91330d2bfd4498ed2
 --- /dev/null
@@ -241,7 +241,7 @@ index e33b20305d868d8f1078e3829c8ec13873a70014..77488bed0ad6fddc05a9241243a8a42d
 \ No newline at end of file
 +{"version":3,"sources":["index.ts"],"sourcesContent":[null],"names":["Observe","default","AppMetrics","ObserveErrorBoundary","ObserveInteractiveMarker","ObserveRoot","setBundleDefaults","environment","process","env","NODE_ENV","isJsDev","__DEV__","useObserve"],"mappings":"AAAA,OAAOA,aAAa,WAAW;AAE/B;;CAEC,GACD,SAASC,WAAWC,UAAU,QAAQ,mBAAmB;AAiBzD,SAASC,oBAAoB,QAAQ,yBAAyB;AAK9D,SAASC,wBAAwB,QAAQ,6BAA6B;AAEtE,SAASC,WAAW,QAAQ,gBAAgB;AAE5CL,QAAQM,iBAAiB,CAAC;IACxBC,aAAaC,QAAQC,GAAG,CAACC,QAAQ,IAAI;IACrCC,SAAS,CAAC,CAACC;AACb;AAEA,SAASZ,OAAO,GAAG;AAEnB,2DAA2D,GAC3D,eAAeA,QAAQ;AAkBvB,SAASa,UAAU,QAAQ,eAAe"}
 \ No newline at end of file
-diff --git abuild/integrations/expo-updates/init.d.ts b/build/integrations/expo-updates/init.d.ts
+diff --git a/build/integrations/expo-updates/init.d.ts b/build/integrations/expo-updates/init.d.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..01934e3bb93bcf8f1a9d0c877d7ec3ac0724638f
 --- /dev/null
@@ -273,7 +273,7 @@ index 0000000000000000000000000000000000000000..01934e3bb93bcf8f1a9d0c877d7ec3ac
 + * Stops reporting expo-updates log entries to Observe, and turns off the native live listener.
 + */
 +export declare function disableExpoUpdatesIntegration(): void;
-diff --git abuild/integrations/expo-updates/init.js b/build/integrations/expo-updates/init.js
+diff --git a/build/integrations/expo-updates/init.js b/build/integrations/expo-updates/init.js
 new file mode 100644
 index 0000000000000000000000000000000000000000..d3c66f4a2da933f550116a44d4082e6ecf1b6aa9
 --- /dev/null
@@ -554,7 +554,7 @@ index 0000000000000000000000000000000000000000..d3c66f4a2da933f550116a44d4082e6e
 +}
 +
 +//# sourceMappingURL=init.js.map
-diff --git abuild/integrations/expo-updates/init.js.map b/build/integrations/expo-updates/init.js.map
+diff --git a/build/integrations/expo-updates/init.js.map b/build/integrations/expo-updates/init.js.map
 new file mode 100644
 index 0000000000000000000000000000000000000000..035d95b658b7640dcef1b2380c3f624c83ad502f
 --- /dev/null
@@ -562,7 +562,7 @@ index 0000000000000000000000000000000000000000..035d95b658b7640dcef1b2380c3f624c
 @@ -0,0 +1 @@
 +{"version":3,"sources":["integrations/expo-updates/init.ts"],"sourcesContent":[null],"names":["AppMetrics","reportCaughtError","createReportLimiter","loadUpdates","ERROR_TYPE","ERROR_RECOVERY_TYPE","WARNING_EVENT","ERROR_RECOVERY_KEY","ERROR_RECOVERY_CRASH_KEY","MAX_LOOKBACK_MS","CURSOR_OVERLAP_MS","REPORTABLE_LEVELS","Set","MAX_HANDLED_KEYS","errorLimiter","errorRecoveryLimiter","warningLimiter","isEnabled","settings","reportWarnings","ignoredCodes","shouldReport","undefined","hasWarnedAboutShouldReport","readInProgress","liveSubscription","cursor","cursorWrite","Promise","resolve","handledKeys","ExpoUpdatesLogError","Error","type","message","name","stack","isErrorRecoveryEntry","entry","key","isErrorRecoveryCrashEntry","passesFilters","includes","code","error","console","warn","String","reportEntry","isError","level","isErrorRecovery","limiter","cappedMessage","allow","logEvent","displayName","body","severity","attributes","logTimestamp","timestamp","updateId","assetId","entryKey","parseCursor","value","now","JSON","parse","Array","isArray","keys","lookbackFrom","lookback","Math","min","max","keyTimestamp","Number","slice","indexOf","mergeCursors","a","b","filter","cursorFor","entries","map","has","rememberHandled","add","size","delete","values","next","storeCursor","native","serialized","stringify","then","setExpoUpdatesLogCursor","catch","handleEntries","newEntries","sort","length","updatedCursor","readAndReport","updates","Date","storedCursor","getExpoUpdatesLogCursor","forEach","readLogEntriesAsync","subscribeToLiveEntries","addListener","initExpoUpdatesIntegration","config","options","finally","disableExpoUpdatesIntegration","remove"],"mappings":"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"}
 \ No newline at end of file
-diff --git abuild/integrations/expo-updates/updates.d.ts b/build/integrations/expo-updates/updates.d.ts
+diff --git a/build/integrations/expo-updates/updates.d.ts b/build/integrations/expo-updates/updates.d.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..7eaeb9bfef046c0b2aa152ed3d4b2098f145ddfb
 --- /dev/null
@@ -574,7 +574,7 @@ index 0000000000000000000000000000000000000000..7eaeb9bfef046c0b2aa152ed3d4b2098
 +    readLogEntriesAsync(maxAge: number): Promise<UpdatesLogEntry[]>;
 +}
 +export declare function loadUpdates(): LoadedUpdates | null;
-diff --git abuild/integrations/expo-updates/updates.js b/build/integrations/expo-updates/updates.js
+diff --git a/build/integrations/expo-updates/updates.js b/build/integrations/expo-updates/updates.js
 new file mode 100644
 index 0000000000000000000000000000000000000000..b12e9d467cb4ed14fd73a000615673349fef3bd9
 --- /dev/null
@@ -597,7 +597,7 @@ index 0000000000000000000000000000000000000000..b12e9d467cb4ed14fd73a00061567334
 +}
 +
 +//# sourceMappingURL=updates.js.map
-diff --git abuild/integrations/expo-updates/updates.js.map b/build/integrations/expo-updates/updates.js.map
+diff --git a/build/integrations/expo-updates/updates.js.map b/build/integrations/expo-updates/updates.js.map
 new file mode 100644
 index 0000000000000000000000000000000000000000..a37bcfd1eab8a6e22fb21a1f0adb6a6a4343e167
 --- /dev/null
@@ -684,7 +684,7 @@ index 6d384b0cff36c917259c93d3e6d708e5b27e6326..0a2e8734594064e9f472b6e35a3e733e
 \ No newline at end of file
 +{"version":3,"sources":["integrations/react-native-reanimated/init.ts"],"sourcesContent":[null],"names":["AppMetrics","reportCaughtError","createReportLimiter","loadReanimated","removeFirstFrame","LOG_LEVEL_ERROR","MIN_MAJOR","MIN_MINOR","REANIMATED_ERROR_NAME","REANIMATED_WARNING_EVENT","errorLimiter","warningLimiter","isEnabled","shouldReportWarnings","ReanimatedError","Error","message","stack","name","undefined","supportsOnLog","version","match","exec","major","Number","minor","__expo_observe_reportReanimatedLog","level","isError","cappedMessage","allow","logEvent","displayName","body","severity","attributes","initReanimatedIntegration","config","reanimated","console","warn","reportWarnings","loggerConfig","configureReanimatedLogger","disableReanimatedIntegration"],"mappings":"AAAA,OAAOA,gBAAgB,mBAAmB;AAE1C,SAASC,iBAAiB,QAAQ,0BAA0B;AAE5D,SAASC,mBAAmB,QAAQ,mBAAmB;AACvD,SAASC,cAAc,QAAgC,eAAe;AACtE,SAASC,gBAAgB,QAAQ,UAAU;AAE3C,oDAAoD;AACpD,MAAMC,kBAAkB;AAExB,kFAAkF;AAClF,MAAMC,YAAY;AAClB,MAAMC,YAAY;AAElB,MAAMC,wBAAwB;AAC9B,MAAMC,2BAA2B;AAEjC,MAAMC,eAAeR;AACrB,MAAMS,iBAAiBT;AAEvB,2FAA2F;AAC3F,gGAAgG;AAChG,IAAIU,YAAY;AAChB,IAAIC,uBAAuB;AAE3B;;;CAGC,GACD,MAAMC,wBAAwBC;IAC5B,YAAYC,OAAe,EAAEC,KAAyB,CAAE;QACtD,KAAK,CAACD;QACN,IAAI,CAACE,IAAI,GAAGV;QACZ,IAAIS,UAAUE,WAAW;YACvB,IAAI,CAACF,KAAK,GAAGA;QACf;IACF;AACF;AAEA,SAASG,cAAcC,OAAe;IACpC,MAAMC,QAAQ,gBAAgBC,IAAI,CAACF;IACnC,IAAI,CAACC,OAAO;QACV,OAAO;IACT;IACA,MAAME,QAAQC,OAAOH,KAAK,CAAC,EAAE;IAC7B,MAAMI,QAAQD,OAAOH,KAAK,CAAC,EAAE;IAC7B,OAAOE,QAAQlB,aAAckB,UAAUlB,aAAaoB,SAASnB;AAC/D;AAEA,gGAAgG;AAChG,0FAA0F;AAC1F,SAASoB,mCAAmC,EAAEC,KAAK,EAAEZ,OAAO,EAAqB;IAC/E,IAAI,CAACJ,WAAW;QACd;IACF;IACA,MAAMiB,UAAUD,UAAUvB;IAC1B,IAAI,CAACwB,WAAW,CAAChB,sBAAsB;QACrC;IACF;IACA,MAAMiB,gBAAgB,AAACD,CAAAA,UAAUnB,eAAeC,cAAa,EAAGoB,KAAK,CAACf;IACtE,IAAIc,kBAAkB,MAAM;QAC1B;IACF;IACA,IAAID,SAAS;QACX,yFAAyF;QACzF,6FAA6F;QAC7F,4DAA4D;QAC5D,MAAMZ,QAAQb,iBACZ,IAAIW,MAAMC,SAASC,KAAK,EACxBU,mCAAmCT,IAAI;QAEzCjB,kBAAkB,IAAIa,gBAAgBE,SAASC,QAAQ;QACvD;IACF;IACAjB,WAAWgC,QAAQ,CAACvB,0BAA0B;QAC5CwB,aAAa;QACbC,MAAMlB;QACNmB,UAAU;QACV,sFAAsF;QACtF,4CAA4C;QAC5CC,YAAY;YAAEpB,SAASc;QAAc;IACvC;AACF;AAEA;;;;;CAKC,GACD,OAAO,SAASO,0BACdC,MAAyE;IAEzE,MAAMC,aAAapC;IACnB,IAAI,CAACoC,YAAY;QACfC,QAAQC,IAAI,CACV,oFACE;QAEJ;IACF;IAEA,IAAI,CAACrB,cAAcmB,WAAWlB,OAAO,GAAG;QACtCmB,QAAQC,IAAI,CACV,CAAC,6FAA6F,CAAC,GAC7F,CAAC,eAAe,EAAEF,WAAWlB,OAAO,CAAC,0DAA0D,CAAC,GAChG;QAEJ;IACF;IAEA,MAAM,EAAEqB,iBAAiB,KAAK,EAAE,GAAGC,cAAc,GAAG,OAAOL,WAAW,WAAWA,SAAS,CAAC;IAC3FC,WAAWK,yBAAyB,CAACD,cAAchB;IACnDd,uBAAuB6B;IACvB9B,YAAY;AACd;AAEA;;;CAGC,GACD,OAAO,SAASiC;IACdjC,YAAY;AACd"}
 \ No newline at end of file
-diff --git abuild/integrations/reportLimiter.d.ts b/build/integrations/reportLimiter.d.ts
+diff --git a/build/integrations/reportLimiter.d.ts b/build/integrations/reportLimiter.d.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..2276d25e3b193c1ba457a677b5b1439fbdaf5312
 --- /dev/null
@@ -702,7 +702,7 @@ index 0000000000000000000000000000000000000000..2276d25e3b193c1ba457a677b5b1439f
 +    allow(message: string): string | null;
 +}
 +export declare function createReportLimiter(): ReportLimiter;
-diff --git abuild/integrations/reportLimiter.js b/build/integrations/reportLimiter.js
+diff --git a/build/integrations/reportLimiter.js b/build/integrations/reportLimiter.js
 new file mode 100644
 index 0000000000000000000000000000000000000000..a9fae6ae81da8d9f668e4a7f8a4d0ec177cfdf6b
 --- /dev/null
@@ -745,7 +745,7 @@ index 0000000000000000000000000000000000000000..a9fae6ae81da8d9f668e4a7f8a4d0ec1
 +}
 +
 +//# sourceMappingURL=reportLimiter.js.map
-diff --git abuild/integrations/reportLimiter.js.map b/build/integrations/reportLimiter.js.map
+diff --git a/build/integrations/reportLimiter.js.map b/build/integrations/reportLimiter.js.map
 new file mode 100644
 index 0000000000000000000000000000000000000000..c4b4b07c1b8de5a18094d73d15c9dcf98ab48478
 --- /dev/null
@@ -991,7 +991,7 @@ index b7880fdb08e65a50b93a1db56dbb5c3ffd657c88..57462d5361620f023a10f72acd238594
  
    s.resource_bundles = {'ExpoObserve_privacy' => ['PrivacyInfo.xcprivacy']}
  
-diff --git aios/ExpoUpdatesLogForwarder.swift b/ios/ExpoUpdatesLogForwarder.swift
+diff --git a/ios/ExpoUpdatesLogForwarder.swift b/ios/ExpoUpdatesLogForwarder.swift
 new file mode 100644
 index 0000000000000000000000000000000000000000..54e2e39edf786b36e72b419ce30f07aa9c98f0e5
 --- /dev/null
@@ -1328,7 +1328,7 @@ index e5f856cdb901a282c2f521b624f46eeae6f4e1ed..0d1c5d9e03432b86bd8864de68145638
 +  ObserveExpoUpdatesLogEntryCode,
  } from './types';
  export { useObserve } from './useObserve';
-diff --git asrc/integrations/expo-updates/init.ts b/src/integrations/expo-updates/init.ts
+diff --git a/src/integrations/expo-updates/init.ts b/src/integrations/expo-updates/init.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..16331299e8c96ba980f188dc6c982c85dd2df157
 --- /dev/null
@@ -1685,7 +1685,7 @@ index 0000000000000000000000000000000000000000..16331299e8c96ba980f188dc6c982c85
 +  liveSubscription?.remove();
 +  liveSubscription = null;
 +}
-diff --git asrc/integrations/expo-updates/updates.ts b/src/integrations/expo-updates/updates.ts
+diff --git a/src/integrations/expo-updates/updates.ts b/src/integrations/expo-updates/updates.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..2e93730f364d1621b507dbb51f63e20a120eba8e
 --- /dev/null
@@ -1787,7 +1787,7 @@ index 17bd60042c3d5ce2029974f3bda7d3c4506d5920..799c4d69bacc48312781982a366f5e2a
      return;
    }
    if (isError) {
-diff --git asrc/integrations/reportLimiter.ts b/src/integrations/reportLimiter.ts
+diff --git a/src/integrations/reportLimiter.ts b/src/integrations/reportLimiter.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..131d02eab2363c3e15dbf86d7b6529e9fdc62c4c
 --- /dev/null
