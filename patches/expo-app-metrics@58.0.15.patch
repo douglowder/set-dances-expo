@@ -1,0 +1,210 @@
+diff --git a/android/src/main/java/expo/modules/appmetrics/jserrors/ErrorReport.kt b/android/src/main/java/expo/modules/appmetrics/jserrors/ErrorReport.kt
+index b011cdc7670295be5a9b27df3eb75a6c0c3b9db8..d15125bf713cc20c220628fcdf1c91083ff17d26 100644
+--- a/android/src/main/java/expo/modules/appmetrics/jserrors/ErrorReport.kt
++++ b/android/src/main/java/expo/modules/appmetrics/jserrors/ErrorReport.kt
+@@ -22,6 +22,7 @@ data class ErrorReport(
+   @Field val message: String = "",
+   @Field val stacktrace: String? = null,
+   @Field val componentStack: String? = null,
++  @Field val code: String? = null,
+   @Field val isFatal: Boolean = false
+ ) : Record {
+   /** Builds the `js.exception` log event for the live path. */
+@@ -33,6 +34,7 @@ data class ErrorReport(
+       message = message,
+       stacktrace = stacktrace,
+       componentStack = componentStack,
++      code = code,
+       isFatal = isFatal
+     )
+ 
+@@ -41,7 +43,8 @@ data class ErrorReport(
+    * time it happened, both resolved now since by drain time the main session has rotated.
+    *
+    * Only fatal errors are persisted, and those come from the global handler, which has no React
+-   * component stack, so `componentStack` isn't carried through this path.
++   * component stack and no error code, so `componentStack` and `code` aren't carried through this
++   * path.
+    */
+   fun toPendingError(sessionId: String): PendingErrorStore.PendingError =
+     PendingErrorStore.PendingError(
+@@ -74,6 +77,7 @@ fun PendingErrorStore.PendingError.toLogRecord(): LogRecord =
+     message = message,
+     stacktrace = stacktrace,
+     componentStack = null,
++    code = null,
+     isFatal = true,
+     timestamp = timestamp
+   )
+@@ -87,7 +91,7 @@ fun PendingErrorStore.PendingError.toLogRecord(): LogRecord =
+  * Absent `type`/`stacktrace` are kept as explicit `null` rather than omitted, so every `js.exception`
+  * event carries the same attribute keys. The React component stack only exists for error-boundary
+  * captures, so `expo.error.component_stack` is omitted entirely when absent rather than logged as
+- * `null` on every event.
++ * `null` on every event. An absent `expo.error.code` is omitted the same way.
+  */
+ private fun makeExceptionLogRecord(
+   sessionId: String,
+@@ -96,6 +100,7 @@ private fun makeExceptionLogRecord(
+   message: String,
+   stacktrace: String?,
+   componentStack: String?,
++  code: String?,
+   isFatal: Boolean,
+   timestamp: String = TimeUtils.getCurrentTimestampInISOFormat()
+ ): LogRecord {
+@@ -108,6 +113,9 @@ private fun makeExceptionLogRecord(
+     if (componentStack != null) {
+       put("expo.error.component_stack", componentStack)
+     }
++    if (code != null) {
++      put("expo.error.code", code)
++    }
+   }
+   return LogRecord(
+     sessionId = sessionId,
+diff --git a/build/types.d.ts b/build/types.d.ts
+index 21f1f6569e174212b261de288248d1c0d315ed82..5e3c100fd94df7ea867bf640be2c0ed10e6c949d 100644
+--- a/build/types.d.ts
++++ b/build/types.d.ts
+@@ -648,6 +648,12 @@ export interface ExpoAppMetricsModuleType {
+          * error boundary. Recorded as the `expo.error.component_stack` attribute.
+          */
+         componentStack?: string;
++        /**
++         * A stable code that identifies the kind of error, such as `UpdateFailedToLoad`. Recorded as the
++         * `expo.error.code` attribute, which EAS Observe shows, filters on and adds to the error's
++         * fingerprint.
++         */
++        code?: string;
+         isFatal: boolean;
+     }): void;
+     /**
+diff --git a/build/types.js.map b/build/types.js.map
+index 41135d6de6538240fd4446c8a946de1fc4727489..a12d5347d3365587c25a6b8a7e229c6ef7415a0b 100644
+--- a/build/types.js.map
++++ b/build/types.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["types.ts"],"sourcesContent":[null],"names":[],"mappings":"AAwlBA,WAmIC"}
+\ No newline at end of file
++{"version":3,"sources":["types.ts"],"sourcesContent":[null],"names":[],"mappings":"AAwlBA,WAyIC"}
+\ No newline at end of file
+diff --git a/ios/LogEvents/ErrorReport.swift b/ios/LogEvents/ErrorReport.swift
+index 7bfbbbbf101281328c506b19389514c0d233a456..cb40afd919ab7c516536ba62421470425777819f 100644
+--- a/ios/LogEvents/ErrorReport.swift
++++ b/ios/LogEvents/ErrorReport.swift
+@@ -13,6 +13,7 @@ struct ErrorReport {
+   var message: String = ""
+   var stacktrace: String?
+   var componentStack: String?
++  var code: String?
+   var isFatal: Bool = false
+ 
+   /// How the error was captured. A closed set so the `expo.error.source` attribute stays consistent.
+@@ -31,6 +32,7 @@ struct ErrorReport {
+       message: message,
+       stacktrace: stacktrace,
+       componentStack: componentStack,
++      code: code,
+       isFatal: isFatal
+     )
+   }
+@@ -39,7 +41,7 @@ struct ErrorReport {
+   /// time it happened (both resolved now, since by drain time the main session has rotated).
+   ///
+   /// Only fatal errors are persisted, and those come from the global handler, which has no React
+-  /// component stack, so `componentStack` isn't carried through this path.
++  /// component stack and no error code, so `componentStack` and `code` aren't carried through this path.
+   func toPendingError(sessionId: String) -> PendingErrorStore.PendingError {
+     return PendingErrorStore.PendingError(
+       source: source.rawValue,
+@@ -62,6 +64,7 @@ extension PendingErrorStore.PendingError {
+       message: message,
+       stacktrace: stacktrace,
+       componentStack: nil,
++      code: nil,
+       isFatal: true,
+       timestamp: timestamp
+     )
+@@ -76,13 +79,15 @@ extension PendingErrorStore.PendingError {
+ /// Absent `type`/`stacktrace` are kept as explicit `null` rather than omitted (the boxed optionals
+ /// encode as JSON `null`), so every `js.exception` event carries the same attribute keys. The React
+ /// component stack only exists for error-boundary captures, so `expo.error.component_stack` is
+-/// omitted entirely when absent rather than logged as `null` on every event.
++/// omitted entirely when absent rather than logged as `null` on every event. An absent
++/// `expo.error.code` is omitted the same way.
+ private func makeExceptionLogRecord(
+   source: String,
+   type: String?,
+   message: String,
+   stacktrace: String?,
+   componentStack: String?,
++  code: String?,
+   isFatal: Bool,
+   timestamp: String = Date.now.ISO8601Format()
+ ) -> LogRecord {
+@@ -96,6 +101,9 @@ private func makeExceptionLogRecord(
+   if let componentStack {
+     attributes["expo.error.component_stack"] = componentStack
+   }
++  if let code {
++    attributes["expo.error.code"] = code
++  }
+   return LogRecord(
+     name: jsExceptionLogName,
+     attributes: attributes,
+diff --git a/ios/Tests/ErrorReportTests.swift b/ios/Tests/ErrorReportTests.swift
+index cff99ae1b608b0e41f1c90c7df0ff36728e5fe51..cf047b59067bce363b7ccd3e6066ecb62184cd62 100644
+--- a/ios/Tests/ErrorReportTests.swift
++++ b/ios/Tests/ErrorReportTests.swift
+@@ -37,6 +37,33 @@ struct ErrorReportTests {
+     #expect(attributes.keys.contains("expo.error.component_stack") == false)
+   }
+ 
++  @Test
++  func `includes the error code attribute when present`() {
++    let report = ErrorReport(
++      source: .integration,
++      type: "updates.error",
++      message: "Failed to download remote update",
++      code: "UpdateFailedToLoad",
++      isFatal: false
++    )
++
++    let attributes = try! #require(report.toLogRecord().attributes?.value as? [String: Any])
++    #expect(attributes["expo.error.code"] as? String == "UpdateFailedToLoad")
++  }
++
++  @Test
++  func `omits the error code attribute when absent`() {
++    let report = ErrorReport(
++      source: .reportedByUser,
++      type: "Error",
++      message: "boom",
++      isFatal: false
++    )
++
++    let attributes = try! #require(report.toLogRecord().attributes?.value as? [String: Any])
++    #expect(attributes.keys.contains("expo.error.code") == false)
++  }
++
+   @Test
+   func `tags a user-reported error with the reportedByUser source at error severity`() {
+     let report = ErrorReport(
+diff --git a/src/types.ts b/src/types.ts
+index e7027d80cc36102b4cf1dfd04cb19a21d5edaf2c..2d1f207e037a58cb9e0f02bda1cd137ba8227f8b 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -687,6 +687,12 @@ export interface ExpoAppMetricsModuleType {
+      * error boundary. Recorded as the `expo.error.component_stack` attribute.
+      */
+     componentStack?: string;
++    /**
++     * A stable code that identifies the kind of error, such as `UpdateFailedToLoad`. Recorded as the
++     * `expo.error.code` attribute, which EAS Observe shows, filters on and adds to the error's
++     * fingerprint.
++     */
++    code?: string;
+     isFatal: boolean;
+   }): void;
+ 

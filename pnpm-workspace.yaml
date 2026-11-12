@@ -8,3 +8,8 @@ minimumReleaseAgeExclude:
   - expo-dev-client@58.0.20
   - expo-dev-launcher@58.0.20
 nodeLinker: hoisted
+patchedDependencies:
+  expo-app-metrics@58.0.15: patches/expo-app-metrics@58.0.15.patch
+  expo-observe@58.0.19: patches/expo-observe@58.0.19.patch
+  expo-updates-interface@58.0.1: patches/expo-updates-interface@58.0.1.patch
+  expo-updates@58.0.22: patches/expo-updates@58.0.22.patch

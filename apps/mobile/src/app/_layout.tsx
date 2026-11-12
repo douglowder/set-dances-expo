@@ -1,6 +1,8 @@
 import TVLayout from '@/layouts/tv';
 import PhoneLayout from '@/layouts/phone';
 import { Observe, ObserveRoot } from 'expo-observe';
+// The expo-updates Observe integration registers when the app imports expo-updates.
+import 'expo-updates';
 import { Platform } from 'react-native';
 import { crashIfRequested } from '../crashTest';
 

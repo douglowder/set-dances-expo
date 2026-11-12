@@ -1,0 +1,2848 @@
+diff --git a/android/src/main/java/expo/modules/observe/ObservabilityManager.kt b/android/src/main/java/expo/modules/observe/ObservabilityManager.kt
+index c6c4f6e81a51173fbb07b304ef57cfb0d452a175..6be6766f08a714638dac7c74662f679d61dddeee 100644
+--- a/android/src/main/java/expo/modules/observe/ObservabilityManager.kt
++++ b/android/src/main/java/expo/modules/observe/ObservabilityManager.kt
+@@ -136,6 +136,7 @@ class BaseObservabilityManager(
+ 
+     repairMetricCursorIfStale(context, sessionManager)
+     val config = ObservePreferences.getConfig(context)
++    val ignoredMetrics = config?.ignoredMetrics?.toSet() ?: emptySet()
+     if (!shouldDispatch(config, config?.sampleRate)) {
+       val maxId = sessionManager.getMaxMetricId() ?: -1
+       if (ObservePreferences.getLastDispatchedMetricId(context) != maxId) {
+@@ -154,7 +155,9 @@ class BaseObservabilityManager(
+       }
+ 
+       val highestId = metrics.last().id
+-      val metricsBySessionId = metrics.groupBy { it.sessionId }
++      val metricsBySessionId = metrics
++        .filterNot { exportedMetricName(it.category, it.name) in ignoredMetrics }
++        .groupBy { it.sessionId }
+       val sessions = sessionManager.getSessions(metricsBySessionId.keys).associateBy { it.id }
+       val events = metricsBySessionId.mapNotNull { (sessionId, sessionMetrics) ->
+         sessions[sessionId]?.let { session ->
+@@ -216,6 +219,7 @@ class BaseObservabilityManager(
+ 
+     repairLogCursorIfStale(context, sessionManager)
+     val config = ObservePreferences.getConfig(context)
++    val ignoredEvents = config?.ignoredEvents?.toSet() ?: emptySet()
+     // Installations in-sample for `sampleRate` send all logs. Errors use the higher of the two rates.
+     val dispatchLogsAndErrors = shouldDispatch(config, config?.sampleRate)
+     val dispatchErrors = shouldDispatch(config, config?.errorSampleRate ?: config?.sampleRate)
+@@ -241,7 +245,7 @@ class BaseObservabilityManager(
+         logs
+       } else {
+         logs.filter { it.name in ERROR_LOG_NAMES }
+-      }
++      }.filterNot { it.name in ignoredEvents }
+       val logsBySessionId = sampledLogs.groupBy { it.sessionId }
+       val sessions = sessionManager.getSessions(logsBySessionId.keys).associateBy { it.id }
+       val events = logsBySessionId.mapNotNull { (sessionId, sessionLogs) ->
+diff --git a/android/src/main/java/expo/modules/observe/ObserveModule.kt b/android/src/main/java/expo/modules/observe/ObserveModule.kt
+index f6fd70eb1f6492a85287c3957b5fcb93f6a34f62..9195121c6428bd222d25f23af4c7e646d5b6ad4f 100644
+--- a/android/src/main/java/expo/modules/observe/ObserveModule.kt
++++ b/android/src/main/java/expo/modules/observe/ObserveModule.kt
+@@ -20,6 +20,8 @@ class Config(
+   @Field val dispatchInDebug: Boolean? = null,
+   @Field val sampleRate: Double? = null,
+   @Field val errorSampleRate: Double? = null,
++  @Field val ignoredMetrics: List<String> = emptyList(),
++  @Field val ignoredEvents: List<String> = emptyList(),
+   @Field val integrations: Map<String, Any?>? = null
+ ) : Record
+ 
+@@ -77,7 +79,9 @@ class ObserveModule : Module() {
+             dispatchingEnabled = config.dispatchingEnabled,
+             dispatchInDebug = config.dispatchInDebug,
+             sampleRate = config.sampleRate,
+-            errorSampleRate = config.errorSampleRate
++            errorSampleRate = config.errorSampleRate,
++            ignoredMetrics = config.ignoredMetrics,
++            ignoredEvents = config.ignoredEvents
+           )
+         )
+         // Environment falls back to the bundle default (set on JS package import) so an
+@@ -95,6 +99,14 @@ class ObserveModule : Module() {
+         lastIntegrations
+       }
+ 
++      AsyncFunction("getIntegrationValue") { integration: String, key: String ->
++        ObservePreferences.getIntegrationValue(context, integration, key)
++      }
++
++      AsyncFunction("setIntegrationValue") { integration: String, key: String, value: String? ->
++        ObservePreferences.setIntegrationValue(context, integration, key, value)
++      }
++
+       Function("setBundleDefaults") { defaults: BundleDefaults ->
+         // Empty environment means JS bypassed both `process.env.NODE_ENV` and the
+         // `?? 'production'` fallback. Refuse rather than persist an empty string,
+diff --git a/android/src/main/java/expo/modules/observe/ObservePreferences.kt b/android/src/main/java/expo/modules/observe/ObservePreferences.kt
+index 20124ea6c128d38b8e0daaabd55ecd63cf813e9a..8cbc3451f1e352a0bf5bc56111a58a63006485df 100644
+--- a/android/src/main/java/expo/modules/observe/ObservePreferences.kt
++++ b/android/src/main/java/expo/modules/observe/ObservePreferences.kt
+@@ -19,7 +19,9 @@ data class PersistedConfig(
+   val dispatchingEnabled: Boolean? = null,
+   val dispatchInDebug: Boolean? = null,
+   val sampleRate: Double? = null,
+-  val errorSampleRate: Double? = null
++  val errorSampleRate: Double? = null,
++  val ignoredMetrics: List<String> = emptyList(),
++  val ignoredEvents: List<String> = emptyList()
+ )
+ 
+ /**
+@@ -77,4 +79,24 @@ object ObservePreferences {
+       putLong(KEY_LAST_DISPATCHED_LOG_ID, id)
+     }
+   }
++
++  /**
++   * A string that a library integration stores, under a key that starts with the integration's
++   * name. Setting `null` removes it.
++   */
++  fun getIntegrationValue(context: Context, integration: String, key: String): String? =
++    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
++      .getString(integrationKey(integration, key), null)
++
++  fun setIntegrationValue(context: Context, integration: String, key: String, value: String?) {
++    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit(commit = true) {
++      if (value == null) {
++        remove(integrationKey(integration, key))
++      } else {
++        putString(integrationKey(integration, key), value)
++      }
++    }
++  }
++
++  private fun integrationKey(integration: String, key: String) = "integration.$integration.$key"
+ }
+diff --git a/android/src/main/java/expo/modules/observe/OpenTelemetry.kt b/android/src/main/java/expo/modules/observe/OpenTelemetry.kt
+index ec87dd3b109af769bf59f018b8b06d847f14bc0e..a7f2432d9ce79a766177c3c60d2ea0cca563fdcc 100644
+--- a/android/src/main/java/expo/modules/observe/OpenTelemetry.kt
++++ b/android/src/main/java/expo/modules/observe/OpenTelemetry.kt
+@@ -258,7 +258,7 @@ data class OTServiceResponse(
+  */
+ internal const val SEMCONV_SCHEMA_URL = "https://opentelemetry.io/schemas/1.27.0"
+ 
+-// This must be kept in sync with the INTERNAL_TO_OTEL map in universe
++// Keep in sync with INTERNAL_TO_OTEL in universe and `ObserveMetricName` in `src/types.ts`:
+ // https://github.com/expo/universe/blob/main/server/www/src/middleware/easObserveRoutes.ts#L209
+ private val metricNameMap = mapOf(
+   // App startup
+@@ -279,9 +279,13 @@ private val metricNameMap = mapOf(
+   // Navigation
+   (MetricCategory.Navigation.categoryName to "cold_ttr") to "expo.navigation.cold_ttr",
+   (MetricCategory.Navigation.categoryName to "warm_ttr") to "expo.navigation.warm_ttr",
+-  (MetricCategory.Navigation.categoryName to "tti") to "expo.navigation.tti"
++  (MetricCategory.Navigation.categoryName to "tti") to "expo.navigation.tti",
++  (MetricCategory.Navigation.categoryName to "tbt") to "expo.navigation.tbt"
+ )
+ 
++internal fun exportedMetricName(category: String, name: String): String =
++  metricNameMap[category to name] ?: "expo.unknown.$name"
++
+ fun EASMetric.toOTMetric(): OTMetric {
+   val attributes = mutableListOf(
+     OTAttribute.of(key = "session.id", rawValue = sessionId)
+@@ -298,7 +302,7 @@ fun EASMetric.toOTMetric(): OTMetric {
+ 
+   return OTMetric(
+     unit = "s",
+-    name = metricNameMap[category to name] ?: "expo.unknown.$name",
++    name = exportedMetricName(category, name),
+     gauge = OTGauge(
+       dataPoints = listOf(
+         OTDataPoint(
+diff --git a/build/index.d.ts b/build/index.d.ts
+index 774c0e6d385a9a6750c6873ff30900de09e97f83..c41b5a0f4a2302b6464da44ca7f3a697e3e05de3 100644
+--- a/build/index.d.ts
++++ b/build/index.d.ts
+@@ -12,5 +12,6 @@ export { ObserveRoot } from './ObserveRoot';
+ export { Observe };
+ /** @deprecated Import the named `Observe` export instead. */
+ export default Observe;
+-export type { ObserveAttribute, ObserveAttributes, ObserveConfig, ObserveIntegrationsConfig, ObserveModule, ObserveModuleEvents, ObserveNavigationIntegrationConfig, ObserveNetworkTracesConfig, ObserveReanimatedIntegrationConfig, } from './types';
++export type { ObserveAttribute, ObserveAttributes, ObserveConfig, ObserveEventName, ObserveExpoUpdatesIntegrationConfig, ObserveExpoUpdatesLogEntry, ObserveExpoUpdatesLogEntryCode, ObserveIntegration, ObserveIntegrationErrorReport, ObserveIntegrationFilterConfig, ObserveIntegrationRegistry, ObserveIntegrationReporter, ObserveIntegrationReportOptions, ObserveIntegrationStorage, ObserveIntegrationWarningReport, ObserveIntegrationsConfig, ObserveModule, ObserveModuleEvents, ObserveMetricName, ObserveNavigationIntegrationConfig, ObserveNetworkTracesConfig, ObserveReanimatedIntegrationConfig, } from './types';
++export { OBSERVE_INTEGRATION_REGISTRY_KEY, registerObserveIntegration, } from './integrations/registry';
+ export { useObserve } from './useObserve';
+diff --git a/build/index.js b/build/index.js
+index b3b833725fba4f1f3aea489b683b2a1f844c8536..4689f913d72f7a30c098f9f6a90f7878271ebe58 100644
+--- a/build/index.js
++++ b/build/index.js
+@@ -11,6 +11,7 @@ Observe.setBundleDefaults({
+ });
+ export { Observe };
+ /** @deprecated Import the named `Observe` export instead. */ export default Observe;
++export { OBSERVE_INTEGRATION_REGISTRY_KEY, registerObserveIntegration } from './integrations/registry';
+ export { useObserve } from './useObserve';
+ 
+ //# sourceMappingURL=index.js.map
+diff --git a/build/index.js.map b/build/index.js.map
+index 1da2369fa8b12e1ab9b6a592b801650b1c05710e..aa1f8d06cc51eca3e5e58342e55922b13d6e2f07 100644
+--- a/build/index.js.map
++++ b/build/index.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["index.ts"],"sourcesContent":[null],"names":["Observe","default","AppMetrics","ObserveErrorBoundary","ObserveInteractiveMarker","ObserveRoot","setBundleDefaults","environment","process","env","NODE_ENV","isJsDev","__DEV__","useObserve"],"mappings":"AAAA,OAAOA,aAAa,WAAW;AAE/B;;CAEC,GACD,SAASC,WAAWC,UAAU,QAAQ,mBAAmB;AAiBzD,SAASC,oBAAoB,QAAQ,yBAAyB;AAK9D,SAASC,wBAAwB,QAAQ,6BAA6B;AAEtE,SAASC,WAAW,QAAQ,gBAAgB;AAE5CL,QAAQM,iBAAiB,CAAC;IACxBC,aAAaC,QAAQC,GAAG,CAACC,QAAQ,IAAI;IACrCC,SAAS,CAAC,CAACC;AACb;AAEA,SAASZ,OAAO,GAAG;AAEnB,2DAA2D,GAC3D,eAAeA,QAAQ;AAavB,SAASa,UAAU,QAAQ,eAAe"}
+\ No newline at end of file
++{"version":3,"sources":["index.ts"],"sourcesContent":[null],"names":["Observe","default","AppMetrics","ObserveErrorBoundary","ObserveInteractiveMarker","ObserveRoot","setBundleDefaults","environment","process","env","NODE_ENV","isJsDev","__DEV__","OBSERVE_INTEGRATION_REGISTRY_KEY","registerObserveIntegration","useObserve"],"mappings":"AAAA,OAAOA,aAAa,WAAW;AAE/B;;CAEC,GACD,SAASC,WAAWC,UAAU,QAAQ,mBAAmB;AAiBzD,SAASC,oBAAoB,QAAQ,yBAAyB;AAK9D,SAASC,wBAAwB,QAAQ,6BAA6B;AAEtE,SAASC,WAAW,QAAQ,gBAAgB;AAE5CL,QAAQM,iBAAiB,CAAC;IACxBC,aAAaC,QAAQC,GAAG,CAACC,QAAQ,IAAI;IACrCC,SAAS,CAAC,CAACC;AACb;AAEA,SAASZ,OAAO,GAAG;AAEnB,2DAA2D,GAC3D,eAAeA,QAAQ;AA0BvB,SACEa,gCAAgC,EAChCC,0BAA0B,QACrB,0BAA0B;AACjC,SAASC,UAAU,QAAQ,eAAe"}
+\ No newline at end of file
+diff --git a/build/integrations/expo-router/init.js b/build/integrations/expo-router/init.js
+index 0489f4f597b4d6021dbec674423c68b507a98a22..d88c214f6afd67afc14c15e1a00f1d3a692c4e94 100644
+--- a/build/integrations/expo-router/init.js
++++ b/build/integrations/expo-router/init.js
+@@ -1,5 +1,6 @@
+ import AppMetrics from 'expo-app-metrics';
+-import { getNavigationMetricParams } from '../navigationConfig';
++import { getNavigationMetricParams, isTotalBlockingTimeEnabled } from '../navigationConfig';
++import { createNavigationBlockingTime } from '../shared/navigation/blockingTime';
+ import { emitTTI } from './emitTTI';
+ import { buildRoutePattern } from './routeName';
+ import { optionalRouter } from './router';
+@@ -19,6 +20,7 @@ export function initRouterIntegration(config) {
+ }
+ export function initListeners(storage, PerformanceObserver) {
+     const appLaunchTime = performance.now();
++    const blockingTime = isTotalBlockingTimeEnabled(routerIntegrationConfig) ? createNavigationBlockingTime((metric)=>AppMetrics.getMainSession().addMetric(metric)) : undefined;
+     const observer = new PerformanceObserver((list)=>{
+         for (const performanceEntry of list.getEntries()){
+             // Marks with the names handled below always have the matching `detail`.
+@@ -40,10 +42,13 @@ export function initListeners(storage, PerformanceObserver) {
+                         // PRELOAD comes from router.prefetch() — a route warm-up, not a user
+                         // navigation — so it must not become a TTR start.
+                         if (entry.detail.actionType === 'PRELOAD') break;
++                        const startTime = enqueueTime ?? entry.startTime;
+                         storage.pendingActions.push({
+                             actionType: entry.detail.actionType,
+-                            startTime: enqueueTime ?? entry.startTime
++                            startTime
+                         });
++                        // Navigations before the first screen is focused are part of app launch.
++                        if (storage.hasRecordedInitialTtr) blockingTime?.start(startTime);
+                         break;
+                     }
+                 case 'expo-router:page-preloaded':
+@@ -68,7 +73,8 @@ export function initListeners(storage, PerformanceObserver) {
+         // sees the pre-focus state of this screen. A pending interactive means
+         // `markInteractive` ran before this focus landed.
+         const existingFocusedScreenTimes = storage.screenTimes[e.screenId];
+-        const hasPendingInteractive = existingFocusedScreenTimes?.lastInteractiveCall != null && existingFocusedScreenTimes?.dispatchTime == null;
++        const isFirstFocus = existingFocusedScreenTimes?.dispatchTime == null;
++        const hasPendingInteractive = isFirstFocus && existingFocusedScreenTimes?.lastInteractiveCall != null;
+         const isInitial = !storage.renderedScreensIds.has(e.screenId);
+         storage.renderedScreensIds.add(e.screenId);
+         const name = isInitial ? 'cold_ttr' : 'warm_ttr';
+@@ -119,6 +125,15 @@ export function initListeners(storage, PerformanceObserver) {
+                 ...navigationParams
+             }
+         });
++        if (!isAppLaunch && isFirstFocus) {
++            blockingTime?.setMetric({
++                timestamp,
++                category: 'navigation',
++                name: 'tbt',
++                routeName: routePattern,
++                params: navigationParams
++            }, now);
++        }
+         if (hasPendingInteractive) {
+             await emitTTI({
+                 session: mainSession,
+@@ -132,7 +147,10 @@ export function initListeners(storage, PerformanceObserver) {
+             });
+         }
+     }
+-    return ()=>observer.disconnect();
++    return ()=>{
++        observer.disconnect();
++        blockingTime?.dispose();
++    };
+ }
+ 
+ //# sourceMappingURL=init.js.map
+diff --git a/build/integrations/expo-router/init.js.map b/build/integrations/expo-router/init.js.map
+index 1cb22bb206eb41dbe09ae67b146fe20fd4c574ff..88fa3ca4b8a1338411295b1702d2ef2249db6337 100644
+--- a/build/integrations/expo-router/init.js.map
++++ b/build/integrations/expo-router/init.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["integrations/expo-router/init.ts"],"sourcesContent":[null],"names":["AppMetrics","getNavigationMetricParams","emitTTI","buildRoutePattern","optionalRouter","MAX_ENQUEUE_TIMES","initialized","routerIntegrationConfig","isInitialized","getRouterIntegrationConfig","initRouterIntegration","config","unstable_enablePerformanceIntegration","initListeners","storage","PerformanceObserver","appLaunchTime","performance","now","observer","list","performanceEntry","getEntries","entry","name","enqueueTimes","set","detail","actionId","startTime","size","delete","keys","next","value","enqueueTime","undefined","get","actionType","pendingActions","push","renderedScreensIds","add","screenId","onPageFocused","observe","type","e","timestamp","Date","toISOString","existingFocusedScreenTimes","screenTimes","hasPendingInteractive","lastInteractiveCall","dispatchTime","isInitial","has","routePattern","segments","isAppLaunch","hasRecordedInitialTtr","last","length","ttrSeconds","interactiveScreensIds","mainSession","getMainSession","navigationParams","params","pathname","addMetric","category","routeName","session","routeParams","url","disconnect"],"mappings":"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"}
+\ No newline at end of file
++{"version":3,"sources":["integrations/expo-router/init.ts"],"sourcesContent":[null],"names":["AppMetrics","getNavigationMetricParams","isTotalBlockingTimeEnabled","createNavigationBlockingTime","emitTTI","buildRoutePattern","optionalRouter","MAX_ENQUEUE_TIMES","initialized","routerIntegrationConfig","isInitialized","getRouterIntegrationConfig","initRouterIntegration","config","unstable_enablePerformanceIntegration","initListeners","storage","PerformanceObserver","appLaunchTime","performance","now","blockingTime","metric","getMainSession","addMetric","undefined","observer","list","performanceEntry","getEntries","entry","name","enqueueTimes","set","detail","actionId","startTime","size","delete","keys","next","value","enqueueTime","get","actionType","pendingActions","push","hasRecordedInitialTtr","start","renderedScreensIds","add","screenId","onPageFocused","observe","type","e","timestamp","Date","toISOString","existingFocusedScreenTimes","screenTimes","isFirstFocus","dispatchTime","hasPendingInteractive","lastInteractiveCall","isInitial","has","routePattern","segments","isAppLaunch","last","length","ttrSeconds","interactiveScreensIds","mainSession","navigationParams","params","pathname","category","routeName","setMetric","session","routeParams","url","disconnect","dispose"],"mappings":"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"}
+\ No newline at end of file
+diff --git a/build/integrations/navigationConfig.d.ts b/build/integrations/navigationConfig.d.ts
+index 8809b627af2f89793c87115fcd6810abafb2e30b..b6a4b2c9c35d018aa47ff1407145eab349b7df41 100644
+--- a/build/integrations/navigationConfig.d.ts
++++ b/build/integrations/navigationConfig.d.ts
+@@ -13,6 +13,7 @@ type NavigationRouteParams = {
+     routeParams: Record<string, unknown>;
+     urlHidden?: true;
+ };
++export declare function isTotalBlockingTimeEnabled(config: NavigationIntegrationConfig): boolean;
+ export declare function getNavigationRouteParams(config: NavigationIntegrationConfig, params: object | undefined): NavigationRouteParams;
+ export declare function getNavigationMetricParams(config: NavigationIntegrationConfig, routeParams: object | undefined, url: string | undefined): NavigationMetricParams;
+ export {};
+diff --git a/build/integrations/navigationConfig.js b/build/integrations/navigationConfig.js
+index 88fdcd89815e04393c0e4c93063ef97e888fcd70..2e6499c8e284dc3e59fd290845cd678d45f5727a 100644
+--- a/build/integrations/navigationConfig.js
++++ b/build/integrations/navigationConfig.js
+@@ -4,6 +4,9 @@ function getFilteredParamKeys(config) {
+     const keys = new Set(filteredParams.filter((key)=>typeof key === 'string'));
+     return keys.size > 0 ? keys : null;
+ }
++export function isTotalBlockingTimeEnabled(config) {
++    return !!config && typeof config === 'object' && config.experimental_totalBlockingTime === true;
++}
+ function prepareNavigationRouteParams(config, params) {
+     const filteredKeys = getFilteredParamKeys(config);
+     let urlHidden = false;
+diff --git a/build/integrations/navigationConfig.js.map b/build/integrations/navigationConfig.js.map
+index afb42938eaab3d1db263566973c2350521a5cd5e..e799efcd54c151bd73988db3b4109325bfe5e785 100644
+--- a/build/integrations/navigationConfig.js.map
++++ b/build/integrations/navigationConfig.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["integrations/navigationConfig.ts"],"sourcesContent":[null],"names":["getFilteredParamKeys","config","filteredParams","undefined","Array","isArray","keys","Set","filter","key","size","prepareNavigationRouteParams","params","filteredKeys","urlHidden","routeParams","Object","fromEntries","entries","keep","has","map","value","serialized","JSON","stringify","parse","entry","getNavigationRouteParams","navigationParams","getNavigationMetricParams","url"],"mappings":"AAWA,SAASA,qBAAqBC,MAAmC;IAC/D,MAAMC,iBAAiBD,UAAU,OAAOA,WAAW,WAAWA,OAAOC,cAAc,GAAGC;IACtF,IAAI,CAACC,MAAMC,OAAO,CAACH,iBAAiB,OAAO;IAE3C,MAAMI,OAAO,IAAIC,IAAIL,eAAeM,MAAM,CAAC,CAACC,MAAuB,OAAOA,QAAQ;IAClF,OAAOH,KAAKI,IAAI,GAAG,IAAIJ,OAAO;AAChC;AAEA,SAASK,6BACPV,MAAmC,EACnCW,MAA0B;IAE1B,MAAMC,eAAeb,qBAAqBC;IAC1C,IAAIa,YAAY;IAChB,MAAMC,cAAcC,OAAOC,WAAW,CACpCD,OAAOE,OAAO,CAACN,UAAU,CAAC,GACvBJ,MAAM,CAAC,CAAC,CAACC,IAAI;QACZ,MAAMU,OAAO,CAACN,cAAcO,IAAIX;QAChCK,cAAc,CAACK;QACf,OAAOA;IACT,GACCE,GAAG,CAAC,CAAC,CAACZ,KAAKa,MAAM;QAChB,IAAI;YACF,IAAIA,UAAUnB,WAAW,OAAO;YAEhC,MAAMoB,aAAaC,KAAKC,SAAS,CAACH;YAClC,IAAIC,eAAepB,WAAW,OAAO;YAErC,OAAO;gBAACM;gBAAKe,KAAKE,KAAK,CAACH;aAAY;QACtC,EAAE,OAAM;YACN,gFAAgF;YAChF,OAAO;QACT;IACF,GACCf,MAAM,CAAC,CAACmB,QAA+CA,SAAS;IAGrE,OAAO;QACLZ;QACA,GAAID,YAAY;YAAEA,WAAW;QAAc,IAAI,CAAC,CAAC;IACnD;AACF;AAEA,OAAO,SAASc,yBACd3B,MAAmC,EACnCW,MAA0B;IAE1B,MAAMiB,mBAAmBlB,6BAA6BV,QAAQW;IAC9D,OAAOiB,iBAAiBf,SAAS,GAC7B;QAAEC,aAAac,iBAAiBd,WAAW;QAAED,WAAW;IAAK,IAC7D;QAAEC,aAAac,iBAAiBd,WAAW;IAAC;AAClD;AAEA,OAAO,SAASe,0BACd7B,MAAmC,EACnCc,WAA+B,EAC/BgB,GAAuB;IAEvB,MAAMF,mBAAmBD,yBAAyB3B,QAAQc;IAE1D,OAAOc,iBAAiBf,SAAS,GAC7B;QAAEC,aAAac,iBAAiBd,WAAW;QAAED,WAAW;IAAK,IAC7D;QAAEC,aAAac,iBAAiBd,WAAW;QAAEgB;IAAI;AACvD"}
+\ No newline at end of file
++{"version":3,"sources":["integrations/navigationConfig.ts"],"sourcesContent":[null],"names":["getFilteredParamKeys","config","filteredParams","undefined","Array","isArray","keys","Set","filter","key","size","isTotalBlockingTimeEnabled","experimental_totalBlockingTime","prepareNavigationRouteParams","params","filteredKeys","urlHidden","routeParams","Object","fromEntries","entries","keep","has","map","value","serialized","JSON","stringify","parse","entry","getNavigationRouteParams","navigationParams","getNavigationMetricParams","url"],"mappings":"AAWA,SAASA,qBAAqBC,MAAmC;IAC/D,MAAMC,iBAAiBD,UAAU,OAAOA,WAAW,WAAWA,OAAOC,cAAc,GAAGC;IACtF,IAAI,CAACC,MAAMC,OAAO,CAACH,iBAAiB,OAAO;IAE3C,MAAMI,OAAO,IAAIC,IAAIL,eAAeM,MAAM,CAAC,CAACC,MAAuB,OAAOA,QAAQ;IAClF,OAAOH,KAAKI,IAAI,GAAG,IAAIJ,OAAO;AAChC;AAEA,OAAO,SAASK,2BAA2BV,MAAmC;IAC5E,OAAO,CAAC,CAACA,UAAU,OAAOA,WAAW,YAAYA,OAAOW,8BAA8B,KAAK;AAC7F;AAEA,SAASC,6BACPZ,MAAmC,EACnCa,MAA0B;IAE1B,MAAMC,eAAef,qBAAqBC;IAC1C,IAAIe,YAAY;IAChB,MAAMC,cAAcC,OAAOC,WAAW,CACpCD,OAAOE,OAAO,CAACN,UAAU,CAAC,GACvBN,MAAM,CAAC,CAAC,CAACC,IAAI;QACZ,MAAMY,OAAO,CAACN,cAAcO,IAAIb;QAChCO,cAAc,CAACK;QACf,OAAOA;IACT,GACCE,GAAG,CAAC,CAAC,CAACd,KAAKe,MAAM;QAChB,IAAI;YACF,IAAIA,UAAUrB,WAAW,OAAO;YAEhC,MAAMsB,aAAaC,KAAKC,SAAS,CAACH;YAClC,IAAIC,eAAetB,WAAW,OAAO;YAErC,OAAO;gBAACM;gBAAKiB,KAAKE,KAAK,CAACH;aAAY;QACtC,EAAE,OAAM;YACN,gFAAgF;YAChF,OAAO;QACT;IACF,GACCjB,MAAM,CAAC,CAACqB,QAA+CA,SAAS;IAGrE,OAAO;QACLZ;QACA,GAAID,YAAY;YAAEA,WAAW;QAAc,IAAI,CAAC,CAAC;IACnD;AACF;AAEA,OAAO,SAASc,yBACd7B,MAAmC,EACnCa,MAA0B;IAE1B,MAAMiB,mBAAmBlB,6BAA6BZ,QAAQa;IAC9D,OAAOiB,iBAAiBf,SAAS,GAC7B;QAAEC,aAAac,iBAAiBd,WAAW;QAAED,WAAW;IAAK,IAC7D;QAAEC,aAAac,iBAAiBd,WAAW;IAAC;AAClD;AAEA,OAAO,SAASe,0BACd/B,MAAmC,EACnCgB,WAA+B,EAC/BgB,GAAuB;IAEvB,MAAMF,mBAAmBD,yBAAyB7B,QAAQgB;IAE1D,OAAOc,iBAAiBf,SAAS,GAC7B;QAAEC,aAAac,iBAAiBd,WAAW;QAAED,WAAW;IAAK,IAC7D;QAAEC,aAAac,iBAAiBd,WAAW;QAAEgB;IAAI;AACvD"}
+\ No newline at end of file
+diff --git a/build/integrations/react-navigation/ObserveNavigationProvider.js b/build/integrations/react-navigation/ObserveNavigationProvider.js
+index ccd14369aca109d60a6b23d1fc95577dbe6caa16..24479620a36183bcae36dff65314cfe97291f2b1 100644
+--- a/build/integrations/react-navigation/ObserveNavigationProvider.js
++++ b/build/integrations/react-navigation/ObserveNavigationProvider.js
+@@ -1,10 +1,13 @@
+ import { jsx as _jsx } from "react/jsx-runtime";
++import AppMetrics from 'expo-app-metrics';
+ import { useEffect, useMemo, useState } from 'react';
+ import { useAssertValueDoesNotChange } from '../../useAssertValueDoesNotChange';
++import { isTotalBlockingTimeEnabled } from '../navigationConfig';
++import { createNavigationBlockingTime } from '../shared/navigation/blockingTime';
+ import { attachActionListener } from './actionListener';
+ import { ObserveReactNavigationIntegrationContext } from './context';
+ import { createStateChangeHandler } from './handleStateChange';
+-import { isInitialized } from './init';
++import { getReactNavigationIntegrationConfig, isInitialized } from './init';
+ import { optionalReactNavigation } from './reactNavigation';
+ import { createReactNavigationIntegrationStorage } from './storage';
+ /**
+@@ -37,15 +40,16 @@ import { createReactNavigationIntegrationStorage } from './storage';
+     useAssertValueDoesNotChange(initialized, `[expo-observe] React Navigation integration was toggled after ObserveNavigationProvider mounted. Call \`Observe.configure({ integrations: { 'react-navigation': true } })\` before rendering ObserveNavigationProvider.`);
+     useEffect(()=>{
+         if (!internal) return;
++        const blockingTime = isTotalBlockingTimeEnabled(getReactNavigationIntegrationConfig()) ? createNavigationBlockingTime((metric)=>AppMetrics.getMainSession().addMetric(metric)) : undefined;
+         // The `state` event payload can be partial on the initial commit, so
+         // always read the hydrated state from the ref.
+         const processRootState = ()=>{
+             const rootState = navigationRef.getRootState();
+             if (rootState) {
+-                internal.handleStateChange(rootState);
++                internal.handleStateChange(rootState, blockingTime);
+             }
+         };
+-        const detachActionListener = attachActionListener(navigationRef, internal.storage);
++        const detachActionListener = attachActionListener(navigationRef, internal.storage, blockingTime);
+         // Unlike the `onStateChange` prop, the `state` ref event also fires for
+         // the initial commit — but child effects run before parent effects, so by
+         // the time this effect subscribes, the container rendered below has
+@@ -59,6 +63,7 @@ import { createReactNavigationIntegrationStorage } from './storage';
+         return ()=>{
+             detachActionListener();
+             detachStateListener();
++            blockingTime?.dispose();
+         };
+     }, [
+         internal,
+diff --git a/build/integrations/react-navigation/ObserveNavigationProvider.js.map b/build/integrations/react-navigation/ObserveNavigationProvider.js.map
+index 904ceb57ab7ed293ad0abfb19c03d38b85920cd0..6c796c433204259711654413fcfcf9aa8c4f5ab5 100644
+--- a/build/integrations/react-navigation/ObserveNavigationProvider.js.map
++++ b/build/integrations/react-navigation/ObserveNavigationProvider.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["integrations/react-navigation/ObserveNavigationProvider.tsx"],"sourcesContent":[null],"names":["useEffect","useMemo","useState","useAssertValueDoesNotChange","attachActionListener","ObserveReactNavigationIntegrationContext","createStateChangeHandler","isInitialized","optionalReactNavigation","createReactNavigationIntegrationStorage","ObserveNavigationProvider","navigationRef","children","Error","addListener","getRootState","isReady","initialized","internal","storage","handleStateChange","performance","now","processRootState","rootState","detachActionListener","detachStateListener","contextValue","Provider","value"],"mappings":";AAAA,SAASA,SAAS,EAAEC,OAAO,EAAEC,QAAQ,QAAwB,QAAQ;AAErE,SAASC,2BAA2B,QAAQ,oCAAoC;AAChF,SAASC,oBAAoB,QAAQ,mBAAmB;AACxD,SAASC,wCAAwC,QAAQ,YAAY;AACrE,SAASC,wBAAwB,QAAQ,sBAAsB;AAC/D,SAASC,aAAa,QAAQ,SAAS;AACvC,SAASC,uBAAuB,QAAQ,oBAAoB;AAC5D,SAASC,uCAAuC,QAAQ,YAAY;AAcpE;;;;;;;;;;;CAWC,GACD,OAAO,SAASC,0BAA0B,EACxCC,aAAa,EACbC,QAAQ,EACuB;IAC/B,IAAI,CAACJ,yBAAyB;QAC5B,MAAM,IAAIK,MACR,iFACE,gFACA;IAEN;IACA,IACE,OAAOF,eAAeG,gBAAgB,cACtC,OAAOH,eAAeI,iBAAiB,cACvC,OAAOJ,eAAeK,YAAY,YAClC;QACA,MAAM,IAAIH,MACR,uFACE,wFACA,uFACA;IAEN;IAEA,MAAMI,cAAcV;IAEpB,MAAM,CAACW,SAAS,GAAGhB,SAAS;QAC1B,IAAI,CAACe,aAAa,OAAO;QACzB,MAAME,UAAUV;QAChB,OAAO;YACLU;YACAC,mBAAmBd,yBAAyBa,SAASE,YAAYC,GAAG;QACtE;IACF;IAEAnB,4BACEc,aACA,CAAC,uNAAuN,CAAC;IAG3NjB,UAAU;QACR,IAAI,CAACkB,UAAU;QAEf,qEAAqE;QACrE,+CAA+C;QAC/C,MAAMK,mBAAmB;YACvB,MAAMC,YAAYb,cAAcI,YAAY;YAC5C,IAAIS,WAAW;gBACbN,SAASE,iBAAiB,CAACI;YAC7B;QACF;QAEA,MAAMC,uBAAuBrB,qBAAqBO,eAAeO,SAASC,OAAO;QACjF,wEAAwE;QACxE,0EAA0E;QAC1E,oEAAoE;QACpE,yEAAyE;QACzE,0EAA0E;QAC1E,uEAAuE;QACvE,MAAMO,sBAAsBf,cAAcG,WAAW,CAAC,SAASS;QAC/D,IAAIZ,cAAcK,OAAO,IAAI;YAC3BO;QACF;QAEA,OAAO;YACLE;YACAC;QACF;IACF,GAAG;QAACR;QAAUP;KAAc;IAE5B,MAAMgB,eAAe1B,QAAQ,IAAOiB,WAAW;YAAEC,SAASD,SAASC,OAAO;QAAC,IAAI,MAAO;QAACD;KAAS;IAEhG,qBACE,KAACb,yCAAyCuB,QAAQ;QAACC,OAAOF;kBACvDf;;AAGP"}
+\ No newline at end of file
++{"version":3,"sources":["integrations/react-navigation/ObserveNavigationProvider.tsx"],"sourcesContent":[null],"names":["AppMetrics","useEffect","useMemo","useState","useAssertValueDoesNotChange","isTotalBlockingTimeEnabled","createNavigationBlockingTime","attachActionListener","ObserveReactNavigationIntegrationContext","createStateChangeHandler","getReactNavigationIntegrationConfig","isInitialized","optionalReactNavigation","createReactNavigationIntegrationStorage","ObserveNavigationProvider","navigationRef","children","Error","addListener","getRootState","isReady","initialized","internal","storage","handleStateChange","performance","now","blockingTime","metric","getMainSession","addMetric","undefined","processRootState","rootState","detachActionListener","detachStateListener","dispose","contextValue","Provider","value"],"mappings":";AAAA,OAAOA,gBAAgB,mBAAmB;AAC1C,SAASC,SAAS,EAAEC,OAAO,EAAEC,QAAQ,QAAwB,QAAQ;AAErE,SAASC,2BAA2B,QAAQ,oCAAoC;AAChF,SAASC,0BAA0B,QAAQ,sBAAsB;AACjE,SAASC,4BAA4B,QAAQ,oCAAoC;AACjF,SAASC,oBAAoB,QAAQ,mBAAmB;AACxD,SAASC,wCAAwC,QAAQ,YAAY;AACrE,SAASC,wBAAwB,QAAQ,sBAAsB;AAC/D,SAASC,mCAAmC,EAAEC,aAAa,QAAQ,SAAS;AAC5E,SAASC,uBAAuB,QAAQ,oBAAoB;AAC5D,SAASC,uCAAuC,QAAQ,YAAY;AAcpE;;;;;;;;;;;CAWC,GACD,OAAO,SAASC,0BAA0B,EACxCC,aAAa,EACbC,QAAQ,EACuB;IAC/B,IAAI,CAACJ,yBAAyB;QAC5B,MAAM,IAAIK,MACR,iFACE,gFACA;IAEN;IACA,IACE,OAAOF,eAAeG,gBAAgB,cACtC,OAAOH,eAAeI,iBAAiB,cACvC,OAAOJ,eAAeK,YAAY,YAClC;QACA,MAAM,IAAIH,MACR,uFACE,wFACA,uFACA;IAEN;IAEA,MAAMI,cAAcV;IAEpB,MAAM,CAACW,SAAS,GAAGnB,SAAS;QAC1B,IAAI,CAACkB,aAAa,OAAO;QACzB,MAAME,UAAUV;QAChB,OAAO;YACLU;YACAC,mBAAmBf,yBAAyBc,SAASE,YAAYC,GAAG;QACtE;IACF;IAEAtB,4BACEiB,aACA,CAAC,uNAAuN,CAAC;IAG3NpB,UAAU;QACR,IAAI,CAACqB,UAAU;QAEf,MAAMK,eAAetB,2BAA2BK,yCAC5CJ,6BAA6B,CAACsB,SAAW5B,WAAW6B,cAAc,GAAGC,SAAS,CAACF,WAC/EG;QAEJ,qEAAqE;QACrE,+CAA+C;QAC/C,MAAMC,mBAAmB;YACvB,MAAMC,YAAYlB,cAAcI,YAAY;YAC5C,IAAIc,WAAW;gBACbX,SAASE,iBAAiB,CAACS,WAAWN;YACxC;QACF;QAEA,MAAMO,uBAAuB3B,qBAC3BQ,eACAO,SAASC,OAAO,EAChBI;QAEF,wEAAwE;QACxE,0EAA0E;QAC1E,oEAAoE;QACpE,yEAAyE;QACzE,0EAA0E;QAC1E,uEAAuE;QACvE,MAAMQ,sBAAsBpB,cAAcG,WAAW,CAAC,SAASc;QAC/D,IAAIjB,cAAcK,OAAO,IAAI;YAC3BY;QACF;QAEA,OAAO;YACLE;YACAC;YACAR,cAAcS;QAChB;IACF,GAAG;QAACd;QAAUP;KAAc;IAE5B,MAAMsB,eAAenC,QAAQ,IAAOoB,WAAW;YAAEC,SAASD,SAASC,OAAO;QAAC,IAAI,MAAO;QAACD;KAAS;IAEhG,qBACE,KAACd,yCAAyC8B,QAAQ;QAACC,OAAOF;kBACvDrB;;AAGP"}
+\ No newline at end of file
+diff --git a/build/integrations/react-navigation/actionListener.d.ts b/build/integrations/react-navigation/actionListener.d.ts
+index 952108ee0445c6a462cd741e6976a54338021e33..e99543a8f8675c47470d5841a88dcf0da6e50d01 100644
+--- a/build/integrations/react-navigation/actionListener.d.ts
++++ b/build/integrations/react-navigation/actionListener.d.ts
+@@ -1,3 +1,4 @@
++import type { NavigationBlockingTime } from '../shared/navigation/blockingTime';
+ import type { ReactNavigationIntegrationStorage } from './storage';
+ export interface NavigationRefActionListenerHandle {
+     addListener(event: '__unsafe_action__', cb: (e: {
+@@ -10,4 +11,4 @@ export interface NavigationRefActionListenerHandle {
+         };
+     }) => void): () => void;
+ }
+-export declare function attachActionListener(navigationRef: NavigationRefActionListenerHandle, storage: ReactNavigationIntegrationStorage): () => void;
++export declare function attachActionListener(navigationRef: NavigationRefActionListenerHandle, storage: ReactNavigationIntegrationStorage, blockingTime: NavigationBlockingTime): () => void;
+diff --git a/build/integrations/react-navigation/actionListener.js b/build/integrations/react-navigation/actionListener.js
+index 6257ab1ce75c1d051af8e1226f57675c430ac7f5..26cd04d1337f3abe00a21892893ed1a1f5d040a2 100644
+--- a/build/integrations/react-navigation/actionListener.js
++++ b/build/integrations/react-navigation/actionListener.js
+@@ -1,13 +1,16 @@
+-export function attachActionListener(navigationRef, storage) {
++export function attachActionListener(navigationRef, storage, blockingTime) {
+     return navigationRef.addListener('__unsafe_action__', (e)=>{
+         if (e.data.noop) return;
+         // PRELOAD comes from preload APIs (e.g. native-stack `unstable_preload`) —
+         // a warm-up, not a user navigation — so it must not seed dispatchTime.
+         if (e.data.action.type === 'PRELOAD') return;
++        const dispatchTime = performance.now();
+         storage.pendingActions.push({
+             actionType: e.data.action.type,
+-            dispatchTime: performance.now()
++            dispatchTime
+         });
++        // Navigations before the first screen is focused are part of app launch.
++        if (storage.hasRecordedInitialTtr) blockingTime?.start(dispatchTime);
+     });
+ }
+ 
+diff --git a/build/integrations/react-navigation/actionListener.js.map b/build/integrations/react-navigation/actionListener.js.map
+index 156ab5ee96cf8bf8ae15b3210385744db0f85432..0961f613e0c3bd4d38363e9af504290cdf5bdfdc 100644
+--- a/build/integrations/react-navigation/actionListener.js.map
++++ b/build/integrations/react-navigation/actionListener.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["integrations/react-navigation/actionListener.ts"],"sourcesContent":[null],"names":["attachActionListener","navigationRef","storage","addListener","e","data","noop","action","type","pendingActions","push","actionType","dispatchTime","performance","now"],"mappings":"AASA,OAAO,SAASA,qBACdC,aAAgD,EAChDC,OAA0C;IAE1C,OAAOD,cAAcE,WAAW,CAAC,qBAAqB,CAACC;QACrD,IAAIA,EAAEC,IAAI,CAACC,IAAI,EAAE;QACjB,2EAA2E;QAC3E,uEAAuE;QACvE,IAAIF,EAAEC,IAAI,CAACE,MAAM,CAACC,IAAI,KAAK,WAAW;QACtCN,QAAQO,cAAc,CAACC,IAAI,CAAC;YAC1BC,YAAYP,EAAEC,IAAI,CAACE,MAAM,CAACC,IAAI;YAC9BI,cAAcC,YAAYC,GAAG;QAC/B;IACF;AACF"}
+\ No newline at end of file
++{"version":3,"sources":["integrations/react-navigation/actionListener.ts"],"sourcesContent":[null],"names":["attachActionListener","navigationRef","storage","blockingTime","addListener","e","data","noop","action","type","dispatchTime","performance","now","pendingActions","push","actionType","hasRecordedInitialTtr","start"],"mappings":"AAUA,OAAO,SAASA,qBACdC,aAAgD,EAChDC,OAA0C,EAC1CC,YAAoC;IAEpC,OAAOF,cAAcG,WAAW,CAAC,qBAAqB,CAACC;QACrD,IAAIA,EAAEC,IAAI,CAACC,IAAI,EAAE;QACjB,2EAA2E;QAC3E,uEAAuE;QACvE,IAAIF,EAAEC,IAAI,CAACE,MAAM,CAACC,IAAI,KAAK,WAAW;QACtC,MAAMC,eAAeC,YAAYC,GAAG;QACpCV,QAAQW,cAAc,CAACC,IAAI,CAAC;YAAEC,YAAYV,EAAEC,IAAI,CAACE,MAAM,CAACC,IAAI;YAAEC;QAAa;QAC3E,yEAAyE;QACzE,IAAIR,QAAQc,qBAAqB,EAAEb,cAAcc,MAAMP;IACzD;AACF"}
+\ No newline at end of file
+diff --git a/build/integrations/react-navigation/handleStateChange.d.ts b/build/integrations/react-navigation/handleStateChange.d.ts
+index 99043232914ce4dfbc36fa97b841dd102fc99ca7..0b73637007f8ad299ddf8a603a78d4d26c124bf3 100644
+--- a/build/integrations/react-navigation/handleStateChange.d.ts
++++ b/build/integrations/react-navigation/handleStateChange.d.ts
+@@ -1,3 +1,4 @@
++import type { NavigationBlockingTime } from '../shared/navigation/blockingTime';
+ import type { ReactNavigationIntegrationStorage } from './storage';
+ import type { NavigationStateLike } from './types';
+-export declare function createStateChangeHandler(storage: ReactNavigationIntegrationStorage, appLaunchTime: number): (state: NavigationStateLike | undefined) => void;
++export declare function createStateChangeHandler(storage: ReactNavigationIntegrationStorage, appLaunchTime: number): (state: NavigationStateLike | undefined, blockingTime: NavigationBlockingTime) => void;
+diff --git a/build/integrations/react-navigation/handleStateChange.js b/build/integrations/react-navigation/handleStateChange.js
+index 372d2c27ab4f1d58353340723e774937dbfd672e..a8a3a4aa2649a5a7dfa59645ddb3e0b1d1191c95 100644
+--- a/build/integrations/react-navigation/handleStateChange.js
++++ b/build/integrations/react-navigation/handleStateChange.js
+@@ -6,7 +6,8 @@ import { getReactNavigationIntegrationConfig } from './init';
+ import { collectMountedKeys, findFocusedLeaf } from './stateTraversal';
+ export function createStateChangeHandler(storage, appLaunchTime) {
+     let previousFocusedKey = null;
+-    return async function handleStateChange(state) {
++    const focusedKeys = new Set();
++    return async function handleStateChange(state, blockingTime) {
+         if (!state) return;
+         // Snapshot clocks once so every metric written below is stamped with
+         // the moment the focus actually fired, not the moment `addMetric` happens
+@@ -46,6 +47,9 @@ export function createStateChangeHandler(storage, appLaunchTime) {
+         }
+         if (focused.key === previousFocusedKey) return;
+         previousFocusedKey = focused.key;
++        // Not derived from `dispatchTime`, which the loop above also sets on screens mounted unfocused.
++        const isFirstFocus = !focusedKeys.has(focused.key);
++        focusedKeys.add(focused.key);
+         const pathname = getPathname(state) ?? focused.route.name;
+         const navigationParams = getNavigationRouteParams(getReactNavigationIntegrationConfig(), focused.route.params ?? {});
+         const name = isInitial ? 'cold_ttr' : 'warm_ttr';
+@@ -103,6 +107,15 @@ export function createStateChangeHandler(storage, appLaunchTime) {
+                 ...navigationParams
+             }
+         });
++        if (isFirstFocus) {
++            blockingTime?.setMetric({
++                timestamp,
++                category: 'navigation',
++                name: 'tbt',
++                routeName: pathname,
++                params: navigationParams
++            }, now);
++        }
+         if (hasPendingInteractive) {
+             await emitTTI({
+                 session: mainSession,
+diff --git a/build/integrations/react-navigation/handleStateChange.js.map b/build/integrations/react-navigation/handleStateChange.js.map
+index 4970d222ee064897d116c0047d369508db6e7562..8dffbe8685cf2da9365a455839fbaec3c451c7f4 100644
+--- a/build/integrations/react-navigation/handleStateChange.js.map
++++ b/build/integrations/react-navigation/handleStateChange.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["integrations/react-navigation/handleStateChange.ts"],"sourcesContent":[null],"names":["AppMetrics","getNavigationRouteParams","emitTTI","getPathname","getReactNavigationIntegrationConfig","collectMountedKeys","findFocusedLeaf","createStateChangeHandler","storage","appLaunchTime","previousFocusedKey","handleStateChange","state","now","performance","timestamp","Date","toISOString","mounted","focused","isInitial","renderedScreensIds","has","key","existingFocusedScreenTimes","screenTimes","hasPendingInteractive","lastInteractiveCall","dispatchTime","last","pendingActions","length","isColdAppLaunch","hasRecordedInitialTtr","effectiveDispatchTime","keys","add","pathname","route","name","navigationParams","params","mainSession","getMainSession","appLaunchTtrSeconds","addMetric","category","routeName","value","isAppLaunch","session","ttrSeconds"],"mappings":"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"}
+\ No newline at end of file
++{"version":3,"sources":["integrations/react-navigation/handleStateChange.ts"],"sourcesContent":[null],"names":["AppMetrics","getNavigationRouteParams","emitTTI","getPathname","getReactNavigationIntegrationConfig","collectMountedKeys","findFocusedLeaf","createStateChangeHandler","storage","appLaunchTime","previousFocusedKey","focusedKeys","Set","handleStateChange","state","blockingTime","now","performance","timestamp","Date","toISOString","mounted","focused","isInitial","renderedScreensIds","has","key","existingFocusedScreenTimes","screenTimes","hasPendingInteractive","lastInteractiveCall","dispatchTime","last","pendingActions","length","isColdAppLaunch","hasRecordedInitialTtr","effectiveDispatchTime","keys","add","isFirstFocus","pathname","route","name","navigationParams","params","mainSession","getMainSession","appLaunchTtrSeconds","addMetric","category","routeName","value","isAppLaunch","session","ttrSeconds","setMetric"],"mappings":"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"}
+\ No newline at end of file
+diff --git abuild/integrations/registry.d.ts b/build/integrations/registry.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2311b29044f59de87e75a8d13985a501f7dcd2af
+--- /dev/null
++++ b/build/integrations/registry.d.ts
+@@ -0,0 +1,33 @@
++import type { ObserveIntegration, ObserveIntegrationRegistry, ObserveIntegrationsConfig } from '../types';
++/**
++ * The `globalThis` key of the integration registry. A library registers its integration here
++ * without importing `expo-observe`, so the library works whether or not `expo-observe` is
++ * installed, and in either load order.
++ */
++export declare const OBSERVE_INTEGRATION_REGISTRY_KEY = "__expo_observe_integrations__";
++/**
++ * Returns the shared registry, creating it when no library and no earlier `expo-observe` copy has.
++ */
++export declare function getIntegrationRegistry(): ObserveIntegrationRegistry;
++/**
++ * Registers an integration that lives in another library. The integration's `configure` runs with
++ * the original object from `Observe.configure({ integrations })`, functions included, each time
++ * `configure` enables it, and `disable` runs when a later `configure` turns it off. A library that
++ * does not depend on `expo-observe` does the same with the registry at
++ * `globalThis.__expo_observe_integrations__`: create it as `{ integrations: [] }` when it is
++ * missing, push the integration, and call `onRegister` when it is set.
++ */
++export declare function registerObserveIntegration(integration: ObserveIntegration): void;
++/**
++ * The native functions that keep each integration's strings, which are not public API.
++ */
++export type IntegrationValueStore = {
++    getIntegrationValue(integration: string, key: string): Promise<string | null>;
++    setIntegrationValue(integration: string, key: string, value: string | null): Promise<void>;
++};
++/**
++ * Passes the `integrations` object of a `configure` call to every registered library integration,
++ * and to each integration that registers later. `store` keeps the integrations' strings; without
++ * it, as on web, nothing is stored.
++ */
++export declare function configureRegisteredIntegrations(integrations: ObserveIntegrationsConfig, store?: IntegrationValueStore | null): void;
+diff --git abuild/integrations/registry.js b/build/integrations/registry.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd41fe5e9764b1dd5dd0a678f564d6d205c35b5e
+--- /dev/null
++++ b/build/integrations/registry.js
+@@ -0,0 +1,169 @@
++import AppMetrics from 'expo-app-metrics';
++import { reportCaughtError } from '../reportCaughtError';
++import { createReportLimiter } from './reportLimiter';
++/**
++ * The `globalThis` key of the integration registry. A library registers its integration here
++ * without importing `expo-observe`, so the library works whether or not `expo-observe` is
++ * installed, and in either load order.
++ */ export const OBSERVE_INTEGRATION_REGISTRY_KEY = '__expo_observe_integrations__';
++/**
++ * Returns the shared registry, creating it when no library and no earlier `expo-observe` copy has.
++ */ export function getIntegrationRegistry() {
++    const global = globalThis;
++    global[OBSERVE_INTEGRATION_REGISTRY_KEY] ??= {
++        integrations: []
++    };
++    return global[OBSERVE_INTEGRATION_REGISTRY_KEY];
++}
++/**
++ * Registers an integration that lives in another library. The integration's `configure` runs with
++ * the original object from `Observe.configure({ integrations })`, functions included, each time
++ * `configure` enables it, and `disable` runs when a later `configure` turns it off. A library that
++ * does not depend on `expo-observe` does the same with the registry at
++ * `globalThis.__expo_observe_integrations__`: create it as `{ integrations: [] }` when it is
++ * missing, push the integration, and call `onRegister` when it is set.
++ */ export function registerObserveIntegration(integration) {
++    const registry = getIntegrationRegistry();
++    registry.integrations.push(integration);
++    registry.onRegister?.(integration);
++}
++// Only one `expo-observe` copy configures the registry, so this state is per module instance.
++const active = new Map();
++let latestIntegrations = null;
++let valueStore = null;
++function createStorage(name) {
++    return {
++        async getItem (key) {
++            return valueStore ? await valueStore.getIntegrationValue(name, key) ?? null : null;
++        },
++        async setItem (key, value) {
++            await valueStore?.setIntegrationValue(name, key, value);
++        }
++    };
++}
++function filterConfigOf(config) {
++    return typeof config === 'object' && config !== null ? config : {};
++}
++function createReporter(name, getConfig) {
++    const limiters = new Map();
++    let hasWarnedAboutShouldReport = false;
++    function limiterFor(key) {
++        let limiter = limiters.get(key);
++        if (!limiter) {
++            limiter = createReportLimiter();
++            limiters.set(key, limiter);
++        }
++        return limiter;
++    }
++    function passesFilter(code, defaultValue, options) {
++        if (options?.skipFilter) {
++            return true;
++        }
++        const { ignoredCodes, shouldReport } = filterConfigOf(getConfig());
++        if (code !== undefined && ignoredCodes?.includes(code)) {
++            return false;
++        }
++        if (typeof shouldReport !== 'function') {
++            return true;
++        }
++        try {
++            return shouldReport(options && 'filterValue' in options ? options.filterValue : defaultValue);
++        } catch (error) {
++            if (!hasWarnedAboutShouldReport) {
++                hasWarnedAboutShouldReport = true;
++                console.warn(`[expo-observe] The '${name}' integration's \`shouldReport\` function threw, so the ` + 'report is sent. Fix the function so that it returns a boolean. ' + `Error: ${String(error)}`);
++            }
++            return true;
++        }
++    }
++    return {
++        storage: createStorage(name),
++        reportError (report, options) {
++            if (getConfig() === undefined || !passesFilter(report.code, report, options)) {
++                return false;
++            }
++            if (limiterFor(options?.limit ?? 'error').allow(report.message) === null) {
++                return false;
++            }
++            const error = new Error(report.message);
++            error.name = report.type;
++            error.stack = report.stack;
++            reportCaughtError(error, 'integration', report.code);
++            return true;
++        },
++        reportWarning (report, options) {
++            if (getConfig() === undefined || !passesFilter(report.code, report, options)) {
++                return false;
++            }
++            const cappedMessage = limiterFor(options?.limit ?? 'warning').allow(report.message);
++            if (cappedMessage === null) {
++                return false;
++            }
++            AppMetrics.logEvent(report.name, {
++                displayName: report.displayName,
++                body: report.message,
++                severity: 'warn',
++                // `eas observe:events` and `observe:session` show `attributes` but not `body`, so the
++                // message is copied here to stay queryable.
++                attributes: {
++                    ...report.attributes,
++                    message: cappedMessage,
++                    ...report.code !== undefined ? {
++                        code: report.code
++                    } : {}
++                }
++            });
++            return true;
++        }
++    };
++}
++function apply(entry, integrations) {
++    const config = integrations[entry.integration.name];
++    const wasEnabled = entry.config !== undefined;
++    if (config) {
++        entry.config = config;
++        callSafely(entry.integration, 'configure', ()=>entry.integration.configure(config, entry.reporter));
++    } else if (wasEnabled) {
++        entry.config = undefined;
++        callSafely(entry.integration, 'disable', ()=>entry.integration.disable?.());
++    }
++}
++function callSafely(integration, hook, call) {
++    try {
++        call();
++    } catch (error) {
++        console.warn(`[expo-observe] The '${integration.name}' integration's \`${hook}\` threw: ${String(error)}`);
++    }
++}
++function activate(integration) {
++    let entry = active.get(integration);
++    if (!entry) {
++        const created = {
++            integration,
++            config: undefined,
++            reporter: createReporter(integration.name, ()=>created.config)
++        };
++        active.set(integration, created);
++        entry = created;
++    }
++    return entry;
++}
++/**
++ * Passes the `integrations` object of a `configure` call to every registered library integration,
++ * and to each integration that registers later. `store` keeps the integrations' strings; without
++ * it, as on web, nothing is stored.
++ */ export function configureRegisteredIntegrations(integrations, store = null) {
++    latestIntegrations = integrations;
++    valueStore = store;
++    const registry = getIntegrationRegistry();
++    registry.onRegister = (integration)=>{
++        if (latestIntegrations) {
++            apply(activate(integration), latestIntegrations);
++        }
++    };
++    for (const integration of registry.integrations){
++        apply(activate(integration), integrations);
++    }
++}
++
++//# sourceMappingURL=registry.js.map
+diff --git abuild/integrations/registry.js.map b/build/integrations/registry.js.map
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a6da0194d08a0cf4743ac50d4fe7339c8c7d227
+--- /dev/null
++++ b/build/integrations/registry.js.map
+@@ -0,0 +1 @@
++{"version":3,"sources":["integrations/registry.ts"],"sourcesContent":[null],"names":["AppMetrics","reportCaughtError","createReportLimiter","OBSERVE_INTEGRATION_REGISTRY_KEY","getIntegrationRegistry","global","globalThis","integrations","registerObserveIntegration","integration","registry","push","onRegister","active","Map","latestIntegrations","valueStore","createStorage","name","getItem","key","getIntegrationValue","setItem","value","setIntegrationValue","filterConfigOf","config","createReporter","getConfig","limiters","hasWarnedAboutShouldReport","limiterFor","limiter","get","set","passesFilter","code","defaultValue","options","skipFilter","ignoredCodes","shouldReport","undefined","includes","filterValue","error","console","warn","String","storage","reportError","report","limit","allow","message","Error","type","stack","reportWarning","cappedMessage","logEvent","displayName","body","severity","attributes","apply","entry","wasEnabled","callSafely","configure","reporter","disable","hook","call","activate","created","configureRegisteredIntegrations","store"],"mappings":"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"}
+\ No newline at end of file
+diff --git abuild/integrations/reportLimiter.d.ts b/build/integrations/reportLimiter.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2276d25e3b193c1ba457a677b5b1439fbdaf5312
+--- /dev/null
++++ b/build/integrations/reportLimiter.d.ts
+@@ -0,0 +1,12 @@
++/**
++ * Limits how often an integration reports log messages. An integration creates one limiter for
++ * each level it reports, so many distinct warnings cannot stop errors from being reported.
++ */
++export interface ReportLimiter {
++    /**
++     * Returns the message capped to the length that reports use, or `null` when the message was
++     * already reported in the current window or the window is full.
++     */
++    allow(message: string): string | null;
++}
++export declare function createReportLimiter(): ReportLimiter;
+diff --git abuild/integrations/reportLimiter.js b/build/integrations/reportLimiter.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..a9fae6ae81da8d9f668e4a7f8a4d0ec177cfdf6b
+--- /dev/null
++++ b/build/integrations/reportLimiter.js
+@@ -0,0 +1,37 @@
++// A log message can repeat many times, so each distinct message is reported at most once per
++// window. The cap bounds the reports in a window when messages embed varying values, and the
++// window lets new messages be reported again after a surge.
++const REPORT_WINDOW_MS = 15 * 60_000;
++const MAX_DISTINCT_MESSAGES_PER_WINDOW = 20;
++// Attribute values are sent on every dispatch, so a copied message is capped. Messages are also
++// deduplicated by this capped text, so two messages that differ only after the cap do not send
++// the same attribute twice.
++const MAX_MESSAGE_LENGTH = 500;
++export function createReportLimiter() {
++    // Maps the capped text of each message reported in the current window to the time it was
++    // reported. A `Map` keeps insertion order, so the oldest report is always first. The time comes
++    // from the monotonic `performance.now()`, so a change to the device clock cannot stop expiry.
++    const reported = new Map();
++    function removeExpiredReports(now) {
++        for (const [message, reportedAt] of reported){
++            if (now - reportedAt < REPORT_WINDOW_MS) {
++                return;
++            }
++            reported.delete(message);
++        }
++    }
++    return {
++        allow (message) {
++            const cappedMessage = message.slice(0, MAX_MESSAGE_LENGTH);
++            const now = performance.now();
++            removeExpiredReports(now);
++            if (reported.has(cappedMessage) || reported.size >= MAX_DISTINCT_MESSAGES_PER_WINDOW) {
++                return null;
++            }
++            reported.set(cappedMessage, now);
++            return cappedMessage;
++        }
++    };
++}
++
++//# sourceMappingURL=reportLimiter.js.map
+diff --git abuild/integrations/reportLimiter.js.map b/build/integrations/reportLimiter.js.map
+new file mode 100644
+index 0000000000000000000000000000000000000000..c4b4b07c1b8de5a18094d73d15c9dcf98ab48478
+--- /dev/null
++++ b/build/integrations/reportLimiter.js.map
+@@ -0,0 +1 @@
++{"version":3,"sources":["integrations/reportLimiter.ts"],"sourcesContent":[null],"names":["REPORT_WINDOW_MS","MAX_DISTINCT_MESSAGES_PER_WINDOW","MAX_MESSAGE_LENGTH","createReportLimiter","reported","Map","removeExpiredReports","now","message","reportedAt","delete","allow","cappedMessage","slice","performance","has","size","set"],"mappings":"AAAA,6FAA6F;AAC7F,6FAA6F;AAC7F,4DAA4D;AAC5D,MAAMA,mBAAmB,KAAK;AAC9B,MAAMC,mCAAmC;AACzC,gGAAgG;AAChG,+FAA+F;AAC/F,4BAA4B;AAC5B,MAAMC,qBAAqB;AAc3B,OAAO,SAASC;IACd,yFAAyF;IACzF,gGAAgG;IAChG,8FAA8F;IAC9F,MAAMC,WAAW,IAAIC;IAErB,SAASC,qBAAqBC,GAAW;QACvC,KAAK,MAAM,CAACC,SAASC,WAAW,IAAIL,SAAU;YAC5C,IAAIG,MAAME,aAAaT,kBAAkB;gBACvC;YACF;YACAI,SAASM,MAAM,CAACF;QAClB;IACF;IAEA,OAAO;QACLG,OAAMH,OAAO;YACX,MAAMI,gBAAgBJ,QAAQK,KAAK,CAAC,GAAGX;YACvC,MAAMK,MAAMO,YAAYP,GAAG;YAC3BD,qBAAqBC;YACrB,IAAIH,SAASW,GAAG,CAACH,kBAAkBR,SAASY,IAAI,IAAIf,kCAAkC;gBACpF,OAAO;YACT;YACAG,SAASa,GAAG,CAACL,eAAeL;YAC5B,OAAOK;QACT;IACF;AACF"}
+\ No newline at end of file
+diff --git abuild/integrations/shared/navigation/blockingTime.d.ts b/build/integrations/shared/navigation/blockingTime.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d3c9ff036abfbda0ad989475fbfa26cafbb7cbda
+--- /dev/null
++++ b/build/integrations/shared/navigation/blockingTime.d.ts
+@@ -0,0 +1,9 @@
++import type { MetricInput } from 'expo-app-metrics';
++type NavigationMetric = Omit<MetricInput, 'value'>;
++export type NavigationBlockingTime = ReturnType<typeof createNavigationBlockingTime>;
++export declare function createNavigationBlockingTime(onMeasured: (metric: MetricInput) => void): {
++    start(startTime: number): void;
++    setMetric(metric: NavigationMetric, focusTime: number): void;
++    dispose(): void;
++} | undefined;
++export {};
+diff --git abuild/integrations/shared/navigation/blockingTime.js b/build/integrations/shared/navigation/blockingTime.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..b3ed1e4d92c2c24b6631389e3851352f3e9fd922
+--- /dev/null
++++ b/build/integrations/shared/navigation/blockingTime.js
+@@ -0,0 +1,76 @@
++import { AppState } from 'react-native';
++// Navigation Total Blocking Time follows Coinbase's Performance Vitals definition: blocking time
++// in the 2 seconds after a user navigates.
++// https://www.coinbase.com/blog/performance-vitals-a-unified-scoring-system-to-guide-performance-health-and-prioritization
++const WINDOW_MS = 2000;
++// Same 50ms threshold as the Long Tasks API. Only the time past 50ms counts.
++// https://w3c.github.io/longtasks/
++const LONG_TASK_THRESHOLD_MS = 50;
++export function createNavigationBlockingTime(onMeasured) {
++    if (typeof PerformanceObserver === 'undefined' || !PerformanceObserver.supportedEntryTypes?.includes('longtask')) {
++        return;
++    }
++    let current;
++    // Kept across windows, because React Native reports long tasks at idle priority, often after
++    // the navigation that the task belongs to starts its window.
++    let longTasks = [];
++    const addLongTasks = (entries)=>{
++        const cutoff = Math.min(performance.now() - WINDOW_MS, current?.start ?? Infinity);
++        longTasks = [
++            ...longTasks,
++            ...entries
++        ].filter((entry)=>entry.startTime + entry.duration > cutoff);
++    };
++    const observer = new PerformanceObserver((list)=>addLongTasks(list.getEntries()));
++    const observe = ()=>observer.observe({
++            type: 'longtask'
++        });
++    const cancel = ()=>{
++        clearTimeout(current?.timer);
++        current = undefined;
++    };
++    const complete = (window)=>{
++        addLongTasks(observer.takeRecords());
++        current = undefined;
++        if (!window.metric) return;
++        let blockingTimeMs = 0;
++        for (const entry of longTasks){
++            blockingTimeMs += Math.max(0, Math.min(entry.startTime + entry.duration, window.start + WINDOW_MS) - Math.max(entry.startTime + LONG_TASK_THRESHOLD_MS, window.start));
++        }
++        onMeasured({
++            ...window.metric,
++            value: blockingTimeMs / 1000
++        });
++    };
++    const stop = ()=>{
++        cancel();
++        longTasks = [];
++        observer.disconnect();
++    };
++    if (AppState.currentState === 'active') observe();
++    const appStateSubscription = AppState.addEventListener('change', (state)=>state === 'active' ? observe() : stop());
++    return {
++        // Starts a window for a new navigation and drops the previous one without reporting it.
++        start (startTime) {
++            if (AppState.currentState !== 'active') return;
++            cancel();
++            const window = {
++                start: startTime,
++                timer: setTimeout(()=>complete(window), Math.max(0, startTime + WINDOW_MS - performance.now()))
++            };
++            current = window;
++        },
++        // Sets the metric of the latest navigation. Navigations without a metric are not reported.
++        setMetric (metric, focusTime) {
++            if (current && !current.metric && focusTime <= current.start + WINDOW_MS) {
++                current.metric = metric;
++            }
++        },
++        dispose () {
++            stop();
++            appStateSubscription.remove();
++        }
++    };
++}
++
++//# sourceMappingURL=blockingTime.js.map
+diff --git abuild/integrations/shared/navigation/blockingTime.js.map b/build/integrations/shared/navigation/blockingTime.js.map
+new file mode 100644
+index 0000000000000000000000000000000000000000..7ece34dc3faff8c8e84e7321a7912f9d206b8906
+--- /dev/null
++++ b/build/integrations/shared/navigation/blockingTime.js.map
+@@ -0,0 +1 @@
++{"version":3,"sources":["integrations/shared/navigation/blockingTime.ts"],"sourcesContent":[null],"names":["AppState","WINDOW_MS","LONG_TASK_THRESHOLD_MS","createNavigationBlockingTime","onMeasured","PerformanceObserver","supportedEntryTypes","includes","current","longTasks","addLongTasks","entries","cutoff","Math","min","performance","now","start","Infinity","filter","entry","startTime","duration","observer","list","getEntries","observe","type","cancel","clearTimeout","timer","undefined","complete","window","takeRecords","metric","blockingTimeMs","max","value","stop","disconnect","currentState","appStateSubscription","addEventListener","state","setTimeout","setMetric","focusTime","dispose","remove"],"mappings":"AACA,SAASA,QAAQ,QAAQ,eAAe;AAExC,iGAAiG;AACjG,2CAA2C;AAC3C,2HAA2H;AAC3H,MAAMC,YAAY;AAClB,6EAA6E;AAC7E,mCAAmC;AACnC,MAAMC,yBAAyB;AAY/B,OAAO,SAASC,6BAA6BC,UAAyC;IACpF,IACE,OAAOC,wBAAwB,eAC/B,CAACA,oBAAoBC,mBAAmB,EAAEC,SAAS,aACnD;QACA;IACF;IAEA,IAAIC;IACJ,6FAA6F;IAC7F,6DAA6D;IAC7D,IAAIC,YAAgC,EAAE;IAEtC,MAAMC,eAAe,CAACC;QACpB,MAAMC,SAASC,KAAKC,GAAG,CAACC,YAAYC,GAAG,KAAKf,WAAWO,SAASS,SAASC;QACzET,YAAY;eAAIA;eAAcE;SAAQ,CAACQ,MAAM,CAC3C,CAACC,QAAUA,MAAMC,SAAS,GAAGD,MAAME,QAAQ,GAAGV;IAElD;IAEA,MAAMW,WAAW,IAAIlB,oBAAoB,CAACmB,OAASd,aAAac,KAAKC,UAAU;IAC/E,MAAMC,UAAU,IAAMH,SAASG,OAAO,CAAC;YAAEC,MAAM;QAAW;IAE1D,MAAMC,SAAS;QACbC,aAAarB,SAASsB;QACtBtB,UAAUuB;IACZ;IAEA,MAAMC,WAAW,CAACC;QAChBvB,aAAaa,SAASW,WAAW;QACjC1B,UAAUuB;QACV,IAAI,CAACE,OAAOE,MAAM,EAAE;QACpB,IAAIC,iBAAiB;QACrB,KAAK,MAAMhB,SAASX,UAAW;YAC7B2B,kBAAkBvB,KAAKwB,GAAG,CACxB,GACAxB,KAAKC,GAAG,CAACM,MAAMC,SAAS,GAAGD,MAAME,QAAQ,EAAEW,OAAOhB,KAAK,GAAGhB,aACxDY,KAAKwB,GAAG,CAACjB,MAAMC,SAAS,GAAGnB,wBAAwB+B,OAAOhB,KAAK;QAErE;QACAb,WAAW;YAAE,GAAG6B,OAAOE,MAAM;YAAEG,OAAOF,iBAAiB;QAAK;IAC9D;IAEA,MAAMG,OAAO;QACXX;QACAnB,YAAY,EAAE;QACdc,SAASiB,UAAU;IACrB;IAEA,IAAIxC,SAASyC,YAAY,KAAK,UAAUf;IACxC,MAAMgB,uBAAuB1C,SAAS2C,gBAAgB,CAAC,UAAU,CAACC,QAChEA,UAAU,WAAWlB,YAAYa;IAGnC,OAAO;QACL,wFAAwF;QACxFtB,OAAMI,SAAiB;YACrB,IAAIrB,SAASyC,YAAY,KAAK,UAAU;YACxCb;YACA,MAAMK,SAAiB;gBACrBhB,OAAOI;gBACPS,OAAOe,WACL,IAAMb,SAASC,SACfpB,KAAKwB,GAAG,CAAC,GAAGhB,YAAYpB,YAAYc,YAAYC,GAAG;YAEvD;YACAR,UAAUyB;QACZ;QACA,2FAA2F;QAC3Fa,WAAUX,MAAwB,EAAEY,SAAiB;YACnD,IAAIvC,WAAW,CAACA,QAAQ2B,MAAM,IAAIY,aAAavC,QAAQS,KAAK,GAAGhB,WAAW;gBACxEO,QAAQ2B,MAAM,GAAGA;YACnB;QACF;QACAa;YACET;YACAG,qBAAqBO,MAAM;QAC7B;IACF;AACF"}
+\ No newline at end of file
+diff --git a/build/module.js b/build/module.js
+index 2e4303d8fb53f38d532ff99168ae5651365f1646..e602078ab20e285bd187bc3f41ce83fbf7903574 100644
+--- a/build/module.js
++++ b/build/module.js
+@@ -5,6 +5,7 @@ import { isRouterInstalled } from './integrations/expo-router/router';
+ import { disableReanimatedIntegration, initReanimatedIntegration } from './integrations/react-native-reanimated/init';
+ import { initReactNavigationIntegration } from './integrations/react-navigation/init';
+ import { isReactNavigationInstalled } from './integrations/react-navigation/reactNavigation';
++import { configureRegisteredIntegrations } from './integrations/registry';
+ import { reportCaughtError } from './reportCaughtError';
+ /**
+  * Normalizes the `networkTraces` sugar (`true` / `false` / `{ enabled, filter }`) into the config
+@@ -47,6 +48,24 @@ function warnIfErrorSampleRateIsLower({ sampleRate, errorSampleRate }) {
+         console.warn(`[expo-observe] \`errorSampleRate\` (${errorRate}) is lower than \`sampleRate\` (${overallRate}) and has no effect. ` + 'Errors are sent from every installation in the `sampleRate` sample. ' + 'Set `errorSampleRate` to at least `sampleRate`.');
+     }
+ }
++/**
++ * Removes function options, such as the `expo-updates` integration's `shouldReport`, from each
++ * integration's config before the config goes to the native module, which stores it and sends it
++ * back in `configure` events. Functions run only in JS, where library integrations get the original
++ * config.
++ */ function configForNative(config) {
++    if (!config.integrations) {
++        return config;
++    }
++    const integrations = Object.fromEntries(Object.entries(config.integrations).map(([name, value])=>[
++            name,
++            typeof value === 'object' && value !== null ? Object.fromEntries(Object.entries(value).filter(([, option])=>typeof option !== 'function')) : value
++        ]));
++    return {
++        ...config,
++        integrations
++    };
++}
+ const native = requireNativeModule('ExpoObserve');
+ const Observe = new Proxy(native, {
+     get (target, prop, receiver) {
+@@ -84,7 +103,12 @@ const Observe = new Proxy(native, {
+                     disableReanimatedIntegration();
+                 }
+                 warnIfErrorSampleRateIsLower(config);
+-                return target.configure(config);
++                const result = target.configure(configForNative(config));
++                // After the native configure, so a library integration that reads `getIntegrations()` sees
++                // the new config.
++                // The native module implements the integration value functions, which are not public API.
++                configureRegisteredIntegrations(config.integrations ?? {}, target);
++                return result;
+             };
+         }
+         if (prop === 'reportError') {
+diff --git a/build/module.js.map b/build/module.js.map
+index df221e8c7162c5f1dc11a998a58fb41fcbe79e59..658dcbcc2f203d0727bfb099d7595207dc7b49e6 100644
+--- a/build/module.js.map
++++ b/build/module.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["module.ts"],"sourcesContent":[null],"names":["requireNativeModule","AppMetrics","recordSpan","setErrorHandlerEnabled","startSpan","withSpan","initRouterIntegration","isRouterInstalled","disableReanimatedIntegration","initReanimatedIntegration","initReactNavigationIntegration","isReactNavigationInstalled","reportCaughtError","networkTracesConfigFromOption","networkTraces","option","enabled","__DEV__","malformed","filter","hosts","host","test","length","console","warn","join","warnIfErrorSampleRateIsLower","sampleRate","errorSampleRate","clamp","rate","Math","min","max","errorRate","overallRate","native","Observe","Proxy","get","target","prop","receiver","config","errorHandlingEnabled","setNetworkTracesConfig","routerEnabled","integrations","reactNavigationEnabled","shouldInitRouterIntegration","shouldInitReactNavigationIntegration","reanimatedConfig","configure","error","name","callback","registerIntegrationImpl","Object","keys","includes","Reflect","getIntegrations","subscription","addListener","remove"],"mappings":"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"}
+\ No newline at end of file
++{"version":3,"sources":["module.ts"],"sourcesContent":[null],"names":["requireNativeModule","AppMetrics","recordSpan","setErrorHandlerEnabled","startSpan","withSpan","initRouterIntegration","isRouterInstalled","disableReanimatedIntegration","initReanimatedIntegration","initReactNavigationIntegration","isReactNavigationInstalled","configureRegisteredIntegrations","reportCaughtError","networkTracesConfigFromOption","networkTraces","option","enabled","__DEV__","malformed","filter","hosts","host","test","length","console","warn","join","warnIfErrorSampleRateIsLower","sampleRate","errorSampleRate","clamp","rate","Math","min","max","errorRate","overallRate","configForNative","config","integrations","Object","fromEntries","entries","map","name","value","native","Observe","Proxy","get","target","prop","receiver","errorHandlingEnabled","setNetworkTracesConfig","routerEnabled","reactNavigationEnabled","shouldInitRouterIntegration","shouldInitReactNavigationIntegration","reanimatedConfig","result","configure","error","callback","registerIntegrationImpl","keys","includes","Reflect","getIntegrations","subscription","addListener","remove"],"mappings":"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"}
+\ No newline at end of file
+diff --git a/build/module.web.js b/build/module.web.js
+index 50956a61c1780e1aecdbdff2d1adbad8ae565aea..c61a2730cf6dfe777c0367297ad765789d4554d8 100644
+--- a/build/module.web.js
++++ b/build/module.web.js
+@@ -1,5 +1,6 @@
+ import { NativeModule, registerWebModule } from 'expo';
+ import AppMetrics, { recordSpan, startSpan, withSpan } from 'expo-app-metrics';
++import { configureRegisteredIntegrations } from './integrations/registry';
+ import { reportCaughtError } from './reportCaughtError';
+ class ExpoObserveModule extends NativeModule {
+     get clientId() {
+@@ -10,7 +11,9 @@ class ExpoObserveModule extends NativeModule {
+     startSpan = startSpan;
+     withSpan = withSpan;
+     recordSpan = recordSpan;
+-    configure(config) {}
++    configure(config) {
++        configureRegisteredIntegrations(config.integrations ?? {});
++    }
+     getIntegrations() {
+         return {};
+     }
+diff --git a/build/module.web.js.map b/build/module.web.js.map
+index cea4faa97f27201a6550123ecb3d98c4c95e2215..3c76da54c0583f532fa20ce8231a2c847780009e 100644
+--- a/build/module.web.js.map
++++ b/build/module.web.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["module.web.ts"],"sourcesContent":[null],"names":["NativeModule","registerWebModule","AppMetrics","recordSpan","startSpan","withSpan","reportCaughtError","ExpoObserveModule","clientId","dispatchEvents","configure","config","getIntegrations","registerIntegration","name","callback","logEvent","options","reportError","error","markFirstRender","markInteractive","attributes","setGlobalAttributes","setBundleDefaults","defaults"],"mappings":"AAAA,SAASA,YAAY,EAAEC,iBAAiB,QAAQ,OAAO;AACvD,OAAOC,cACLC,UAAU,EACVC,SAAS,EACTC,QAAQ,QAGH,mBAAmB;AAE1B,SAASC,iBAAiB,QAAQ,sBAAsB;AASxD,MAAMC,0BAA0BP;IAC9B,IAAIQ,WAA0B;QAC5B,qFAAqF;QACrF,OAAO;IACT;IACA,MAAMC,iBAAiB,CAAC;IACxBL,YAAYA,UAAU;IACtBC,WAAWA,SAAS;IACpBF,aAAaA,WAAW;IACxBO,UAAUC,MAAqB,EAAQ,CAAC;IACxCC,kBAA6C;QAC3C,OAAO,CAAC;IACV;IACAC,oBACEC,IAAO,EACPC,QAAwD,EAClD;IACN,6EAA6E;IAC/E;IACAC,SAASF,IAAY,EAAEG,OAAyB,EAAQ;QACtDf,WAAWc,QAAQ,CAACF,MAAMG;IAC5B;IACAC,YAAYC,KAAc,EAAQ;QAChCb,kBAAkBa;IACpB;IACAC,kBAAwB;QACtBlB,WAAWkB,eAAe;IAC5B;IACAC,gBAAgBC,UAA6B,EAAQ;QACnDpB,WAAWmB,eAAe,CAACC;IAC7B;IACAC,oBAAoBD,UAAqC,EAAQ;QAC/DpB,WAAWqB,mBAAmB,CAACD;IACjC;IACAE,kBAAkBC,QAAmD,EAAQ,CAAC;AAChF;AAEA,eAAexB,kBAAkBM,mBAAmB,eAAe"}
+\ No newline at end of file
++{"version":3,"sources":["module.web.ts"],"sourcesContent":[null],"names":["NativeModule","registerWebModule","AppMetrics","recordSpan","startSpan","withSpan","configureRegisteredIntegrations","reportCaughtError","ExpoObserveModule","clientId","dispatchEvents","configure","config","integrations","getIntegrations","registerIntegration","name","callback","logEvent","options","reportError","error","markFirstRender","markInteractive","attributes","setGlobalAttributes","setBundleDefaults","defaults"],"mappings":"AAAA,SAASA,YAAY,EAAEC,iBAAiB,QAAQ,OAAO;AACvD,OAAOC,cACLC,UAAU,EACVC,SAAS,EACTC,QAAQ,QAGH,mBAAmB;AAE1B,SAASC,+BAA+B,QAAQ,0BAA0B;AAC1E,SAASC,iBAAiB,QAAQ,sBAAsB;AASxD,MAAMC,0BAA0BR;IAC9B,IAAIS,WAA0B;QAC5B,qFAAqF;QACrF,OAAO;IACT;IACA,MAAMC,iBAAiB,CAAC;IACxBN,YAAYA,UAAU;IACtBC,WAAWA,SAAS;IACpBF,aAAaA,WAAW;IACxBQ,UAAUC,MAAqB,EAAQ;QACrCN,gCAAgCM,OAAOC,YAAY,IAAI,CAAC;IAC1D;IACAC,kBAA6C;QAC3C,OAAO,CAAC;IACV;IACAC,oBACEC,IAAO,EACPC,QAAwD,EAClD;IACN,6EAA6E;IAC/E;IACAC,SAASF,IAAY,EAAEG,OAAyB,EAAQ;QACtDjB,WAAWgB,QAAQ,CAACF,MAAMG;IAC5B;IACAC,YAAYC,KAAc,EAAQ;QAChCd,kBAAkBc;IACpB;IACAC,kBAAwB;QACtBpB,WAAWoB,eAAe;IAC5B;IACAC,gBAAgBC,UAA6B,EAAQ;QACnDtB,WAAWqB,eAAe,CAACC;IAC7B;IACAC,oBAAoBD,UAAqC,EAAQ;QAC/DtB,WAAWuB,mBAAmB,CAACD;IACjC;IACAE,kBAAkBC,QAAmD,EAAQ,CAAC;AAChF;AAEA,eAAe1B,kBAAkBO,mBAAmB,eAAe"}
+\ No newline at end of file
+diff --git a/build/reportCaughtError.d.ts b/build/reportCaughtError.d.ts
+index 19eade00fce632d208ffa5949aba11976d0a7524..60ec6e3900c2cd73f5be9a74bc3076a60756189f 100644
+--- a/build/reportCaughtError.d.ts
++++ b/build/reportCaughtError.d.ts
+@@ -2,8 +2,9 @@
+  * Reports a caught value as a non-fatal error through the AppMetrics module, shared by the native
+  * and web `Observe.reportError` implementations and by integrations. `source` is `reportedByUser`
+  * for an error the app reports, and `integration` for an error an integration reports for a library.
++ * `code` is a stable code for the kind of error, recorded as the `expo.error.code` attribute.
+  *
+  * Never throws: it's called from a `catch` block, so a failure here (a pathological thrown value, or
+  * a native call that rejects the payload) must not turn a handled error into an unhandled one.
+  */
+-export declare function reportCaughtError(error: unknown, source?: 'reportedByUser' | 'integration'): void;
++export declare function reportCaughtError(error: unknown, source?: 'reportedByUser' | 'integration', code?: string): void;
+diff --git a/build/reportCaughtError.js b/build/reportCaughtError.js
+index cf367608b2d97b53b452a8150bf9dd68194cc9b7..f3995d92a851f7249f38dbbfa9febf087c7e1f77 100644
+--- a/build/reportCaughtError.js
++++ b/build/reportCaughtError.js
+@@ -25,14 +25,18 @@ import AppMetrics from 'expo-app-metrics';
+  * Reports a caught value as a non-fatal error through the AppMetrics module, shared by the native
+  * and web `Observe.reportError` implementations and by integrations. `source` is `reportedByUser`
+  * for an error the app reports, and `integration` for an error an integration reports for a library.
++ * `code` is a stable code for the kind of error, recorded as the `expo.error.code` attribute.
+  *
+  * Never throws: it's called from a `catch` block, so a failure here (a pathological thrown value, or
+  * a native call that rejects the payload) must not turn a handled error into an unhandled one.
+- */ export function reportCaughtError(error, source = 'reportedByUser') {
++ */ export function reportCaughtError(error, source = 'reportedByUser', code) {
+     try {
+         AppMetrics.reportError({
+             source,
+             ...normalizeReportedError(error),
++            ...code !== undefined ? {
++                code
++            } : {},
+             isFatal: false
+         });
+     } catch (reportingError) {
+diff --git a/build/reportCaughtError.js.map b/build/reportCaughtError.js.map
+index 4c620f71c1199718f81d98aab2ddd7d4126e7e9a..b2256aebd746a934207e5a7274429281227d3af9 100644
+--- a/build/reportCaughtError.js.map
++++ b/build/reportCaughtError.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["reportCaughtError.ts"],"sourcesContent":[null],"names":["AppMetrics","stringOrUndefined","value","undefined","normalizeReportedError","error","Error","type","name","message","String","stacktrace","stack","reportCaughtError","source","reportError","isFatal","reportingError","__DEV__","console","warn"],"mappings":"AAAA,OAAOA,gBAAgB,mBAAmB;AAa1C,wGAAwG,GACxG,SAASC,kBAAkBC,KAAc;IACvC,OAAO,OAAOA,UAAU,WAAWA,QAAQC;AAC7C;AAEA;;;CAGC,GACD,SAASC,uBAAuBC,KAAc;IAC5C,iGAAiG;IACjG,mGAAmG;IACnG,yCAAyC;IACzC,IAAIA,iBAAiBC,OAAO;QAC1B,OAAO;YACLC,MAAMN,kBAAkBI,MAAMG,IAAI;YAClCC,SAASR,kBAAkBI,MAAMI,OAAO,KAAKC,OAAOL;YACpDM,YAAYV,kBAAkBI,MAAMO,KAAK;QAC3C;IACF;IACA,kGAAkG;IAClG,OAAO;QAAEH,SAASC,OAAOL;IAAO;AAClC;AAEA;;;;;;;CAOC,GACD,OAAO,SAASQ,kBACdR,KAAc,EACdS,SAA2C,gBAAgB;IAE3D,IAAI;QACFd,WAAWe,WAAW,CAAC;YACrBD;YACA,GAAGV,uBAAuBC,MAAM;YAChCW,SAAS;QACX;IACF,EAAE,OAAOC,gBAAgB;QACvB,IAAIC,SAAS;YACXC,QAAQC,IAAI,CAAC,4DAA4DH;QAC3E;IACF;AACF"}
+\ No newline at end of file
++{"version":3,"sources":["reportCaughtError.ts"],"sourcesContent":[null],"names":["AppMetrics","stringOrUndefined","value","undefined","normalizeReportedError","error","Error","type","name","message","String","stacktrace","stack","reportCaughtError","source","code","reportError","isFatal","reportingError","__DEV__","console","warn"],"mappings":"AAAA,OAAOA,gBAAgB,mBAAmB;AAa1C,wGAAwG,GACxG,SAASC,kBAAkBC,KAAc;IACvC,OAAO,OAAOA,UAAU,WAAWA,QAAQC;AAC7C;AAEA;;;CAGC,GACD,SAASC,uBAAuBC,KAAc;IAC5C,iGAAiG;IACjG,mGAAmG;IACnG,yCAAyC;IACzC,IAAIA,iBAAiBC,OAAO;QAC1B,OAAO;YACLC,MAAMN,kBAAkBI,MAAMG,IAAI;YAClCC,SAASR,kBAAkBI,MAAMI,OAAO,KAAKC,OAAOL;YACpDM,YAAYV,kBAAkBI,MAAMO,KAAK;QAC3C;IACF;IACA,kGAAkG;IAClG,OAAO;QAAEH,SAASC,OAAOL;IAAO;AAClC;AAEA;;;;;;;;CAQC,GACD,OAAO,SAASQ,kBACdR,KAAc,EACdS,SAA2C,gBAAgB,EAC3DC,IAAa;IAEb,IAAI;QACFf,WAAWgB,WAAW,CAAC;YACrBF;YACA,GAAGV,uBAAuBC,MAAM;YAChC,GAAIU,SAASZ,YAAY;gBAAEY;YAAK,IAAI,CAAC,CAAC;YACtCE,SAAS;QACX;IACF,EAAE,OAAOC,gBAAgB;QACvB,IAAIC,SAAS;YACXC,QAAQC,IAAI,CAAC,4DAA4DH;QAC3E;IACF;AACF"}
+\ No newline at end of file
+diff --git a/build/types.d.ts b/build/types.d.ts
+index b96b92c88e4a12f1148767c83313909f89a7882d..15ee28e97107d836146c7a6a61abe3b183b8210d 100644
+--- a/build/types.d.ts
++++ b/build/types.d.ts
+@@ -11,6 +11,14 @@ export type ObserveAttribute = LogAttributeValue;
+  * other Observe APIs that take a free-form attributes payload.
+  */
+ export type ObserveAttributes = Record<string, ObserveAttribute>;
++/**
++ * Name of a metric that EAS Observe sends.
++ */
++export type ObserveMetricName = 'expo.app_startup.tti' | 'expo.app_startup.ttr' | 'expo.app_startup.cold_launch_time' | 'expo.app_startup.warm_launch_time' | 'expo.app_startup.bundle_load_time' | 'expo.updates.download_time' | 'expo.navigation.cold_ttr' | 'expo.navigation.warm_ttr' | 'expo.navigation.tti' | 'expo.navigation.tbt';
++/**
++ * Name of an event that EAS Observe sends. Custom names passed to `logEvent` are allowed.
++ */
++export type ObserveEventName = 'js.exception' | 'native.exception' | 'reanimated.warning' | 'expo-image.oversized' | (string & {});
+ export type ObserveConfig = {
+     /**
+      * The environment for observability events
+@@ -77,6 +85,19 @@ export type ObserveConfig = {
+      * @default undefined - errors follow `sampleRate`
+      */
+     errorSampleRate?: number;
++    /**
++     * Metric names that are not sent. Each `configure` call replaces the list.
++     *
++     * @default []
++     */
++    ignoredMetrics?: ObserveMetricName[];
++    /**
++     * Event names that are not sent, including custom names passed to `logEvent`. Each `configure`
++     * call replaces the list.
++     *
++     * @default []
++     */
++    ignoredEvents?: ObserveEventName[];
+     /**
+      * Whether to record unhandled JavaScript errors as `exception` log events.
+      *
+@@ -132,11 +153,19 @@ export type ObserveNavigationIntegrationConfig = {
+      * Does not affect `routeName`.
+      */
+     filteredParams?: string[];
++    /**
++     * Experimental. Enables the `tbt` (total blocking time) navigation metric.
++     * May change or be removed in a patch release.
++     *
++     * @default false
++     */
++    experimental_totalBlockingTime?: boolean;
+ };
+ export interface ObserveIntegrationsConfig {
+     /**
+      * Enables the `expo-router` integration, which records navigation metrics
+-     * (`cold_ttr`, `warm_ttr`, `tti`) from router state changes.
++     * (`cold_ttr`, `warm_ttr`, `tti`) from router state changes. The `tbt`
++     * metric needs `experimental_totalBlockingTime`.
+      *
+      * Requires `expo-router` to be installed.
+      *
+@@ -147,7 +176,8 @@ export interface ObserveIntegrationsConfig {
+     'expo-router'?: boolean | ObserveNavigationIntegrationConfig;
+     /**
+      * Enables the `@react-navigation/native` integration, which records
+-     * navigation metrics (`cold_ttr`, `warm_ttr`, `tti`).
++     * navigation metrics (`cold_ttr`, `warm_ttr`, `tti`). The `tbt` metric
++     * needs `experimental_totalBlockingTime`.
+      *
+      * Requires `@react-navigation/native` to be installed and the app tree
+      * to be wrapped in `<ObserveNavigationContainer>` instead of the stock
+@@ -175,6 +205,30 @@ export interface ObserveIntegrationsConfig {
+      * @default false
+      */
+     'react-native-reanimated'?: boolean | ObserveReanimatedIntegrationConfig;
++    /**
++     * Enables the `expo-updates` integration, which reports the errors in the `expo-updates` log to
++     * Observe as errors named `updates.error`. The message starts with the log entry's code, for
++     * example `UpdateFailedToLoad: ...`. The integration reports a JS error that `expo-updates` error
++     * recovery handled as `updates.error_recovery`.
++     * To also report warnings as events named `updates.warning`, set `reportWarnings`.
++     *
++     * The integration reads the `expo-updates` log when `configure` runs, and reports the entries
++     * written since the last report, up to one day back. So it reports errors from an earlier launch,
++     * such as a crash that error recovery handled, on the next launch. After that, it reports each
++     * new entry when `expo-updates` logs it. A reported error gets the current session and time, not
++     * the time of the log entry.
++     *
++     * The integration reports each distinct message at most once every 15 minutes. It reports at most
++     * 20 distinct errors and 20 distinct warnings in any 15-minute period. JS errors that error
++     * recovery handled skip `ignoredCodes` and `shouldReport`, and have their own limit of 20
++     * distinct messages. The limits reset when the app restarts.
++     *
++     * The integration lives in `expo-updates`, which registers it when the app imports
++     * `expo-updates`. Requires `expo-updates` 58.1.0 or later.
++     *
++     * @default false
++     */
++    'expo-updates'?: boolean | ObserveExpoUpdatesIntegrationConfig;
+ }
+ export type ObserveReanimatedIntegrationConfig = {
+     /**
+@@ -199,6 +253,161 @@ export type ObserveReanimatedIntegrationConfig = {
+      */
+     reportWarnings?: boolean;
+ };
++/**
++ * The code of an `expo-updates` log entry. The same values as `UpdatesLogEntryCode` in
++ * `expo-updates`.
++ */
++export type ObserveExpoUpdatesLogEntryCode = 'None' | 'NoUpdatesAvailable' | 'UpdateAssetsNotAvailable' | 'UpdateServerUnreachable' | 'UpdateHasInvalidSignature' | 'UpdateCodeSigningError' | 'UpdateFailedToLoad' | 'AssetsFailedToLoad' | 'JSRuntimeError' | 'InitializationError' | 'Unknown';
++/**
++ * An `expo-updates` log entry, as `readLogEntriesAsync` in `expo-updates` returns it.
++ */
++export type ObserveExpoUpdatesLogEntry = {
++    /**
++     * The time the entry was written, in milliseconds since Jan 1 1970 UTC.
++     */
++    timestamp: number;
++    message: string;
++    code: ObserveExpoUpdatesLogEntryCode;
++    level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
++    updateId?: string;
++    assetId?: string;
++    /**
++     * A native Android or iOS stack trace.
++     */
++    stacktrace?: string[];
++    /**
++     * The key of the event that a warning or error entry logs, such as `remote.assetDownloadFailed`.
++     * The key stays the same when the text of the message changes, so `shouldReport` can match on
++     * it. The same values as `UpdatesLogMessageKey` in `expo-updates`.
++     */
++    key?: string;
++    /**
++     * The values that fill the message template of the key, such as `cause` or `assetKey`.
++     */
++    values?: Record<string, string>;
++};
++export type ObserveExpoUpdatesIntegrationConfig = {
++    /**
++     * Whether the integration also reports `expo-updates` warnings to Observe, as events named
++     * `updates.warning`.
++     *
++     * @default false
++     */
++    reportWarnings?: boolean;
++    /**
++     * Log entry codes that the integration does not report. For example, `expo-updates` logs a
++     * network error with the `UpdateServerUnreachable` code. This option does not apply to JS errors
++     * that error recovery handled.
++     *
++     * @default []
++     */
++    ignoredCodes?: ObserveExpoUpdatesLogEntryCode[];
++    /**
++     * A function that decides whether the integration reports a log entry. Return `false` to skip
++     * the entry, for example by its `key`. It runs after `ignoredCodes`, and it does not run for JS
++     * errors that error recovery handled. If the function throws, the integration reports the entry.
++     * The function runs only in JS, so `getIntegrations()`, `registerIntegration` and the
++     * `configure` event do not include it.
++     */
++    shouldReport?: (entry: ObserveExpoUpdatesLogEntry) => boolean;
++};
++/**
++ * Options that a library integration with error codes accepts in its config, so that every
++ * integration filters reports the same way. A library adds them to its config type, with `T` the
++ * value that its `shouldReport` gets.
++ */
++export type ObserveIntegrationFilterConfig<T = unknown> = {
++    /**
++     * Codes that are not reported.
++     *
++     * @default []
++     */
++    ignoredCodes?: string[];
++    /**
++     * Returns whether a report is sent. It runs after `ignoredCodes`, and it gets the value that the
++     * integration documents, such as the log entry the report comes from. When it throws, the report
++     * is sent and a warning is printed once.
++     */
++    shouldReport?: (value: T) => boolean;
++};
++/**
++ * An error that a library integration reports.
++ */
++export type ObserveIntegrationErrorReport = {
++    /** The error type, such as `updates.error`. Errors are grouped by type and message. */
++    type: string;
++    message: string;
++    stack?: string;
++    /** A stable code for the kind of error, recorded as the `expo.error.code` attribute. */
++    code?: string;
++};
++/**
++ * A warning that a library integration reports, recorded as an event at `warn` severity.
++ */
++export type ObserveIntegrationWarningReport = {
++    /** The event name, such as `updates.warning`. */
++    name: string;
++    displayName?: string;
++    message: string;
++    /** Recorded as the `code` attribute. */
++    code?: string;
++    attributes?: ObserveAttributes;
++};
++export type ObserveIntegrationReportOptions = {
++    /** The value passed to `shouldReport`. Defaults to the report itself. */
++    filterValue?: unknown;
++    /** Sends the report without applying `ignoredCodes` and `shouldReport`. */
++    skipFilter?: boolean;
++    /**
++     * The rate limit the report counts toward. Each limit allows a distinct message at most once in
++     * 15 minutes, and at most 20 distinct messages in 15 minutes. Defaults to `error` for errors and
++     * `warning` for warnings, so many warnings cannot stop errors from being reported.
++     */
++    limit?: string;
++};
++/**
++ * Strings that a library integration keeps across launches, such as how far it has read a log.
++ * Each integration has its own keys. On web, nothing is stored and `getItem` resolves to `null`.
++ */
++export type ObserveIntegrationStorage = {
++    getItem(key: string): Promise<string | null>;
++    /** Stores the value, or removes it when the value is `null`. */
++    setItem(key: string, value: string | null): Promise<void>;
++};
++/**
++ * Reports for a library integration. Each report sets the `integration` source, applies the
++ * integration's `ignoredCodes` and `shouldReport` options, and then the rate limit. Each function
++ * returns whether the report was sent. Nothing is sent while the integration is disabled.
++ */
++export type ObserveIntegrationReporter = {
++    storage: ObserveIntegrationStorage;
++    reportError(report: ObserveIntegrationErrorReport, options?: ObserveIntegrationReportOptions): boolean;
++    reportWarning(report: ObserveIntegrationWarningReport, options?: ObserveIntegrationReportOptions): boolean;
++};
++/**
++ * An integration that lives in another library.
++ */
++export type ObserveIntegration = {
++    /** The key of the integration in `Observe.configure({ integrations })`. */
++    name: string;
++    /**
++     * Runs on each `configure` call that enables the integration, with the original config value,
++     * functions included.
++     */
++    configure(config: unknown, reporter: ObserveIntegrationReporter): void;
++    /** Runs when a `configure` call turns off an integration that was enabled. */
++    disable?(): void;
++};
++/**
++ * The registry at `globalThis.__expo_observe_integrations__`. A library creates it as
++ * `{ integrations: [] }` when it is missing, pushes its integration, and calls `onRegister` when it
++ * is set.
++ */
++export type ObserveIntegrationRegistry = {
++    integrations: ObserveIntegration[];
++    /** Set by `expo-observe` after the first `configure` call. */
++    onRegister?: (integration: ObserveIntegration) => void;
++};
+ /**
+  * Events emitted by the native `ExpoObserve` module.
+  */
+@@ -213,15 +422,15 @@ export type ObserveModuleEvents = {
+ };
+ export declare class ObserveModule extends NativeModule<ObserveModuleEvents> {
+     /**
+-     * The EAS client id: a random, pseudonymous identifier for this app installation, shared by all
+-     * EAS client libraries. Observe records it on every metric and log event as the
++     * The Expo Services client id: a random, pseudonymous identifier for this app installation, shared by all
++     * Expo Services client libraries. Observe records it on every metric and log event as the
+      * `expo.eas_client.id` attribute, so use it to correlate Observe data with another service.
+      *
+      * The id is stored in native preferences and is stable across app launches and app updates. It
+      * changes when the app's data is cleared or the app is reinstalled, although a backup restore
+      * can carry the previous id over. It identifies an installation, not a user or a device.
+      *
+-     * `null` on web, where there is no EAS client id.
++     * `null` on web, where there is no Expo Services client id.
+      *
+      * @example
+      * ```ts
+diff --git a/build/types.js.map b/build/types.js.map
+index 8b48e945783420f9f14e0fe3bf8bb70983b7e5c8..e65438f30a00966479f15def62a96ed77ef736e2 100644
+--- a/build/types.js.map
++++ b/build/types.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["types.ts"],"sourcesContent":[null],"names":[],"mappings":"AAiOA,WAwKC"}
+\ No newline at end of file
++{"version":3,"sources":["types.ts"],"sourcesContent":[null],"names":[],"mappings":"AAgeA,WAwKC"}
+\ No newline at end of file
+diff --git a/ios/Observability.swift b/ios/Observability.swift
+index dc54621bcde10bf14c24fe50bd2668c31bd6fa23..3ec3800a49979228505deb2d1a80677adf63874d 100644
+--- a/ios/Observability.swift
++++ b/ios/Observability.swift
+@@ -49,8 +49,15 @@ internal struct ObservabilityManager {
+         rate: config?.errorSampleRate ?? config?.sampleRate
+       )
+ 
+-      await dispatchMetrics(shouldDispatch: shouldDispatch)
+-      await dispatchLogs(shouldDispatch: shouldDispatch, shouldDispatchErrors: shouldDispatchErrors)
++      await dispatchMetrics(
++        shouldDispatch: shouldDispatch,
++        ignoredMetrics: Set(config?.ignoredMetrics ?? [])
++      )
++      await dispatchLogs(
++        shouldDispatch: shouldDispatch,
++        shouldDispatchErrors: shouldDispatchErrors,
++        ignoredEvents: Set(config?.ignoredEvents ?? [])
++      )
+       await dispatchTraces(shouldDispatch: shouldDispatch)
+     }
+   }
+@@ -83,7 +90,7 @@ internal struct ObservabilityManager {
+     )
+   }
+ 
+-  private static func dispatchMetrics(shouldDispatch: Bool) async {
++  private static func dispatchMetrics(shouldDispatch: Bool, ignoredMetrics: Set<String>) async {
+     guard let endpointUrl = metricsEndpointUrl else {
+       return
+     }
+@@ -116,7 +123,7 @@ internal struct ObservabilityManager {
+       },
+       rowId: { $0.id },
+       send: { metrics in
+-        let events = try buildEvents(forMetrics: metrics)
++        let events = try buildEvents(forMetrics: filteredMetrics(metrics, ignoredMetrics: ignoredMetrics))
+         guard !events.isEmpty else {
+           return nil
+         }
+@@ -154,7 +161,11 @@ internal struct ObservabilityManager {
+     )
+   }
+ 
+-  private static func dispatchLogs(shouldDispatch: Bool, shouldDispatchErrors: Bool) async {
++  private static func dispatchLogs(
++    shouldDispatch: Bool,
++    shouldDispatchErrors: Bool,
++    ignoredEvents: Set<String>
++  ) async {
+     guard let endpointUrl = logsEndpointUrl else {
+       return
+     }
+@@ -189,7 +200,7 @@ internal struct ObservabilityManager {
+       },
+       rowId: { $0.id },
+       send: { fetchedLogs in
+-        let logs = sampledLogs(fetchedLogs, shouldDispatch: shouldDispatch)
++        let logs = sampledLogs(fetchedLogs, shouldDispatch: shouldDispatch, ignoredEvents: ignoredEvents)
+         guard !logs.isEmpty else {
+           return nil
+         }
+@@ -393,8 +404,22 @@ internal struct ObservabilityManager {
+     return Self.shouldDispatch(config: config, isDev: isDev, isInSample: isInSample(rate: rate))
+   }
+ 
+-  internal nonisolated static func sampledLogs(_ logs: [LogRow], shouldDispatch: Bool) -> [LogRow] {
+-    return shouldDispatch ? logs : logs.filter { errorLogNames.contains($0.name) }
++  internal nonisolated static func filteredMetrics(
++    _ metrics: [MetricRow],
++    ignoredMetrics: Set<String>
++  ) -> [MetricRow] {
++    return metrics.filter {
++      !ignoredMetrics.contains(exportedMetricName(category: $0.category, name: $0.name))
++    }
++  }
++
++  internal nonisolated static func sampledLogs(
++    _ logs: [LogRow],
++    shouldDispatch: Bool,
++    ignoredEvents: Set<String>
++  ) -> [LogRow] {
++    let eligible = shouldDispatch ? logs : logs.filter { errorLogNames.contains($0.name) }
++    return eligible.filter { !ignoredEvents.contains($0.name) }
+   }
+ 
+   private static func isInSample(rate: Double?) -> Bool {
+diff --git a/ios/ObserveModule.swift b/ios/ObserveModule.swift
+index 35a0766c3d2c4bded57ce0e154ffa86f8e3e05eb..62cc6aadaf6f0a476636c31b297469faabae339c 100644
+--- a/ios/ObserveModule.swift
++++ b/ios/ObserveModule.swift
+@@ -12,6 +12,8 @@ internal struct Config: Record {
+   @Field var dispatchInDebug: Bool?
+   @Field var sampleRate: Double?
+   @Field var errorSampleRate: Double?
++  @Field var ignoredMetrics: [String] = []
++  @Field var ignoredEvents: [String] = []
+   @Field var integrations: [String: Any]?
+ }
+ 
+@@ -53,7 +55,9 @@ public final class ObserveModule: Module {
+             dispatchingEnabled: config.dispatchingEnabled,
+             dispatchInDebug: config.dispatchInDebug,
+             sampleRate: config.sampleRate,
+-            errorSampleRate: config.errorSampleRate
++            errorSampleRate: config.errorSampleRate,
++            ignoredMetrics: config.ignoredMetrics,
++            ignoredEvents: config.ignoredEvents
+           )
+         )
+         let resolvedEnvironment = config.environment ?? ObserveUserDefaults.bundleDefaults?.environment
+@@ -71,6 +75,18 @@ public final class ObserveModule: Module {
+       return self.lastIntegrations
+     }
+ 
++    AsyncFunction("getIntegrationValue") { (integration: String, key: String) async throws -> String? in
++      return try await AppMetricsActor.isolated {
++        return ObserveUserDefaults.integrationValue(integration: integration, key: key)
++      }
++    }
++
++    AsyncFunction("setIntegrationValue") { (integration: String, key: String, value: String?) async throws in
++      try await AppMetricsActor.isolated {
++        ObserveUserDefaults.setIntegrationValue(value, integration: integration, key: key)
++      }
++    }
++
+     Function("setBundleDefaults") { (defaults: BundleDefaults) in
+       guard !defaults.environment.isEmpty else {
+         observeLogger.warn(
+diff --git a/ios/ObserveUserDefaults.swift b/ios/ObserveUserDefaults.swift
+index cdfb9f6a7d25174a1cfcfdf596f16498175d3a72..d6fd832e5fd6e886cabe9508f20f1325713e7b64 100644
+--- a/ios/ObserveUserDefaults.swift
++++ b/ios/ObserveUserDefaults.swift
+@@ -8,6 +8,8 @@ internal struct PersistedConfig: Codable {
+   var dispatchInDebug: Bool?
+   var sampleRate: Double?
+   var errorSampleRate: Double?
++  var ignoredMetrics: [String]?
++  var ignoredEvents: [String]?
+ }
+ 
+ /// Bundle-derived facts pushed from the JS layer at package import time.
+@@ -97,6 +99,20 @@ internal final class ObserveUserDefaults: UserDefaults {
+     defaults.set(data, forKey: Keys.bundleDefaults.rawValue)
+   }
+ 
++  /// A string that a library integration stores, under a key that starts with the integration's
++  /// name. Setting `nil` removes it.
++  static func integrationValue(integration: String, key: String) -> String? {
++    return defaults.string(forKey: integrationKey(integration: integration, key: key))
++  }
++
++  static func setIntegrationValue(_ value: String?, integration: String, key: String) {
++    defaults.set(value, forKey: integrationKey(integration: integration, key: key))
++  }
++
++  private static func integrationKey(integration: String, key: String) -> String {
++    return "integration.\(integration).\(key)"
++  }
++
+   // MARK: - Legacy keys
+ 
+   /// Keys that older versions wrote and nothing reads anymore.
+diff --git a/ios/OpenTelemetry.swift b/ios/OpenTelemetry.swift
+index e781137b1db75bdf986fcec6e407ad8da3a9a9af..79af391d9545b3344f555cc1c0f120d164b67b82 100644
+--- a/ios/OpenTelemetry.swift
++++ b/ios/OpenTelemetry.swift
+@@ -210,7 +210,7 @@ struct OTResourceSpans: Codable, Sendable {
+ /// — a renamed key would silently mismatch the declared schema otherwise.
+ private let semConvSchemaUrl = "https://opentelemetry.io/schemas/1.27.0"
+ 
+-// This must be kept in sync with the INTERNAL_TO_OTEL map in universe
++// Keep in sync with INTERNAL_TO_OTEL in universe and `ObserveMetricName` in `src/types.ts`:
+ // https://github.com/expo/universe/blob/main/server/www/src/middleware/easObserveRoutes.ts#L209
+ // Keyed by "<category>/<name>" — mirrors the (category, name) pair used by the
+ // Android port so the same metric name under a different category never silently
+@@ -234,8 +234,13 @@ let metricNameMap = [
+   "navigation/cold_ttr": "expo.navigation.cold_ttr",
+   "navigation/warm_ttr": "expo.navigation.warm_ttr",
+   "navigation/tti": "expo.navigation.tti",
++  "navigation/tbt": "expo.navigation.tbt",
+ ]
+ 
++func exportedMetricName(category: String?, name: String) -> String {
++  return metricNameMap["\(category ?? "unknown")/\(name)"] ?? "expo.unknown.\(name)"
++}
++
+ private func nsFromISOString(_ dateString: String?) -> UInt64 {
+   if let dateString,
+     let date = try? Date.ISO8601FormatStyle().parse(dateString)
+@@ -264,10 +269,9 @@ extension Event.Metric {
+       attributes.append(OTAttribute(key: "expo.custom_params", rawValue: customParamsString))
+     }
+ 
+-    let lookupKey = "\(self.category ?? "unknown")/\(self.name)"
+     return OTMetric(
+       unit: "s",
+-      name: metricNameMap[lookupKey] ?? "expo.unknown.\(self.name)",
++      name: exportedMetricName(category: category, name: name),
+       gauge: OTGauge(dataPoints: [
+         OTDataPoint(
+           timeUnixNano: nsFromISODateString(),
+diff --git a/ios/Tests/DispatchLoopTests.swift b/ios/Tests/DispatchLoopTests.swift
+index ef7e993d9dbd08ac6dadbb09d6ed55f1cd927158..741fb696055b8782213e4150f4ec8aeaf0db4777 100644
+--- a/ios/Tests/DispatchLoopTests.swift
++++ b/ios/Tests/DispatchLoopTests.swift
+@@ -118,6 +118,89 @@ struct DispatchLoopTests {
+     #expect(state.observedResults.map(\.result) == [.success])
+   }
+ 
++  @Test
++  func `mixed and all ignored metric batches advance past every row`() async {
++    let metrics = [
++      // Ignored: `expo.app_startup.tti`.
++      MetricRow(
++        id: 1,
++        sessionId: "s",
++        timestamp: "t",
++        category: "appStartup",
++        name: "timeToInteractive",
++        value: 1
++      ),
++      // Sent: `expo.navigation.tti`.
++      MetricRow(
++        id: 2,
++        sessionId: "s",
++        timestamp: "t",
++        category: "navigation",
++        name: "tti",
++        value: 2
++      ),
++      // Ignored. Alone in chunk 2, so that chunk sends nothing.
++      MetricRow(
++        id: 3,
++        sessionId: "s",
++        timestamp: "t",
++        category: "appStartup",
++        name: "timeToInteractive",
++        value: 3
++      ),
++    ]
++    var cursors: [Int64] = []
++    var sent: [String] = []
++
++    await DispatchLoop.drain(
++      startCursor: 0,
++      chunkSize: 2,
++      fetchBatch: { cursor, limit in Array(metrics.filter { ($0.id ?? 0) > cursor }.prefix(limit)) },
++      rowId: { $0.id },
++      send: { batch in
++        let remaining = ObservabilityManager.filteredMetrics(
++          batch,
++          ignoredMetrics: ["expo.app_startup.tti"]
++        )
++        sent += remaining.map(\.name)
++        return remaining.isEmpty ? nil : .success // Same as `dispatchMetrics`: `nil` skips the chunk.
++      },
++      onResult: { _, _, _ in },
++      persistCursor: { cursors.append($0) }
++    )
++
++    #expect(sent == ["tti"])
++    #expect(cursors == [2, 3]) // Chunk 2 has only ignored rows, but the cursor still moves to 3.
++  }
++
++  @Test
++  func `retryable mixed log batch keeps its ignored rows for retry`() async {
++    let logs = ["hidden", "visible"].enumerated().map { index, name in
++      LogRow(id: Int64(index + 1), sessionId: "s", timestamp: "t", severity: "info", name: name)
++    }
++    var cursors: [Int64] = []
++    var sent: [String] = []
++
++    await DispatchLoop.drain(
++      startCursor: 0,
++      fetchBatch: { cursor, limit in Array(logs.filter { ($0.id ?? 0) > cursor }.prefix(limit)) },
++      rowId: { $0.id },
++      send: { batch in
++        sent = ObservabilityManager.sampledLogs(
++          batch,
++          shouldDispatch: true,
++          ignoredEvents: ["hidden"]
++        ).map(\.name)
++        return .retryableFailure(retryAfter: nil)
++      },
++      onResult: { _, _, _ in },
++      persistCursor: { cursors.append($0) }
++    )
++
++    #expect(sent == ["visible"])
++    #expect(cursors.isEmpty)
++  }
++
+   @Test
+   func `payload too large halves the batch then resumes full chunks`() async {
+     let state = State(
+diff --git a/ios/Tests/ObservabilityTests.swift b/ios/Tests/ObservabilityTests.swift
+index c291ebd1dc6ae03e1045d9cc8e6527918d32ab4c..0b5e52fd192b81eb783483a7728587063cdd4bb6 100644
+--- a/ios/Tests/ObservabilityTests.swift
++++ b/ios/Tests/ObservabilityTests.swift
+@@ -84,13 +84,67 @@ struct ObservabilitySampledLogsTests {
+ 
+   @Test
+   func `out-of-sample for sampleRate keeps only exception logs`() {
+-    let result = ObservabilityManager.sampledLogs(logs, shouldDispatch: false)
++    let result = ObservabilityManager.sampledLogs(logs, shouldDispatch: false, ignoredEvents: [])
+     #expect(result.map(\.name) == ["js.exception", "native.exception"])
+   }
+ 
+   @Test
+   func `in-sample for sampleRate keeps all logs`() {
+-    let result = ObservabilityManager.sampledLogs(logs, shouldDispatch: true)
++    let result = ObservabilityManager.sampledLogs(logs, shouldDispatch: true, ignoredEvents: [])
+     #expect(result.map(\.name) == ["info", "js.exception", "native.exception"])
+   }
++
++  @Test
++  func `ignored events are removed after error sampling`() {
++    let result = ObservabilityManager.sampledLogs(
++      logs,
++      shouldDispatch: false,
++      ignoredEvents: ["js.exception"]
++    )
++    #expect(result.map(\.name) == ["native.exception"])
++  }
++
++  @Test
++  func `all ignored events leave no logs`() {
++    let result = ObservabilityManager.sampledLogs(
++      logs,
++      shouldDispatch: true,
++      ignoredEvents: ["info", "js.exception", "native.exception"]
++    )
++    #expect(result.isEmpty)
++  }
++}
++
++@Suite("Observability.filteredMetrics")
++struct ObservabilityFilteredMetricsTests {
++  @Test
++  func `matches exported names and preserves other rows`() {
++    let metrics = [
++      MetricRow(
++        sessionId: "s",
++        timestamp: "2025-01-01T00:00:00Z",
++        category: "appStartup",
++        name: "timeToInteractive",
++        value: 1
++      ),
++      MetricRow(
++        sessionId: "s",
++        timestamp: "2025-01-01T00:00:00Z",
++        category: "navigation",
++        name: "tti",
++        value: 2
++      ),
++    ]
++    let result = ObservabilityManager.filteredMetrics(
++      metrics,
++      ignoredMetrics: ["expo.app_startup.tti"]
++    )
++    #expect(result.map(\.name) == ["tti"])
++    #expect(
++      ObservabilityManager.filteredMetrics(
++        metrics,
++        ignoredMetrics: ["expo.app_startup.tti", "expo.navigation.tti"]
++      ).isEmpty
++    )
++  }
+ }
+diff --git a/ios/Tests/ObserveUserDefaultsTests.swift b/ios/Tests/ObserveUserDefaultsTests.swift
+index 1775ecd52726ddace61424002fec7a96788c2f3f..8091ccc788bf93298b36f07e1379e52db7113b52 100644
+--- a/ios/Tests/ObserveUserDefaultsTests.swift
++++ b/ios/Tests/ObserveUserDefaultsTests.swift
+@@ -11,6 +11,17 @@ struct ObserveUserDefaultsTests {
+     UserDefaults.standard.removePersistentDomain(forName: "dev.expo.observe")
+   }
+ 
++  @Test
++  func `integration values are kept per integration and removed by nil`() {
++    #expect(ObserveUserDefaults.integrationValue(integration: "a", key: "cursor") == nil)
++    ObserveUserDefaults.setIntegrationValue("1", integration: "a", key: "cursor")
++    ObserveUserDefaults.setIntegrationValue("2", integration: "b", key: "cursor")
++    #expect(ObserveUserDefaults.integrationValue(integration: "a", key: "cursor") == "1")
++    #expect(ObserveUserDefaults.integrationValue(integration: "b", key: "cursor") == "2")
++    ObserveUserDefaults.setIntegrationValue(nil, integration: "a", key: "cursor")
++    #expect(ObserveUserDefaults.integrationValue(integration: "a", key: "cursor") == nil)
++  }
++
+   @Test
+   func `config defaults to nil`() {
+     #expect(ObserveUserDefaults.config == nil)
+@@ -64,6 +75,26 @@ struct ObserveUserDefaultsTests {
+     #expect(ObserveUserDefaults.config?.sampleRate == nil)
+   }
+ 
++  @Test
++  func `ignored names persist and omitted lists reset them`() {
++    ObserveUserDefaults.setConfig(
++      PersistedConfig(ignoredMetrics: ["expo.app_startup.tti"], ignoredEvents: ["custom.event"])
++    )
++    #expect(ObserveUserDefaults.config?.ignoredMetrics == ["expo.app_startup.tti"])
++    #expect(ObserveUserDefaults.config?.ignoredEvents == ["custom.event"])
++    ObserveUserDefaults.setConfig(PersistedConfig())
++    #expect(ObserveUserDefaults.config?.ignoredMetrics == nil)
++    #expect(ObserveUserDefaults.config?.ignoredEvents == nil)
++  }
++
++  @Test
++  func `old persisted JSON decodes with nil ignored lists`() throws {
++    let oldData = Data(#"{"dispatchingEnabled":true,"sampleRate":0.5}"#.utf8)
++    let config = try JSONDecoder().decode(PersistedConfig.self, from: oldData)
++    #expect(config.ignoredMetrics == nil)
++    #expect(config.ignoredEvents == nil)
++  }
++
+   @Test
+   func `dispatchInDebug defaults to nil`() {
+     #expect(ObserveUserDefaults.config?.dispatchInDebug == nil)
+diff --git a/ios/Tests/OpenTelemetryTests.swift b/ios/Tests/OpenTelemetryTests.swift
+index eb07a4c64f85aa39541f2155d95cb8d1c43d888e..c303d99ea03196687ad00d9ff14347971fedc9e2 100644
+--- a/ios/Tests/OpenTelemetryTests.swift
++++ b/ios/Tests/OpenTelemetryTests.swift
+@@ -118,6 +118,19 @@ struct OpenTelemetryTests {
+       customParams: nil
+     )
+     #expect(warm.toOTMetric().name == "expo.navigation.warm_ttr")
++
++    let tbt = Event.Metric(
++      category: "navigation",
++      name: "tbt",
++      value: 1.0,
++      timestamp: "2026-01-01T00:00:00Z",
++      sessionId: testSessionId,
++      parentSessionId: nil,
++      routeName: nil,
++      updateId: nil,
++      customParams: nil
++    )
++    #expect(tbt.toOTMetric().name == "expo.navigation.tbt")
+   }
+ 
+   // MARK: - Metric structure
+diff --git a/src/index.ts b/src/index.ts
+index fd60e56653b6d3f0c36f3fb86b02d5fbf4ea6dfb..293a29357db0ae1228345857c3a4c3b9a2492b6f 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -43,11 +43,28 @@ export type {
+   ObserveAttribute,
+   ObserveAttributes,
+   ObserveConfig,
++  ObserveEventName,
++  ObserveExpoUpdatesIntegrationConfig,
++  ObserveExpoUpdatesLogEntry,
++  ObserveExpoUpdatesLogEntryCode,
++  ObserveIntegration,
++  ObserveIntegrationErrorReport,
++  ObserveIntegrationFilterConfig,
++  ObserveIntegrationRegistry,
++  ObserveIntegrationReporter,
++  ObserveIntegrationReportOptions,
++  ObserveIntegrationStorage,
++  ObserveIntegrationWarningReport,
+   ObserveIntegrationsConfig,
+   ObserveModule,
+   ObserveModuleEvents,
++  ObserveMetricName,
+   ObserveNavigationIntegrationConfig,
+   ObserveNetworkTracesConfig,
+   ObserveReanimatedIntegrationConfig,
+ } from './types';
++export {
++  OBSERVE_INTEGRATION_REGISTRY_KEY,
++  registerObserveIntegration,
++} from './integrations/registry';
+ export { useObserve } from './useObserve';
+diff --git a/src/integrations/expo-router/init.ts b/src/integrations/expo-router/init.ts
+index 9bf584db9037a152c0d6a6768237fcd468dbe1ff..a234d07ae4252402c3b82a530a2379875339d713 100644
+--- a/src/integrations/expo-router/init.ts
++++ b/src/integrations/expo-router/init.ts
+@@ -1,7 +1,8 @@
+ import AppMetrics from 'expo-app-metrics';
+ 
+ import type { ObserveIntegrationsConfig } from '../../types';
+-import { getNavigationMetricParams } from '../navigationConfig';
++import { getNavigationMetricParams, isTotalBlockingTimeEnabled } from '../navigationConfig';
++import { createNavigationBlockingTime } from '../shared/navigation/blockingTime';
+ import { emitTTI } from './emitTTI';
+ import { buildRoutePattern } from './routeName';
+ import {
+@@ -36,6 +37,9 @@ export function initListeners(
+   PerformanceObserver: RouterPerformanceObserver
+ ): () => void {
+   const appLaunchTime = performance.now();
++  const blockingTime = isTotalBlockingTimeEnabled(routerIntegrationConfig)
++    ? createNavigationBlockingTime((metric) => AppMetrics.getMainSession().addMetric(metric))
++    : undefined;
+ 
+   const observer = new PerformanceObserver((list) => {
+     for (const performanceEntry of list.getEntries()) {
+@@ -58,10 +62,10 @@ export function initListeners(
+           // PRELOAD comes from router.prefetch() — a route warm-up, not a user
+           // navigation — so it must not become a TTR start.
+           if (entry.detail.actionType === 'PRELOAD') break;
+-          storage.pendingActions.push({
+-            actionType: entry.detail.actionType,
+-            startTime: enqueueTime ?? entry.startTime,
+-          });
++          const startTime = enqueueTime ?? entry.startTime;
++          storage.pendingActions.push({ actionType: entry.detail.actionType, startTime });
++          // Navigations before the first screen is focused are part of app launch.
++          if (storage.hasRecordedInitialTtr) blockingTime?.start(startTime);
+           break;
+         }
+         case 'expo-router:page-preloaded':
+@@ -86,9 +90,9 @@ export function initListeners(
+     // sees the pre-focus state of this screen. A pending interactive means
+     // `markInteractive` ran before this focus landed.
+     const existingFocusedScreenTimes = storage.screenTimes[e.screenId];
++    const isFirstFocus = existingFocusedScreenTimes?.dispatchTime == null;
+     const hasPendingInteractive =
+-      existingFocusedScreenTimes?.lastInteractiveCall != null &&
+-      existingFocusedScreenTimes?.dispatchTime == null;
++      isFirstFocus && existingFocusedScreenTimes?.lastInteractiveCall != null;
+ 
+     const isInitial = !storage.renderedScreensIds.has(e.screenId);
+     storage.renderedScreensIds.add(e.screenId);
+@@ -144,6 +148,18 @@ export function initListeners(
+       value: ttrSeconds,
+       params: { isAppLaunch, ...navigationParams },
+     });
++    if (!isAppLaunch && isFirstFocus) {
++      blockingTime?.setMetric(
++        {
++          timestamp,
++          category: 'navigation',
++          name: 'tbt',
++          routeName: routePattern,
++          params: navigationParams,
++        },
++        now
++      );
++    }
+     if (hasPendingInteractive) {
+       await emitTTI({
+         session: mainSession,
+@@ -158,5 +174,8 @@ export function initListeners(
+     }
+   }
+ 
+-  return () => observer.disconnect();
++  return () => {
++    observer.disconnect();
++    blockingTime?.dispose();
++  };
+ }
+diff --git a/src/integrations/navigationConfig.ts b/src/integrations/navigationConfig.ts
+index 2b8c75903e46ff310165ba7d7a4b4e6bb6d4b049..ad4dfe52807c06f155264148a03bad8e6cea70b0 100644
+--- a/src/integrations/navigationConfig.ts
++++ b/src/integrations/navigationConfig.ts
+@@ -17,6 +17,10 @@ function getFilteredParamKeys(config: NavigationIntegrationConfig): Set<string>
+   return keys.size > 0 ? keys : null;
+ }
+ 
++export function isTotalBlockingTimeEnabled(config: NavigationIntegrationConfig): boolean {
++  return !!config && typeof config === 'object' && config.experimental_totalBlockingTime === true;
++}
++
+ function prepareNavigationRouteParams(
+   config: NavigationIntegrationConfig,
+   params: object | undefined
+diff --git a/src/integrations/react-navigation/ObserveNavigationProvider.tsx b/src/integrations/react-navigation/ObserveNavigationProvider.tsx
+index 7dc1cdb61f0dfcee7d1e785aa73e583d3ac00410..417a61e5ead54cc561f4899e2b31960a3e3bfb85 100644
+--- a/src/integrations/react-navigation/ObserveNavigationProvider.tsx
++++ b/src/integrations/react-navigation/ObserveNavigationProvider.tsx
+@@ -1,10 +1,13 @@
++import AppMetrics from 'expo-app-metrics';
+ import { useEffect, useMemo, useState, type ReactNode } from 'react';
+ 
+ import { useAssertValueDoesNotChange } from '../../useAssertValueDoesNotChange';
++import { isTotalBlockingTimeEnabled } from '../navigationConfig';
++import { createNavigationBlockingTime } from '../shared/navigation/blockingTime';
+ import { attachActionListener } from './actionListener';
+ import { ObserveReactNavigationIntegrationContext } from './context';
+ import { createStateChangeHandler } from './handleStateChange';
+-import { isInitialized } from './init';
++import { getReactNavigationIntegrationConfig, isInitialized } from './init';
+ import { optionalReactNavigation } from './reactNavigation';
+ import { createReactNavigationIntegrationStorage } from './storage';
+ import type { NavigationContainerRefLike, NavigationStateLike } from './types';
+@@ -75,16 +78,24 @@ export function ObserveNavigationProvider({
+   useEffect(() => {
+     if (!internal) return;
+ 
++    const blockingTime = isTotalBlockingTimeEnabled(getReactNavigationIntegrationConfig())
++      ? createNavigationBlockingTime((metric) => AppMetrics.getMainSession().addMetric(metric))
++      : undefined;
++
+     // The `state` event payload can be partial on the initial commit, so
+     // always read the hydrated state from the ref.
+     const processRootState = () => {
+       const rootState = navigationRef.getRootState() as unknown as NavigationStateLike | undefined;
+       if (rootState) {
+-        internal.handleStateChange(rootState);
++        internal.handleStateChange(rootState, blockingTime);
+       }
+     };
+ 
+-    const detachActionListener = attachActionListener(navigationRef, internal.storage);
++    const detachActionListener = attachActionListener(
++      navigationRef,
++      internal.storage,
++      blockingTime
++    );
+     // Unlike the `onStateChange` prop, the `state` ref event also fires for
+     // the initial commit — but child effects run before parent effects, so by
+     // the time this effect subscribes, the container rendered below has
+@@ -99,6 +110,7 @@ export function ObserveNavigationProvider({
+     return () => {
+       detachActionListener();
+       detachStateListener();
++      blockingTime?.dispose();
+     };
+   }, [internal, navigationRef]);
+ 
+diff --git a/src/integrations/react-navigation/actionListener.ts b/src/integrations/react-navigation/actionListener.ts
+index 0d91b83158403f59365b7019fc9d84608748603b..db0147962e4ca75311a526f02aec2849aa59fc1e 100644
+--- a/src/integrations/react-navigation/actionListener.ts
++++ b/src/integrations/react-navigation/actionListener.ts
+@@ -1,3 +1,4 @@
++import type { NavigationBlockingTime } from '../shared/navigation/blockingTime';
+ import type { ReactNavigationIntegrationStorage } from './storage';
+ 
+ export interface NavigationRefActionListenerHandle {
+@@ -9,16 +10,17 @@ export interface NavigationRefActionListenerHandle {
+ 
+ export function attachActionListener(
+   navigationRef: NavigationRefActionListenerHandle,
+-  storage: ReactNavigationIntegrationStorage
++  storage: ReactNavigationIntegrationStorage,
++  blockingTime: NavigationBlockingTime
+ ): () => void {
+   return navigationRef.addListener('__unsafe_action__', (e) => {
+     if (e.data.noop) return;
+     // PRELOAD comes from preload APIs (e.g. native-stack `unstable_preload`) —
+     // a warm-up, not a user navigation — so it must not seed dispatchTime.
+     if (e.data.action.type === 'PRELOAD') return;
+-    storage.pendingActions.push({
+-      actionType: e.data.action.type,
+-      dispatchTime: performance.now(),
+-    });
++    const dispatchTime = performance.now();
++    storage.pendingActions.push({ actionType: e.data.action.type, dispatchTime });
++    // Navigations before the first screen is focused are part of app launch.
++    if (storage.hasRecordedInitialTtr) blockingTime?.start(dispatchTime);
+   });
+ }
+diff --git a/src/integrations/react-navigation/handleStateChange.ts b/src/integrations/react-navigation/handleStateChange.ts
+index be7a049c36a05f7f320f1aa8e4c9d9dd82fc6bb5..fa7c01ae25daeaa9345b93cdf494a218ba72423b 100644
+--- a/src/integrations/react-navigation/handleStateChange.ts
++++ b/src/integrations/react-navigation/handleStateChange.ts
+@@ -1,6 +1,7 @@
+ import AppMetrics from 'expo-app-metrics';
+ 
+ import { getNavigationRouteParams } from '../navigationConfig';
++import type { NavigationBlockingTime } from '../shared/navigation/blockingTime';
+ import { emitTTI } from './emitTTI';
+ import { getPathname } from './getPathname';
+ import { getReactNavigationIntegrationConfig } from './init';
+@@ -11,10 +12,11 @@ import type { NavigationStateLike } from './types';
+ export function createStateChangeHandler(
+   storage: ReactNavigationIntegrationStorage,
+   appLaunchTime: number
+-): (state: NavigationStateLike | undefined) => void {
++): (state: NavigationStateLike | undefined, blockingTime: NavigationBlockingTime) => void {
+   let previousFocusedKey: string | null = null;
++  const focusedKeys = new Set<string>();
+ 
+-  return async function handleStateChange(state) {
++  return async function handleStateChange(state, blockingTime) {
+     if (!state) return;
+     // Snapshot clocks once so every metric written below is stamped with
+     // the moment the focus actually fired, not the moment `addMetric` happens
+@@ -61,6 +63,9 @@ export function createStateChangeHandler(
+ 
+     if (focused.key === previousFocusedKey) return;
+     previousFocusedKey = focused.key;
++    // Not derived from `dispatchTime`, which the loop above also sets on screens mounted unfocused.
++    const isFirstFocus = !focusedKeys.has(focused.key);
++    focusedKeys.add(focused.key);
+ 
+     const pathname = getPathname(state) ?? focused.route.name;
+     const navigationParams = getNavigationRouteParams(
+@@ -120,6 +125,18 @@ export function createStateChangeHandler(
+       value: ttrSeconds,
+       params: { isAppLaunch: false, ...navigationParams },
+     });
++    if (isFirstFocus) {
++      blockingTime?.setMetric(
++        {
++          timestamp,
++          category: 'navigation',
++          name: 'tbt',
++          routeName: pathname,
++          params: navigationParams,
++        },
++        now
++      );
++    }
+     if (hasPendingInteractive) {
+       await emitTTI({
+         session: mainSession,
+diff --git asrc/integrations/registry.ts b/src/integrations/registry.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e2a52db7d8da8b957ff3107daa8e89dd3761b89f
+--- /dev/null
++++ b/src/integrations/registry.ts
+@@ -0,0 +1,232 @@
++import AppMetrics from 'expo-app-metrics';
++
++import { reportCaughtError } from '../reportCaughtError';
++import type {
++  ObserveIntegration,
++  ObserveIntegrationErrorReport,
++  ObserveIntegrationFilterConfig,
++  ObserveIntegrationRegistry,
++  ObserveIntegrationReporter,
++  ObserveIntegrationReportOptions,
++  ObserveIntegrationStorage,
++  ObserveIntegrationWarningReport,
++  ObserveIntegrationsConfig,
++} from '../types';
++import { createReportLimiter, type ReportLimiter } from './reportLimiter';
++
++/**
++ * The `globalThis` key of the integration registry. A library registers its integration here
++ * without importing `expo-observe`, so the library works whether or not `expo-observe` is
++ * installed, and in either load order.
++ */
++export const OBSERVE_INTEGRATION_REGISTRY_KEY = '__expo_observe_integrations__';
++
++type RegistryGlobal = typeof globalThis & {
++  [OBSERVE_INTEGRATION_REGISTRY_KEY]?: ObserveIntegrationRegistry;
++};
++
++type ActiveIntegration = {
++  integration: ObserveIntegration;
++  reporter: ObserveIntegrationReporter;
++  // The config the integration was last configured with, or `undefined` while it is disabled.
++  config: unknown;
++};
++
++/**
++ * Returns the shared registry, creating it when no library and no earlier `expo-observe` copy has.
++ */
++export function getIntegrationRegistry(): ObserveIntegrationRegistry {
++  const global = globalThis as RegistryGlobal;
++  global[OBSERVE_INTEGRATION_REGISTRY_KEY] ??= { integrations: [] };
++  return global[OBSERVE_INTEGRATION_REGISTRY_KEY];
++}
++
++/**
++ * Registers an integration that lives in another library. The integration's `configure` runs with
++ * the original object from `Observe.configure({ integrations })`, functions included, each time
++ * `configure` enables it, and `disable` runs when a later `configure` turns it off. A library that
++ * does not depend on `expo-observe` does the same with the registry at
++ * `globalThis.__expo_observe_integrations__`: create it as `{ integrations: [] }` when it is
++ * missing, push the integration, and call `onRegister` when it is set.
++ */
++export function registerObserveIntegration(integration: ObserveIntegration): void {
++  const registry = getIntegrationRegistry();
++  registry.integrations.push(integration);
++  registry.onRegister?.(integration);
++}
++
++/**
++ * The native functions that keep each integration's strings, which are not public API.
++ */
++export type IntegrationValueStore = {
++  getIntegrationValue(integration: string, key: string): Promise<string | null>;
++  setIntegrationValue(integration: string, key: string, value: string | null): Promise<void>;
++};
++
++// Only one `expo-observe` copy configures the registry, so this state is per module instance.
++const active = new Map<ObserveIntegration, ActiveIntegration>();
++let latestIntegrations: ObserveIntegrationsConfig | null = null;
++let valueStore: IntegrationValueStore | null = null;
++
++function createStorage(name: string): ObserveIntegrationStorage {
++  return {
++    async getItem(key) {
++      return valueStore ? ((await valueStore.getIntegrationValue(name, key)) ?? null) : null;
++    },
++    async setItem(key, value) {
++      await valueStore?.setIntegrationValue(name, key, value);
++    },
++  };
++}
++
++function filterConfigOf(config: unknown): ObserveIntegrationFilterConfig {
++  return typeof config === 'object' && config !== null
++    ? (config as ObserveIntegrationFilterConfig)
++    : {};
++}
++
++function createReporter(name: string, getConfig: () => unknown): ObserveIntegrationReporter {
++  const limiters = new Map<string, ReportLimiter>();
++  let hasWarnedAboutShouldReport = false;
++
++  function limiterFor(key: string): ReportLimiter {
++    let limiter = limiters.get(key);
++    if (!limiter) {
++      limiter = createReportLimiter();
++      limiters.set(key, limiter);
++    }
++    return limiter;
++  }
++
++  function passesFilter(
++    code: string | undefined,
++    defaultValue: unknown,
++    options: ObserveIntegrationReportOptions | undefined
++  ): boolean {
++    if (options?.skipFilter) {
++      return true;
++    }
++    const { ignoredCodes, shouldReport } = filterConfigOf(getConfig());
++    if (code !== undefined && ignoredCodes?.includes(code)) {
++      return false;
++    }
++    if (typeof shouldReport !== 'function') {
++      return true;
++    }
++    try {
++      return shouldReport(options && 'filterValue' in options ? options.filterValue : defaultValue);
++    } catch (error) {
++      if (!hasWarnedAboutShouldReport) {
++        hasWarnedAboutShouldReport = true;
++        console.warn(
++          `[expo-observe] The '${name}' integration's \`shouldReport\` function threw, so the ` +
++            'report is sent. Fix the function so that it returns a boolean. ' +
++            `Error: ${String(error)}`
++        );
++      }
++      return true;
++    }
++  }
++
++  return {
++    storage: createStorage(name),
++    reportError(report: ObserveIntegrationErrorReport, options?: ObserveIntegrationReportOptions) {
++      if (getConfig() === undefined || !passesFilter(report.code, report, options)) {
++        return false;
++      }
++      if (limiterFor(options?.limit ?? 'error').allow(report.message) === null) {
++        return false;
++      }
++      const error = new Error(report.message);
++      error.name = report.type;
++      error.stack = report.stack;
++      reportCaughtError(error, 'integration', report.code);
++      return true;
++    },
++    reportWarning(
++      report: ObserveIntegrationWarningReport,
++      options?: ObserveIntegrationReportOptions
++    ) {
++      if (getConfig() === undefined || !passesFilter(report.code, report, options)) {
++        return false;
++      }
++      const cappedMessage = limiterFor(options?.limit ?? 'warning').allow(report.message);
++      if (cappedMessage === null) {
++        return false;
++      }
++      AppMetrics.logEvent(report.name, {
++        displayName: report.displayName,
++        body: report.message,
++        severity: 'warn',
++        // `eas observe:events` and `observe:session` show `attributes` but not `body`, so the
++        // message is copied here to stay queryable.
++        attributes: {
++          ...report.attributes,
++          message: cappedMessage,
++          ...(report.code !== undefined ? { code: report.code } : {}),
++        },
++      });
++      return true;
++    },
++  };
++}
++
++function apply(entry: ActiveIntegration, integrations: ObserveIntegrationsConfig): void {
++  const config = (integrations as Record<string, unknown>)[entry.integration.name];
++  const wasEnabled = entry.config !== undefined;
++  if (config) {
++    entry.config = config;
++    callSafely(entry.integration, 'configure', () =>
++      entry.integration.configure(config, entry.reporter)
++    );
++  } else if (wasEnabled) {
++    entry.config = undefined;
++    callSafely(entry.integration, 'disable', () => entry.integration.disable?.());
++  }
++}
++
++function callSafely(integration: ObserveIntegration, hook: string, call: () => void): void {
++  try {
++    call();
++  } catch (error) {
++    console.warn(
++      `[expo-observe] The '${integration.name}' integration's \`${hook}\` threw: ${String(error)}`
++    );
++  }
++}
++
++function activate(integration: ObserveIntegration): ActiveIntegration {
++  let entry = active.get(integration);
++  if (!entry) {
++    const created: ActiveIntegration = {
++      integration,
++      config: undefined,
++      reporter: createReporter(integration.name, () => created.config),
++    };
++    active.set(integration, created);
++    entry = created;
++  }
++  return entry;
++}
++
++/**
++ * Passes the `integrations` object of a `configure` call to every registered library integration,
++ * and to each integration that registers later. `store` keeps the integrations' strings; without
++ * it, as on web, nothing is stored.
++ */
++export function configureRegisteredIntegrations(
++  integrations: ObserveIntegrationsConfig,
++  store: IntegrationValueStore | null = null
++): void {
++  latestIntegrations = integrations;
++  valueStore = store;
++  const registry = getIntegrationRegistry();
++  registry.onRegister = (integration) => {
++    if (latestIntegrations) {
++      apply(activate(integration), latestIntegrations);
++    }
++  };
++  for (const integration of registry.integrations) {
++    apply(activate(integration), integrations);
++  }
++}
+diff --git asrc/integrations/reportLimiter.ts b/src/integrations/reportLimiter.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..131d02eab2363c3e15dbf86d7b6529e9fdc62c4c
+--- /dev/null
++++ b/src/integrations/reportLimiter.ts
+@@ -0,0 +1,50 @@
++// A log message can repeat many times, so each distinct message is reported at most once per
++// window. The cap bounds the reports in a window when messages embed varying values, and the
++// window lets new messages be reported again after a surge.
++const REPORT_WINDOW_MS = 15 * 60_000;
++const MAX_DISTINCT_MESSAGES_PER_WINDOW = 20;
++// Attribute values are sent on every dispatch, so a copied message is capped. Messages are also
++// deduplicated by this capped text, so two messages that differ only after the cap do not send
++// the same attribute twice.
++const MAX_MESSAGE_LENGTH = 500;
++
++/**
++ * Limits how often an integration reports log messages. An integration creates one limiter for
++ * each level it reports, so many distinct warnings cannot stop errors from being reported.
++ */
++export interface ReportLimiter {
++  /**
++   * Returns the message capped to the length that reports use, or `null` when the message was
++   * already reported in the current window or the window is full.
++   */
++  allow(message: string): string | null;
++}
++
++export function createReportLimiter(): ReportLimiter {
++  // Maps the capped text of each message reported in the current window to the time it was
++  // reported. A `Map` keeps insertion order, so the oldest report is always first. The time comes
++  // from the monotonic `performance.now()`, so a change to the device clock cannot stop expiry.
++  const reported = new Map<string, number>();
++
++  function removeExpiredReports(now: number): void {
++    for (const [message, reportedAt] of reported) {
++      if (now - reportedAt < REPORT_WINDOW_MS) {
++        return;
++      }
++      reported.delete(message);
++    }
++  }
++
++  return {
++    allow(message) {
++      const cappedMessage = message.slice(0, MAX_MESSAGE_LENGTH);
++      const now = performance.now();
++      removeExpiredReports(now);
++      if (reported.has(cappedMessage) || reported.size >= MAX_DISTINCT_MESSAGES_PER_WINDOW) {
++        return null;
++      }
++      reported.set(cappedMessage, now);
++      return cappedMessage;
++    },
++  };
++}
+diff --git asrc/integrations/shared/navigation/blockingTime.ts b/src/integrations/shared/navigation/blockingTime.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d34db177d03d507ea1c2358441248db01e292715
+--- /dev/null
++++ b/src/integrations/shared/navigation/blockingTime.ts
+@@ -0,0 +1,101 @@
++import type { MetricInput } from 'expo-app-metrics';
++import { AppState } from 'react-native';
++
++// Navigation Total Blocking Time follows Coinbase's Performance Vitals definition: blocking time
++// in the 2 seconds after a user navigates.
++// https://www.coinbase.com/blog/performance-vitals-a-unified-scoring-system-to-guide-performance-health-and-prioritization
++const WINDOW_MS = 2000;
++// Same 50ms threshold as the Long Tasks API. Only the time past 50ms counts.
++// https://w3c.github.io/longtasks/
++const LONG_TASK_THRESHOLD_MS = 50;
++
++type NavigationMetric = Omit<MetricInput, 'value'>;
++
++type Window = {
++  start: number;
++  timer: ReturnType<typeof setTimeout>;
++  metric?: NavigationMetric;
++};
++
++export type NavigationBlockingTime = ReturnType<typeof createNavigationBlockingTime>;
++
++export function createNavigationBlockingTime(onMeasured: (metric: MetricInput) => void) {
++  if (
++    typeof PerformanceObserver === 'undefined' ||
++    !PerformanceObserver.supportedEntryTypes?.includes('longtask')
++  ) {
++    return;
++  }
++
++  let current: Window | undefined;
++  // Kept across windows, because React Native reports long tasks at idle priority, often after
++  // the navigation that the task belongs to starts its window.
++  let longTasks: PerformanceEntry[] = [];
++
++  const addLongTasks = (entries: PerformanceEntry[]) => {
++    const cutoff = Math.min(performance.now() - WINDOW_MS, current?.start ?? Infinity);
++    longTasks = [...longTasks, ...entries].filter(
++      (entry) => entry.startTime + entry.duration > cutoff
++    );
++  };
++
++  const observer = new PerformanceObserver((list) => addLongTasks(list.getEntries()));
++  const observe = () => observer.observe({ type: 'longtask' });
++
++  const cancel = () => {
++    clearTimeout(current?.timer);
++    current = undefined;
++  };
++
++  const complete = (window: Window) => {
++    addLongTasks(observer.takeRecords());
++    current = undefined;
++    if (!window.metric) return;
++    let blockingTimeMs = 0;
++    for (const entry of longTasks) {
++      blockingTimeMs += Math.max(
++        0,
++        Math.min(entry.startTime + entry.duration, window.start + WINDOW_MS) -
++          Math.max(entry.startTime + LONG_TASK_THRESHOLD_MS, window.start)
++      );
++    }
++    onMeasured({ ...window.metric, value: blockingTimeMs / 1000 });
++  };
++
++  const stop = () => {
++    cancel();
++    longTasks = [];
++    observer.disconnect();
++  };
++
++  if (AppState.currentState === 'active') observe();
++  const appStateSubscription = AppState.addEventListener('change', (state) =>
++    state === 'active' ? observe() : stop()
++  );
++
++  return {
++    // Starts a window for a new navigation and drops the previous one without reporting it.
++    start(startTime: number) {
++      if (AppState.currentState !== 'active') return;
++      cancel();
++      const window: Window = {
++        start: startTime,
++        timer: setTimeout(
++          () => complete(window),
++          Math.max(0, startTime + WINDOW_MS - performance.now())
++        ),
++      };
++      current = window;
++    },
++    // Sets the metric of the latest navigation. Navigations without a metric are not reported.
++    setMetric(metric: NavigationMetric, focusTime: number) {
++      if (current && !current.metric && focusTime <= current.start + WINDOW_MS) {
++        current.metric = metric;
++      }
++    },
++    dispose() {
++      stop();
++      appStateSubscription.remove();
++    },
++  };
++}
+diff --git a/src/module.ts b/src/module.ts
+index 47c395cc240a748e794adadae7ee26947ac727c1..d9eb2107056c083b90ec79b9c526d15367cb6ce8 100644
+--- a/src/module.ts
++++ b/src/module.ts
+@@ -14,6 +14,10 @@ import {
+ } from './integrations/react-native-reanimated/init';
+ import { initReactNavigationIntegration } from './integrations/react-navigation/init';
+ import { isReactNavigationInstalled } from './integrations/react-navigation/reactNavigation';
++import {
++  configureRegisteredIntegrations,
++  type IntegrationValueStore,
++} from './integrations/registry';
+ import { reportCaughtError } from './reportCaughtError';
+ import type { ObserveConfig, ObserveIntegrationsConfig, ObserveModule } from './types';
+ 
+@@ -61,6 +65,29 @@ function warnIfErrorSampleRateIsLower({ sampleRate, errorSampleRate }: ObserveCo
+   }
+ }
+ 
++/**
++ * Removes function options, such as the `expo-updates` integration's `shouldReport`, from each
++ * integration's config before the config goes to the native module, which stores it and sends it
++ * back in `configure` events. Functions run only in JS, where library integrations get the original
++ * config.
++ */
++function configForNative(config: ObserveConfig): ObserveConfig {
++  if (!config.integrations) {
++    return config;
++  }
++  const integrations = Object.fromEntries(
++    Object.entries(config.integrations).map(([name, value]) => [
++      name,
++      typeof value === 'object' && value !== null
++        ? Object.fromEntries(
++            Object.entries(value).filter(([, option]) => typeof option !== 'function')
++          )
++        : value,
++    ])
++  );
++  return { ...config, integrations };
++}
++
+ const native = requireNativeModule<ObserveModule>('ExpoObserve');
+ 
+ const Observe: ObserveModule = new Proxy(native, {
+@@ -113,7 +140,15 @@ const Observe: ObserveModule = new Proxy(native, {
+           disableReanimatedIntegration();
+         }
+         warnIfErrorSampleRateIsLower(config);
+-        return target.configure(config);
++        const result = target.configure(configForNative(config));
++        // After the native configure, so a library integration that reads `getIntegrations()` sees
++        // the new config.
++        // The native module implements the integration value functions, which are not public API.
++        configureRegisteredIntegrations(
++          config.integrations ?? {},
++          target as unknown as IntegrationValueStore
++        );
++        return result;
+       };
+     }
+ 
+diff --git a/src/module.web.ts b/src/module.web.ts
+index 4d44377f92b99e8a27b1f2df0198818738eb5370..db9b23f8ef2cc3f65cf6f02576838a68a93a7734 100644
+--- a/src/module.web.ts
++++ b/src/module.web.ts
+@@ -7,6 +7,7 @@ import AppMetrics, {
+   type MetricAttributes,
+ } from 'expo-app-metrics';
+ 
++import { configureRegisteredIntegrations } from './integrations/registry';
+ import { reportCaughtError } from './reportCaughtError';
+ import type {
+   ObserveConfig,
+@@ -25,7 +26,9 @@ class ExpoObserveModule extends NativeModule<ObserveModuleEvents> implements Obs
+   startSpan = startSpan;
+   withSpan = withSpan;
+   recordSpan = recordSpan;
+-  configure(config: ObserveConfig): void {}
++  configure(config: ObserveConfig): void {
++    configureRegisteredIntegrations(config.integrations ?? {});
++  }
+   getIntegrations(): ObserveIntegrationsConfig {
+     return {};
+   }
+diff --git a/src/reportCaughtError.ts b/src/reportCaughtError.ts
+index 2d304b19bb05a65dc643aa33de520cb8e0c547ef..b65d5634c58bbe70c8e3a3e8dddff1e0f2bd6663 100644
+--- a/src/reportCaughtError.ts
++++ b/src/reportCaughtError.ts
+@@ -39,18 +39,21 @@ function normalizeReportedError(error: unknown): NormalizedReportedError {
+  * Reports a caught value as a non-fatal error through the AppMetrics module, shared by the native
+  * and web `Observe.reportError` implementations and by integrations. `source` is `reportedByUser`
+  * for an error the app reports, and `integration` for an error an integration reports for a library.
++ * `code` is a stable code for the kind of error, recorded as the `expo.error.code` attribute.
+  *
+  * Never throws: it's called from a `catch` block, so a failure here (a pathological thrown value, or
+  * a native call that rejects the payload) must not turn a handled error into an unhandled one.
+  */
+ export function reportCaughtError(
+   error: unknown,
+-  source: 'reportedByUser' | 'integration' = 'reportedByUser'
++  source: 'reportedByUser' | 'integration' = 'reportedByUser',
++  code?: string
+ ): void {
+   try {
+     AppMetrics.reportError({
+       source,
+       ...normalizeReportedError(error),
++      ...(code !== undefined ? { code } : {}),
+       isFatal: false,
+     });
+   } catch (reportingError) {
+diff --git a/src/types.ts b/src/types.ts
+index f6307c17b7607d9b1422cd111ce2c82c2a904f96..f5c43676d9a266227110c03d42e4f98e78319ae7 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -19,6 +19,32 @@ export type ObserveAttribute = LogAttributeValue;
+  */
+ export type ObserveAttributes = Record<string, ObserveAttribute>;
+ 
++// Keep in sync with `metricNameMap` in `ios/OpenTelemetry.swift` and `android/.../OpenTelemetry.kt` (except legacy entries).
++/**
++ * Name of a metric that EAS Observe sends.
++ */
++export type ObserveMetricName =
++  | 'expo.app_startup.tti'
++  | 'expo.app_startup.ttr'
++  | 'expo.app_startup.cold_launch_time'
++  | 'expo.app_startup.warm_launch_time'
++  | 'expo.app_startup.bundle_load_time'
++  | 'expo.updates.download_time'
++  | 'expo.navigation.cold_ttr'
++  | 'expo.navigation.warm_ttr'
++  | 'expo.navigation.tti'
++  | 'expo.navigation.tbt';
++
++/**
++ * Name of an event that EAS Observe sends. Custom names passed to `logEvent` are allowed.
++ */
++export type ObserveEventName =
++  | 'js.exception'
++  | 'native.exception'
++  | 'reanimated.warning'
++  | 'expo-image.oversized'
++  | (string & {});
++
+ export type ObserveConfig = {
+   /**
+    * The environment for observability events
+@@ -85,6 +111,19 @@ export type ObserveConfig = {
+    * @default undefined - errors follow `sampleRate`
+    */
+   errorSampleRate?: number;
++  /**
++   * Metric names that are not sent. Each `configure` call replaces the list.
++   *
++   * @default []
++   */
++  ignoredMetrics?: ObserveMetricName[];
++  /**
++   * Event names that are not sent, including custom names passed to `logEvent`. Each `configure`
++   * call replaces the list.
++   *
++   * @default []
++   */
++  ignoredEvents?: ObserveEventName[];
+   /**
+    * Whether to record unhandled JavaScript errors as `exception` log events.
+    *
+@@ -142,12 +181,20 @@ export type ObserveNavigationIntegrationConfig = {
+    * Does not affect `routeName`.
+    */
+   filteredParams?: string[];
++  /**
++   * Experimental. Enables the `tbt` (total blocking time) navigation metric.
++   * May change or be removed in a patch release.
++   *
++   * @default false
++   */
++  experimental_totalBlockingTime?: boolean;
+ };
+ 
+ export interface ObserveIntegrationsConfig {
+   /**
+    * Enables the `expo-router` integration, which records navigation metrics
+-   * (`cold_ttr`, `warm_ttr`, `tti`) from router state changes.
++   * (`cold_ttr`, `warm_ttr`, `tti`) from router state changes. The `tbt`
++   * metric needs `experimental_totalBlockingTime`.
+    *
+    * Requires `expo-router` to be installed.
+    *
+@@ -158,7 +205,8 @@ export interface ObserveIntegrationsConfig {
+   'expo-router'?: boolean | ObserveNavigationIntegrationConfig;
+   /**
+    * Enables the `@react-navigation/native` integration, which records
+-   * navigation metrics (`cold_ttr`, `warm_ttr`, `tti`).
++   * navigation metrics (`cold_ttr`, `warm_ttr`, `tti`). The `tbt` metric
++   * needs `experimental_totalBlockingTime`.
+    *
+    * Requires `@react-navigation/native` to be installed and the app tree
+    * to be wrapped in `<ObserveNavigationContainer>` instead of the stock
+@@ -186,6 +234,30 @@ export interface ObserveIntegrationsConfig {
+    * @default false
+    */
+   'react-native-reanimated'?: boolean | ObserveReanimatedIntegrationConfig;
++  /**
++   * Enables the `expo-updates` integration, which reports the errors in the `expo-updates` log to
++   * Observe as errors named `updates.error`. The message starts with the log entry's code, for
++   * example `UpdateFailedToLoad: ...`. The integration reports a JS error that `expo-updates` error
++   * recovery handled as `updates.error_recovery`.
++   * To also report warnings as events named `updates.warning`, set `reportWarnings`.
++   *
++   * The integration reads the `expo-updates` log when `configure` runs, and reports the entries
++   * written since the last report, up to one day back. So it reports errors from an earlier launch,
++   * such as a crash that error recovery handled, on the next launch. After that, it reports each
++   * new entry when `expo-updates` logs it. A reported error gets the current session and time, not
++   * the time of the log entry.
++   *
++   * The integration reports each distinct message at most once every 15 minutes. It reports at most
++   * 20 distinct errors and 20 distinct warnings in any 15-minute period. JS errors that error
++   * recovery handled skip `ignoredCodes` and `shouldReport`, and have their own limit of 20
++   * distinct messages. The limits reset when the app restarts.
++   *
++   * The integration lives in `expo-updates`, which registers it when the app imports
++   * `expo-updates`. Requires `expo-updates` 58.1.0 or later.
++   *
++   * @default false
++   */
++  'expo-updates'?: boolean | ObserveExpoUpdatesIntegrationConfig;
+ }
+ 
+ export type ObserveReanimatedIntegrationConfig = {
+@@ -212,6 +284,189 @@ export type ObserveReanimatedIntegrationConfig = {
+   reportWarnings?: boolean;
+ };
+ 
++/**
++ * The code of an `expo-updates` log entry. The same values as `UpdatesLogEntryCode` in
++ * `expo-updates`.
++ */
++export type ObserveExpoUpdatesLogEntryCode =
++  | 'None'
++  | 'NoUpdatesAvailable'
++  | 'UpdateAssetsNotAvailable'
++  | 'UpdateServerUnreachable'
++  | 'UpdateHasInvalidSignature'
++  | 'UpdateCodeSigningError'
++  | 'UpdateFailedToLoad'
++  | 'AssetsFailedToLoad'
++  | 'JSRuntimeError'
++  | 'InitializationError'
++  | 'Unknown';
++
++/**
++ * An `expo-updates` log entry, as `readLogEntriesAsync` in `expo-updates` returns it.
++ */
++export type ObserveExpoUpdatesLogEntry = {
++  /**
++   * The time the entry was written, in milliseconds since Jan 1 1970 UTC.
++   */
++  timestamp: number;
++  message: string;
++  code: ObserveExpoUpdatesLogEntryCode;
++  level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
++  updateId?: string;
++  assetId?: string;
++  /**
++   * A native Android or iOS stack trace.
++   */
++  stacktrace?: string[];
++  /**
++   * The key of the event that a warning or error entry logs, such as `remote.assetDownloadFailed`.
++   * The key stays the same when the text of the message changes, so `shouldReport` can match on
++   * it. The same values as `UpdatesLogMessageKey` in `expo-updates`.
++   */
++  key?: string;
++  /**
++   * The values that fill the message template of the key, such as `cause` or `assetKey`.
++   */
++  values?: Record<string, string>;
++};
++
++export type ObserveExpoUpdatesIntegrationConfig = {
++  /**
++   * Whether the integration also reports `expo-updates` warnings to Observe, as events named
++   * `updates.warning`.
++   *
++   * @default false
++   */
++  reportWarnings?: boolean;
++  /**
++   * Log entry codes that the integration does not report. For example, `expo-updates` logs a
++   * network error with the `UpdateServerUnreachable` code. This option does not apply to JS errors
++   * that error recovery handled.
++   *
++   * @default []
++   */
++  ignoredCodes?: ObserveExpoUpdatesLogEntryCode[];
++  /**
++   * A function that decides whether the integration reports a log entry. Return `false` to skip
++   * the entry, for example by its `key`. It runs after `ignoredCodes`, and it does not run for JS
++   * errors that error recovery handled. If the function throws, the integration reports the entry.
++   * The function runs only in JS, so `getIntegrations()`, `registerIntegration` and the
++   * `configure` event do not include it.
++   */
++  shouldReport?: (entry: ObserveExpoUpdatesLogEntry) => boolean;
++};
++
++/**
++ * Options that a library integration with error codes accepts in its config, so that every
++ * integration filters reports the same way. A library adds them to its config type, with `T` the
++ * value that its `shouldReport` gets.
++ */
++export type ObserveIntegrationFilterConfig<T = unknown> = {
++  /**
++   * Codes that are not reported.
++   *
++   * @default []
++   */
++  ignoredCodes?: string[];
++  /**
++   * Returns whether a report is sent. It runs after `ignoredCodes`, and it gets the value that the
++   * integration documents, such as the log entry the report comes from. When it throws, the report
++   * is sent and a warning is printed once.
++   */
++  shouldReport?: (value: T) => boolean;
++};
++
++/**
++ * An error that a library integration reports.
++ */
++export type ObserveIntegrationErrorReport = {
++  /** The error type, such as `updates.error`. Errors are grouped by type and message. */
++  type: string;
++  message: string;
++  stack?: string;
++  /** A stable code for the kind of error, recorded as the `expo.error.code` attribute. */
++  code?: string;
++};
++
++/**
++ * A warning that a library integration reports, recorded as an event at `warn` severity.
++ */
++export type ObserveIntegrationWarningReport = {
++  /** The event name, such as `updates.warning`. */
++  name: string;
++  displayName?: string;
++  message: string;
++  /** Recorded as the `code` attribute. */
++  code?: string;
++  attributes?: ObserveAttributes;
++};
++
++export type ObserveIntegrationReportOptions = {
++  /** The value passed to `shouldReport`. Defaults to the report itself. */
++  filterValue?: unknown;
++  /** Sends the report without applying `ignoredCodes` and `shouldReport`. */
++  skipFilter?: boolean;
++  /**
++   * The rate limit the report counts toward. Each limit allows a distinct message at most once in
++   * 15 minutes, and at most 20 distinct messages in 15 minutes. Defaults to `error` for errors and
++   * `warning` for warnings, so many warnings cannot stop errors from being reported.
++   */
++  limit?: string;
++};
++
++/**
++ * Strings that a library integration keeps across launches, such as how far it has read a log.
++ * Each integration has its own keys. On web, nothing is stored and `getItem` resolves to `null`.
++ */
++export type ObserveIntegrationStorage = {
++  getItem(key: string): Promise<string | null>;
++  /** Stores the value, or removes it when the value is `null`. */
++  setItem(key: string, value: string | null): Promise<void>;
++};
++
++/**
++ * Reports for a library integration. Each report sets the `integration` source, applies the
++ * integration's `ignoredCodes` and `shouldReport` options, and then the rate limit. Each function
++ * returns whether the report was sent. Nothing is sent while the integration is disabled.
++ */
++export type ObserveIntegrationReporter = {
++  storage: ObserveIntegrationStorage;
++  reportError(
++    report: ObserveIntegrationErrorReport,
++    options?: ObserveIntegrationReportOptions
++  ): boolean;
++  reportWarning(
++    report: ObserveIntegrationWarningReport,
++    options?: ObserveIntegrationReportOptions
++  ): boolean;
++};
++
++/**
++ * An integration that lives in another library.
++ */
++export type ObserveIntegration = {
++  /** The key of the integration in `Observe.configure({ integrations })`. */
++  name: string;
++  /**
++   * Runs on each `configure` call that enables the integration, with the original config value,
++   * functions included.
++   */
++  configure(config: unknown, reporter: ObserveIntegrationReporter): void;
++  /** Runs when a `configure` call turns off an integration that was enabled. */
++  disable?(): void;
++};
++
++/**
++ * The registry at `globalThis.__expo_observe_integrations__`. A library creates it as
++ * `{ integrations: [] }` when it is missing, pushes its integration, and calls `onRegister` when it
++ * is set.
++ */
++export type ObserveIntegrationRegistry = {
++  integrations: ObserveIntegration[];
++  /** Set by `expo-observe` after the first `configure` call. */
++  onRegister?: (integration: ObserveIntegration) => void;
++};
++
+ /**
+  * Events emitted by the native `ExpoObserve` module.
+  */
+@@ -225,15 +480,15 @@ export type ObserveModuleEvents = {
+ 
+ export declare class ObserveModule extends NativeModule<ObserveModuleEvents> {
+   /**
+-   * The EAS client id: a random, pseudonymous identifier for this app installation, shared by all
+-   * EAS client libraries. Observe records it on every metric and log event as the
++   * The Expo Services client id: a random, pseudonymous identifier for this app installation, shared by all
++   * Expo Services client libraries. Observe records it on every metric and log event as the
+    * `expo.eas_client.id` attribute, so use it to correlate Observe data with another service.
+    *
+    * The id is stored in native preferences and is stable across app launches and app updates. It
+    * changes when the app's data is cleared or the app is reinstalled, although a backup restore
+    * can carry the previous id over. It identifies an installation, not a user or a device.
+    *
+-   * `null` on web, where there is no EAS client id.
++   * `null` on web, where there is no Expo Services client id.
+    *
+    * @example
+    * ```ts
