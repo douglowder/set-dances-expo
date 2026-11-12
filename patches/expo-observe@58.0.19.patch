@@ -506,10 +506,10 @@ index 0000000000000000000000000000000000000000..2311b29044f59de87e75a8d13985a501
 +export declare function configureRegisteredIntegrations(integrations: ObserveIntegrationsConfig, store?: IntegrationValueStore | null): void;
 diff --git abuild/integrations/registry.js b/build/integrations/registry.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..bd41fe5e9764b1dd5dd0a678f564d6d205c35b5e
+index 0000000000000000000000000000000000000000..90eb602e3e5f0cbfcf1fcb8cddbc80245f42e2c5
 --- /dev/null
 +++ b/build/integrations/registry.js
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,193 @@
 +import AppMetrics from 'expo-app-metrics';
 +import { reportCaughtError } from '../reportCaughtError';
 +import { createReportLimiter } from './reportLimiter';
@@ -539,6 +539,15 @@ index 0000000000000000000000000000000000000000..bd41fe5e9764b1dd5dd0a678f564d6d2
 +    registry.integrations.push(integration);
 +    registry.onRegister?.(integration);
 +}
++// Library integrations that register through the registry, by config key, with the package that
++// registers each one when the app imports it.
++const LIBRARY_INTEGRATION_PACKAGES = {
++    'expo-updates': 'expo-updates'
++};
++// A library can register after `configure`, for example when a screen that imports it loads, so
++// the warning about a missing integration waits this long.
++const UNREGISTERED_WARNING_DELAY_MS = 5000;
++const warnedUnregistered = new Set();
 +// Only one `expo-observe` copy configures the registry, so this state is per module instance.
 +const active = new Map();
 +let latestIntegrations = null;
@@ -676,16 +685,31 @@ index 0000000000000000000000000000000000000000..bd41fe5e9764b1dd5dd0a678f564d6d2
 +    for (const integration of registry.integrations){
 +        apply(activate(integration), integrations);
 +    }
++    setTimeout(warnAboutUnregisteredIntegrations, UNREGISTERED_WARNING_DELAY_MS);
++}
++/**
++ * Warns once for each enabled library integration whose package has not registered it, which
++ * happens when the app never imports the package.
++ */ function warnAboutUnregisteredIntegrations() {
++    const registered = new Set(getIntegrationRegistry().integrations.map(({ name })=>name));
++    for (const [name, packageName] of Object.entries(LIBRARY_INTEGRATION_PACKAGES)){
++        const enabled = !!latestIntegrations?.[name];
++        if (!enabled || registered.has(name) || warnedUnregistered.has(name)) {
++            continue;
++        }
++        warnedUnregistered.add(name);
++        console.warn(`[expo-observe] \`integrations: { '${name}': ... }\` was set, but \`${packageName}\` has not ` + `registered its integration. Import \`${packageName}\` in your app, for example in the root ` + 'layout. The integration will not initialize.');
++    }
 +}
 +
 +//# sourceMappingURL=registry.js.map
 diff --git abuild/integrations/registry.js.map b/build/integrations/registry.js.map
 new file mode 100644
-index 0000000000000000000000000000000000000000..9a6da0194d08a0cf4743ac50d4fe7339c8c7d227
+index 0000000000000000000000000000000000000000..226d62eda89872d043c07c804569d4e85fb595d4
 --- /dev/null
 +++ b/build/integrations/registry.js.map
 @@ -0,0 +1 @@
-+{"version":3,"sources":["integrations/registry.ts"],"sourcesContent":[null],"names":["AppMetrics","reportCaughtError","createReportLimiter","OBSERVE_INTEGRATION_REGISTRY_KEY","getIntegrationRegistry","global","globalThis","integrations","registerObserveIntegration","integration","registry","push","onRegister","active","Map","latestIntegrations","valueStore","createStorage","name","getItem","key","getIntegrationValue","setItem","value","setIntegrationValue","filterConfigOf","config","createReporter","getConfig","limiters","hasWarnedAboutShouldReport","limiterFor","limiter","get","set","passesFilter","code","defaultValue","options","skipFilter","ignoredCodes","shouldReport","undefined","includes","filterValue","error","console","warn","String","storage","reportError","report","limit","allow","message","Error","type","stack","reportWarning","cappedMessage","logEvent","displayName","body","severity","attributes","apply","entry","wasEnabled","callSafely","configure","reporter","disable","hook","call","activate","created","configureRegisteredIntegrations","store"],"mappings":"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"}
++{"version":3,"sources":["integrations/registry.ts"],"sourcesContent":[null],"names":["AppMetrics","reportCaughtError","createReportLimiter","OBSERVE_INTEGRATION_REGISTRY_KEY","getIntegrationRegistry","global","globalThis","integrations","registerObserveIntegration","integration","registry","push","onRegister","LIBRARY_INTEGRATION_PACKAGES","UNREGISTERED_WARNING_DELAY_MS","warnedUnregistered","Set","active","Map","latestIntegrations","valueStore","createStorage","name","getItem","key","getIntegrationValue","setItem","value","setIntegrationValue","filterConfigOf","config","createReporter","getConfig","limiters","hasWarnedAboutShouldReport","limiterFor","limiter","get","set","passesFilter","code","defaultValue","options","skipFilter","ignoredCodes","shouldReport","undefined","includes","filterValue","error","console","warn","String","storage","reportError","report","limit","allow","message","Error","type","stack","reportWarning","cappedMessage","logEvent","displayName","body","severity","attributes","apply","entry","wasEnabled","callSafely","configure","reporter","disable","hook","call","activate","created","configureRegisteredIntegrations","store","setTimeout","warnAboutUnregisteredIntegrations","registered","map","packageName","Object","entries","enabled","has","add"],"mappings":"AAAA,OAAOA,gBAAgB,mBAAmB;AAE1C,SAASC,iBAAiB,QAAQ,uBAAuB;AAYzD,SAASC,mBAAmB,QAA4B,kBAAkB;AAE1E;;;;CAIC,GACD,OAAO,MAAMC,mCAAmC,gCAAgC;AAahF;;CAEC,GACD,OAAO,SAASC;IACd,MAAMC,SAASC;IACfD,MAAM,CAACF,iCAAiC,KAAK;QAAEI,cAAc,EAAE;IAAC;IAChE,OAAOF,MAAM,CAACF,iCAAiC;AACjD;AAEA;;;;;;;CAOC,GACD,OAAO,SAASK,2BAA2BC,WAA+B;IACxE,MAAMC,WAAWN;IACjBM,SAASH,YAAY,CAACI,IAAI,CAACF;IAC3BC,SAASE,UAAU,GAAGH;AACxB;AAUA,gGAAgG;AAChG,8CAA8C;AAC9C,MAAMI,+BAAiE;IACrE,gBAAgB;AAClB;AACA,gGAAgG;AAChG,2DAA2D;AAC3D,MAAMC,gCAAgC;AACtC,MAAMC,qBAAqB,IAAIC;AAE/B,8FAA8F;AAC9F,MAAMC,SAAS,IAAIC;AACnB,IAAIC,qBAAuD;AAC3D,IAAIC,aAA2C;AAE/C,SAASC,cAAcC,IAAY;IACjC,OAAO;QACL,MAAMC,SAAQC,GAAG;YACf,OAAOJ,aAAc,AAAC,MAAMA,WAAWK,mBAAmB,CAACH,MAAME,QAAS,OAAQ;QACpF;QACA,MAAME,SAAQF,GAAG,EAAEG,KAAK;YACtB,MAAMP,YAAYQ,oBAAoBN,MAAME,KAAKG;QACnD;IACF;AACF;AAEA,SAASE,eAAeC,MAAe;IACrC,OAAO,OAAOA,WAAW,YAAYA,WAAW,OAC3CA,SACD,CAAC;AACP;AAEA,SAASC,eAAeT,IAAY,EAAEU,SAAwB;IAC5D,MAAMC,WAAW,IAAIf;IACrB,IAAIgB,6BAA6B;IAEjC,SAASC,WAAWX,GAAW;QAC7B,IAAIY,UAAUH,SAASI,GAAG,CAACb;QAC3B,IAAI,CAACY,SAAS;YACZA,UAAUlC;YACV+B,SAASK,GAAG,CAACd,KAAKY;QACpB;QACA,OAAOA;IACT;IAEA,SAASG,aACPC,IAAwB,EACxBC,YAAqB,EACrBC,OAAoD;QAEpD,IAAIA,SAASC,YAAY;YACvB,OAAO;QACT;QACA,MAAM,EAAEC,YAAY,EAAEC,YAAY,EAAE,GAAGhB,eAAeG;QACtD,IAAIQ,SAASM,aAAaF,cAAcG,SAASP,OAAO;YACtD,OAAO;QACT;QACA,IAAI,OAAOK,iBAAiB,YAAY;YACtC,OAAO;QACT;QACA,IAAI;YACF,OAAOA,aAAaH,WAAW,iBAAiBA,UAAUA,QAAQM,WAAW,GAAGP;QAClF,EAAE,OAAOQ,OAAO;YACd,IAAI,CAACf,4BAA4B;gBAC/BA,6BAA6B;gBAC7BgB,QAAQC,IAAI,CACV,CAAC,oBAAoB,EAAE7B,KAAK,wDAAwD,CAAC,GACnF,oEACA,CAAC,OAAO,EAAE8B,OAAOH,QAAQ;YAE/B;YACA,OAAO;QACT;IACF;IAEA,OAAO;QACLI,SAAShC,cAAcC;QACvBgC,aAAYC,MAAqC,EAAEb,OAAyC;YAC1F,IAAIV,gBAAgBc,aAAa,CAACP,aAAagB,OAAOf,IAAI,EAAEe,QAAQb,UAAU;gBAC5E,OAAO;YACT;YACA,IAAIP,WAAWO,SAASc,SAAS,SAASC,KAAK,CAACF,OAAOG,OAAO,MAAM,MAAM;gBACxE,OAAO;YACT;YACA,MAAMT,QAAQ,IAAIU,MAAMJ,OAAOG,OAAO;YACtCT,MAAM3B,IAAI,GAAGiC,OAAOK,IAAI;YACxBX,MAAMY,KAAK,GAAGN,OAAOM,KAAK;YAC1B5D,kBAAkBgD,OAAO,eAAeM,OAAOf,IAAI;YACnD,OAAO;QACT;QACAsB,eACEP,MAAuC,EACvCb,OAAyC;YAEzC,IAAIV,gBAAgBc,aAAa,CAACP,aAAagB,OAAOf,IAAI,EAAEe,QAAQb,UAAU;gBAC5E,OAAO;YACT;YACA,MAAMqB,gBAAgB5B,WAAWO,SAASc,SAAS,WAAWC,KAAK,CAACF,OAAOG,OAAO;YAClF,IAAIK,kBAAkB,MAAM;gBAC1B,OAAO;YACT;YACA/D,WAAWgE,QAAQ,CAACT,OAAOjC,IAAI,EAAE;gBAC/B2C,aAAaV,OAAOU,WAAW;gBAC/BC,MAAMX,OAAOG,OAAO;gBACpBS,UAAU;gBACV,sFAAsF;gBACtF,4CAA4C;gBAC5CC,YAAY;oBACV,GAAGb,OAAOa,UAAU;oBACpBV,SAASK;oBACT,GAAIR,OAAOf,IAAI,KAAKM,YAAY;wBAAEN,MAAMe,OAAOf,IAAI;oBAAC,IAAI,CAAC,CAAC;gBAC5D;YACF;YACA,OAAO;QACT;IACF;AACF;AAEA,SAAS6B,MAAMC,KAAwB,EAAE/D,YAAuC;IAC9E,MAAMuB,SAAS,AAACvB,YAAwC,CAAC+D,MAAM7D,WAAW,CAACa,IAAI,CAAC;IAChF,MAAMiD,aAAaD,MAAMxC,MAAM,KAAKgB;IACpC,IAAIhB,QAAQ;QACVwC,MAAMxC,MAAM,GAAGA;QACf0C,WAAWF,MAAM7D,WAAW,EAAE,aAAa,IACzC6D,MAAM7D,WAAW,CAACgE,SAAS,CAAC3C,QAAQwC,MAAMI,QAAQ;IAEtD,OAAO,IAAIH,YAAY;QACrBD,MAAMxC,MAAM,GAAGgB;QACf0B,WAAWF,MAAM7D,WAAW,EAAE,WAAW,IAAM6D,MAAM7D,WAAW,CAACkE,OAAO;IAC1E;AACF;AAEA,SAASH,WAAW/D,WAA+B,EAAEmE,IAAY,EAAEC,IAAgB;IACjF,IAAI;QACFA;IACF,EAAE,OAAO5B,OAAO;QACdC,QAAQC,IAAI,CACV,CAAC,oBAAoB,EAAE1C,YAAYa,IAAI,CAAC,kBAAkB,EAAEsD,KAAK,UAAU,EAAExB,OAAOH,QAAQ;IAEhG;AACF;AAEA,SAAS6B,SAASrE,WAA+B;IAC/C,IAAI6D,QAAQrD,OAAOoB,GAAG,CAAC5B;IACvB,IAAI,CAAC6D,OAAO;QACV,MAAMS,UAA6B;YACjCtE;YACAqB,QAAQgB;YACR4B,UAAU3C,eAAetB,YAAYa,IAAI,EAAE,IAAMyD,QAAQjD,MAAM;QACjE;QACAb,OAAOqB,GAAG,CAAC7B,aAAasE;QACxBT,QAAQS;IACV;IACA,OAAOT;AACT;AAEA;;;;CAIC,GACD,OAAO,SAASU,gCACdzE,YAAuC,EACvC0E,QAAsC,IAAI;IAE1C9D,qBAAqBZ;IACrBa,aAAa6D;IACb,MAAMvE,WAAWN;IACjBM,SAASE,UAAU,GAAG,CAACH;QACrB,IAAIU,oBAAoB;YACtBkD,MAAMS,SAASrE,cAAcU;QAC/B;IACF;IACA,KAAK,MAAMV,eAAeC,SAASH,YAAY,CAAE;QAC/C8D,MAAMS,SAASrE,cAAcF;IAC/B;IACA2E,WAAWC,mCAAmCrE;AAChD;AAEA;;;CAGC,GACD,SAASqE;IACP,MAAMC,aAAa,IAAIpE,IAAIZ,yBAAyBG,YAAY,CAAC8E,GAAG,CAAC,CAAC,EAAE/D,IAAI,EAAE,GAAKA;IACnF,KAAK,MAAM,CAACA,MAAMgE,YAAY,IAAIC,OAAOC,OAAO,CAAC3E,8BAA+B;QAC9E,MAAM4E,UAAU,CAAC,CAAEtE,oBAAuD,CAACG,KAAK;QAChF,IAAI,CAACmE,WAAWL,WAAWM,GAAG,CAACpE,SAASP,mBAAmB2E,GAAG,CAACpE,OAAO;YACpE;QACF;QACAP,mBAAmB4E,GAAG,CAACrE;QACvB4B,QAAQC,IAAI,CACV,CAAC,kCAAkC,EAAE7B,KAAK,0BAA0B,EAAEgE,YAAY,WAAW,CAAC,GAC5F,CAAC,qCAAqC,EAAEA,YAAY,wCAAwC,CAAC,GAC7F;IAEN;AACF"}
 \ No newline at end of file
 diff --git abuild/integrations/reportLimiter.d.ts b/build/integrations/reportLimiter.d.ts
 new file mode 100644
@@ -1001,7 +1025,7 @@ index 4c620f71c1199718f81d98aab2ddd7d4126e7e9a..b2256aebd746a934207e5a7274429281
 +{"version":3,"sources":["reportCaughtError.ts"],"sourcesContent":[null],"names":["AppMetrics","stringOrUndefined","value","undefined","normalizeReportedError","error","Error","type","name","message","String","stacktrace","stack","reportCaughtError","source","code","reportError","isFatal","reportingError","__DEV__","console","warn"],"mappings":"AAAA,OAAOA,gBAAgB,mBAAmB;AAa1C,wGAAwG,GACxG,SAASC,kBAAkBC,KAAc;IACvC,OAAO,OAAOA,UAAU,WAAWA,QAAQC;AAC7C;AAEA;;;CAGC,GACD,SAASC,uBAAuBC,KAAc;IAC5C,iGAAiG;IACjG,mGAAmG;IACnG,yCAAyC;IACzC,IAAIA,iBAAiBC,OAAO;QAC1B,OAAO;YACLC,MAAMN,kBAAkBI,MAAMG,IAAI;YAClCC,SAASR,kBAAkBI,MAAMI,OAAO,KAAKC,OAAOL;YACpDM,YAAYV,kBAAkBI,MAAMO,KAAK;QAC3C;IACF;IACA,kGAAkG;IAClG,OAAO;QAAEH,SAASC,OAAOL;IAAO;AAClC;AAEA;;;;;;;;CAQC,GACD,OAAO,SAASQ,kBACdR,KAAc,EACdS,SAA2C,gBAAgB,EAC3DC,IAAa;IAEb,IAAI;QACFf,WAAWgB,WAAW,CAAC;YACrBF;YACA,GAAGV,uBAAuBC,MAAM;YAChC,GAAIU,SAASZ,YAAY;gBAAEY;YAAK,IAAI,CAAC,CAAC;YACtCE,SAAS;QACX;IACF,EAAE,OAAOC,gBAAgB;QACvB,IAAIC,SAAS;YACXC,QAAQC,IAAI,CAAC,4DAA4DH;QAC3E;IACF;AACF"}
 \ No newline at end of file
 diff --git a/build/types.d.ts b/build/types.d.ts
-index b96b92c88e4a12f1148767c83313909f89a7882d..15ee28e97107d836146c7a6a61abe3b183b8210d 100644
+index b96b92c88e4a12f1148767c83313909f89a7882d..ac401c781d6c3e5bbafd8b89a762b970347bab54 100644
 --- a/build/types.d.ts
 +++ b/build/types.d.ts
 @@ -11,6 +11,14 @@ export type ObserveAttribute = LogAttributeValue;
@@ -1070,7 +1094,7 @@ index b96b92c88e4a12f1148767c83313909f89a7882d..15ee28e97107d836146c7a6a61abe3b1
       *
       * Requires `@react-navigation/native` to be installed and the app tree
       * to be wrapped in `<ObserveNavigationContainer>` instead of the stock
-@@ -175,6 +205,30 @@ export interface ObserveIntegrationsConfig {
+@@ -175,6 +205,31 @@ export interface ObserveIntegrationsConfig {
       * @default false
       */
      'react-native-reanimated'?: boolean | ObserveReanimatedIntegrationConfig;
@@ -1093,7 +1117,8 @@ index b96b92c88e4a12f1148767c83313909f89a7882d..15ee28e97107d836146c7a6a61abe3b1
 +     * distinct messages. The limits reset when the app restarts.
 +     *
 +     * The integration lives in `expo-updates`, which registers it when the app imports
-+     * `expo-updates`. Requires `expo-updates` 58.1.0 or later.
++     * `expo-updates`. If it has not registered 5 seconds after `configure`, a warning is printed.
++     * Requires `expo-updates` 58.1.0 or later.
 +     *
 +     * @default false
 +     */
@@ -1101,7 +1126,7 @@ index b96b92c88e4a12f1148767c83313909f89a7882d..15ee28e97107d836146c7a6a61abe3b1
  }
  export type ObserveReanimatedIntegrationConfig = {
      /**
-@@ -199,6 +253,161 @@ export type ObserveReanimatedIntegrationConfig = {
+@@ -199,6 +254,161 @@ export type ObserveReanimatedIntegrationConfig = {
       */
      reportWarnings?: boolean;
  };
@@ -1263,7 +1288,7 @@ index b96b92c88e4a12f1148767c83313909f89a7882d..15ee28e97107d836146c7a6a61abe3b1
  /**
   * Events emitted by the native `ExpoObserve` module.
   */
-@@ -213,15 +422,15 @@ export type ObserveModuleEvents = {
+@@ -213,15 +423,15 @@ export type ObserveModuleEvents = {
  };
  export declare class ObserveModule extends NativeModule<ObserveModuleEvents> {
      /**
@@ -1283,13 +1308,13 @@ index b96b92c88e4a12f1148767c83313909f89a7882d..15ee28e97107d836146c7a6a61abe3b1
       * @example
       * ```ts
 diff --git a/build/types.js.map b/build/types.js.map
-index 8b48e945783420f9f14e0fe3bf8bb70983b7e5c8..e65438f30a00966479f15def62a96ed77ef736e2 100644
+index 8b48e945783420f9f14e0fe3bf8bb70983b7e5c8..4877022b7ed863aeb5fa01711b934ecb39ee0bd8 100644
 --- a/build/types.js.map
 +++ b/build/types.js.map
 @@ -1 +1 @@
 -{"version":3,"sources":["types.ts"],"sourcesContent":[null],"names":[],"mappings":"AAiOA,WAwKC"}
 \ No newline at end of file
-+{"version":3,"sources":["types.ts"],"sourcesContent":[null],"names":[],"mappings":"AAgeA,WAwKC"}
++{"version":3,"sources":["types.ts"],"sourcesContent":[null],"names":[],"mappings":"AAieA,WAwKC"}
 \ No newline at end of file
 diff --git a/ios/Observability.swift b/ios/Observability.swift
 index dc54621bcde10bf14c24fe50bd2668c31bd6fa23..3ec3800a49979228505deb2d1a80677adf63874d 100644
@@ -2006,10 +2031,10 @@ index be7a049c36a05f7f320f1aa8e4c9d9dd82fc6bb5..fa7c01ae25daeaa9345b93cdf494a218
          session: mainSession,
 diff --git asrc/integrations/registry.ts b/src/integrations/registry.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..e2a52db7d8da8b957ff3107daa8e89dd3761b89f
+index 0000000000000000000000000000000000000000..94708a16cd839ac97184e829d120a18f10e0434e
 --- /dev/null
 +++ b/src/integrations/registry.ts
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,263 @@
 +import AppMetrics from 'expo-app-metrics';
 +
 +import { reportCaughtError } from '../reportCaughtError';
@@ -2074,6 +2099,16 @@ index 0000000000000000000000000000000000000000..e2a52db7d8da8b957ff3107daa8e89dd
 +  getIntegrationValue(integration: string, key: string): Promise<string | null>;
 +  setIntegrationValue(integration: string, key: string, value: string | null): Promise<void>;
 +};
++
++// Library integrations that register through the registry, by config key, with the package that
++// registers each one when the app imports it.
++const LIBRARY_INTEGRATION_PACKAGES: Readonly<Record<string, string>> = {
++  'expo-updates': 'expo-updates',
++};
++// A library can register after `configure`, for example when a screen that imports it loads, so
++// the warning about a missing integration waits this long.
++const UNREGISTERED_WARNING_DELAY_MS = 5000;
++const warnedUnregistered = new Set<string>();
 +
 +// Only one `expo-observe` copy configures the registry, so this state is per module instance.
 +const active = new Map<ObserveIntegration, ActiveIntegration>();
@@ -2240,6 +2275,27 @@ index 0000000000000000000000000000000000000000..e2a52db7d8da8b957ff3107daa8e89dd
 +  };
 +  for (const integration of registry.integrations) {
 +    apply(activate(integration), integrations);
++  }
++  setTimeout(warnAboutUnregisteredIntegrations, UNREGISTERED_WARNING_DELAY_MS);
++}
++
++/**
++ * Warns once for each enabled library integration whose package has not registered it, which
++ * happens when the app never imports the package.
++ */
++function warnAboutUnregisteredIntegrations(): void {
++  const registered = new Set(getIntegrationRegistry().integrations.map(({ name }) => name));
++  for (const [name, packageName] of Object.entries(LIBRARY_INTEGRATION_PACKAGES)) {
++    const enabled = !!(latestIntegrations as Record<string, unknown> | null)?.[name];
++    if (!enabled || registered.has(name) || warnedUnregistered.has(name)) {
++      continue;
++    }
++    warnedUnregistered.add(name);
++    console.warn(
++      `[expo-observe] \`integrations: { '${name}': ... }\` was set, but \`${packageName}\` has not ` +
++        `registered its integration. Import \`${packageName}\` in your app, for example in the root ` +
++        'layout. The integration will not initialize.'
++    );
 +  }
 +}
 diff --git asrc/integrations/reportLimiter.ts b/src/integrations/reportLimiter.ts
@@ -2518,7 +2574,7 @@ index 2d304b19bb05a65dc643aa33de520cb8e0c547ef..b65d5634c58bbe70c8e3a3e8dddff1e0
      });
    } catch (reportingError) {
 diff --git a/src/types.ts b/src/types.ts
-index f6307c17b7607d9b1422cd111ce2c82c2a904f96..f5c43676d9a266227110c03d42e4f98e78319ae7 100644
+index f6307c17b7607d9b1422cd111ce2c82c2a904f96..05ddc9d73b7efe4418fa276d33b03b2e5a8e0ca4 100644
 --- a/src/types.ts
 +++ b/src/types.ts
 @@ -19,6 +19,32 @@ export type ObserveAttribute = LogAttributeValue;
@@ -2606,7 +2662,7 @@ index f6307c17b7607d9b1422cd111ce2c82c2a904f96..f5c43676d9a266227110c03d42e4f98e
     *
     * Requires `@react-navigation/native` to be installed and the app tree
     * to be wrapped in `<ObserveNavigationContainer>` instead of the stock
-@@ -186,6 +234,30 @@ export interface ObserveIntegrationsConfig {
+@@ -186,6 +234,31 @@ export interface ObserveIntegrationsConfig {
     * @default false
     */
    'react-native-reanimated'?: boolean | ObserveReanimatedIntegrationConfig;
@@ -2629,7 +2685,8 @@ index f6307c17b7607d9b1422cd111ce2c82c2a904f96..f5c43676d9a266227110c03d42e4f98e
 +   * distinct messages. The limits reset when the app restarts.
 +   *
 +   * The integration lives in `expo-updates`, which registers it when the app imports
-+   * `expo-updates`. Requires `expo-updates` 58.1.0 or later.
++   * `expo-updates`. If it has not registered 5 seconds after `configure`, a warning is printed.
++   * Requires `expo-updates` 58.1.0 or later.
 +   *
 +   * @default false
 +   */
@@ -2637,7 +2694,7 @@ index f6307c17b7607d9b1422cd111ce2c82c2a904f96..f5c43676d9a266227110c03d42e4f98e
  }
  
  export type ObserveReanimatedIntegrationConfig = {
-@@ -212,6 +284,189 @@ export type ObserveReanimatedIntegrationConfig = {
+@@ -212,6 +285,189 @@ export type ObserveReanimatedIntegrationConfig = {
    reportWarnings?: boolean;
  };
  
@@ -2827,7 +2884,7 @@ index f6307c17b7607d9b1422cd111ce2c82c2a904f96..f5c43676d9a266227110c03d42e4f98e
  /**
   * Events emitted by the native `ExpoObserve` module.
   */
-@@ -225,15 +480,15 @@ export type ObserveModuleEvents = {
+@@ -225,15 +481,15 @@ export type ObserveModuleEvents = {
  
  export declare class ObserveModule extends NativeModule<ObserveModuleEvents> {
    /**
