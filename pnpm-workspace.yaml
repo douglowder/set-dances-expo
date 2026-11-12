@@ -4,9 +4,3 @@ packages:
 allowBuilds:
   unrs-resolver: true
 nodeLinker: hoisted
-patchedDependencies:
-  expo-observe: patches/expo-observe.patch
-  expo-updates-interface: patches/expo-updates-interface.patch
-  expo-updates: patches/expo-updates.patch
-  expo-modules-core: patches/expo-modules-core.patch
-  expo: patches/expo.patch
