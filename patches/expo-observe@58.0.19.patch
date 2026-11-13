@@ -465,7 +465,7 @@ index 4970d222ee064897d116c0047d369508db6e7562..8dffbe8685cf2da9365a455839fbaec3
 \ No newline at end of file
 +{"version":3,"sources":["integrations/react-navigation/handleStateChange.ts"],"sourcesContent":[null],"names":["AppMetrics","getNavigationRouteParams","emitTTI","getPathname","getReactNavigationIntegrationConfig","collectMountedKeys","findFocusedLeaf","createStateChangeHandler","storage","appLaunchTime","previousFocusedKey","focusedKeys","Set","handleStateChange","state","blockingTime","now","performance","timestamp","Date","toISOString","mounted","focused","isInitial","renderedScreensIds","has","key","existingFocusedScreenTimes","screenTimes","hasPendingInteractive","lastInteractiveCall","dispatchTime","last","pendingActions","length","isColdAppLaunch","hasRecordedInitialTtr","effectiveDispatchTime","keys","add","isFirstFocus","pathname","route","name","navigationParams","params","mainSession","getMainSession","appLaunchTtrSeconds","addMetric","category","routeName","value","isAppLaunch","session","ttrSeconds","setMetric"],"mappings":"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"}
 \ No newline at end of file
-diff --git abuild/integrations/registry.d.ts b/build/integrations/registry.d.ts
+diff --git a/build/integrations/registry.d.ts b/build/integrations/registry.d.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..2311b29044f59de87e75a8d13985a501f7dcd2af
 --- /dev/null
@@ -504,7 +504,7 @@ index 0000000000000000000000000000000000000000..2311b29044f59de87e75a8d13985a501
 + * it, as on web, nothing is stored.
 + */
 +export declare function configureRegisteredIntegrations(integrations: ObserveIntegrationsConfig, store?: IntegrationValueStore | null): void;
-diff --git abuild/integrations/registry.js b/build/integrations/registry.js
+diff --git a/build/integrations/registry.js b/build/integrations/registry.js
 new file mode 100644
 index 0000000000000000000000000000000000000000..90eb602e3e5f0cbfcf1fcb8cddbc80245f42e2c5
 --- /dev/null
@@ -703,7 +703,7 @@ index 0000000000000000000000000000000000000000..90eb602e3e5f0cbfcf1fcb8cddbc8024
 +}
 +
 +//# sourceMappingURL=registry.js.map
-diff --git abuild/integrations/registry.js.map b/build/integrations/registry.js.map
+diff --git a/build/integrations/registry.js.map b/build/integrations/registry.js.map
 new file mode 100644
 index 0000000000000000000000000000000000000000..226d62eda89872d043c07c804569d4e85fb595d4
 --- /dev/null
@@ -711,7 +711,7 @@ index 0000000000000000000000000000000000000000..226d62eda89872d043c07c804569d4e8
 @@ -0,0 +1 @@
 +{"version":3,"sources":["integrations/registry.ts"],"sourcesContent":[null],"names":["AppMetrics","reportCaughtError","createReportLimiter","OBSERVE_INTEGRATION_REGISTRY_KEY","getIntegrationRegistry","global","globalThis","integrations","registerObserveIntegration","integration","registry","push","onRegister","LIBRARY_INTEGRATION_PACKAGES","UNREGISTERED_WARNING_DELAY_MS","warnedUnregistered","Set","active","Map","latestIntegrations","valueStore","createStorage","name","getItem","key","getIntegrationValue","setItem","value","setIntegrationValue","filterConfigOf","config","createReporter","getConfig","limiters","hasWarnedAboutShouldReport","limiterFor","limiter","get","set","passesFilter","code","defaultValue","options","skipFilter","ignoredCodes","shouldReport","undefined","includes","filterValue","error","console","warn","String","storage","reportError","report","limit","allow","message","Error","type","stack","reportWarning","cappedMessage","logEvent","displayName","body","severity","attributes","apply","entry","wasEnabled","callSafely","configure","reporter","disable","hook","call","activate","created","configureRegisteredIntegrations","store","setTimeout","warnAboutUnregisteredIntegrations","registered","map","packageName","Object","entries","enabled","has","add"],"mappings":"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"}
 \ No newline at end of file
-diff --git abuild/integrations/reportLimiter.d.ts b/build/integrations/reportLimiter.d.ts
+diff --git a/build/integrations/reportLimiter.d.ts b/build/integrations/reportLimiter.d.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..2276d25e3b193c1ba457a677b5b1439fbdaf5312
 --- /dev/null
@@ -729,7 +729,7 @@ index 0000000000000000000000000000000000000000..2276d25e3b193c1ba457a677b5b1439f
 +    allow(message: string): string | null;
 +}
 +export declare function createReportLimiter(): ReportLimiter;
-diff --git abuild/integrations/reportLimiter.js b/build/integrations/reportLimiter.js
+diff --git a/build/integrations/reportLimiter.js b/build/integrations/reportLimiter.js
 new file mode 100644
 index 0000000000000000000000000000000000000000..a9fae6ae81da8d9f668e4a7f8a4d0ec177cfdf6b
 --- /dev/null
@@ -772,7 +772,7 @@ index 0000000000000000000000000000000000000000..a9fae6ae81da8d9f668e4a7f8a4d0ec1
 +}
 +
 +//# sourceMappingURL=reportLimiter.js.map
-diff --git abuild/integrations/reportLimiter.js.map b/build/integrations/reportLimiter.js.map
+diff --git a/build/integrations/reportLimiter.js.map b/build/integrations/reportLimiter.js.map
 new file mode 100644
 index 0000000000000000000000000000000000000000..c4b4b07c1b8de5a18094d73d15c9dcf98ab48478
 --- /dev/null
@@ -780,7 +780,7 @@ index 0000000000000000000000000000000000000000..c4b4b07c1b8de5a18094d73d15c9dcf9
 @@ -0,0 +1 @@
 +{"version":3,"sources":["integrations/reportLimiter.ts"],"sourcesContent":[null],"names":["REPORT_WINDOW_MS","MAX_DISTINCT_MESSAGES_PER_WINDOW","MAX_MESSAGE_LENGTH","createReportLimiter","reported","Map","removeExpiredReports","now","message","reportedAt","delete","allow","cappedMessage","slice","performance","has","size","set"],"mappings":"AAAA,6FAA6F;AAC7F,6FAA6F;AAC7F,4DAA4D;AAC5D,MAAMA,mBAAmB,KAAK;AAC9B,MAAMC,mCAAmC;AACzC,gGAAgG;AAChG,+FAA+F;AAC/F,4BAA4B;AAC5B,MAAMC,qBAAqB;AAc3B,OAAO,SAASC;IACd,yFAAyF;IACzF,gGAAgG;IAChG,8FAA8F;IAC9F,MAAMC,WAAW,IAAIC;IAErB,SAASC,qBAAqBC,GAAW;QACvC,KAAK,MAAM,CAACC,SAASC,WAAW,IAAIL,SAAU;YAC5C,IAAIG,MAAME,aAAaT,kBAAkB;gBACvC;YACF;YACAI,SAASM,MAAM,CAACF;QAClB;IACF;IAEA,OAAO;QACLG,OAAMH,OAAO;YACX,MAAMI,gBAAgBJ,QAAQK,KAAK,CAAC,GAAGX;YACvC,MAAMK,MAAMO,YAAYP,GAAG;YAC3BD,qBAAqBC;YACrB,IAAIH,SAASW,GAAG,CAACH,kBAAkBR,SAASY,IAAI,IAAIf,kCAAkC;gBACpF,OAAO;YACT;YACAG,SAASa,GAAG,CAACL,eAAeL;YAC5B,OAAOK;QACT;IACF;AACF"}
 \ No newline at end of file
-diff --git abuild/integrations/shared/navigation/blockingTime.d.ts b/build/integrations/shared/navigation/blockingTime.d.ts
+diff --git a/build/integrations/shared/navigation/blockingTime.d.ts b/build/integrations/shared/navigation/blockingTime.d.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..d3c9ff036abfbda0ad989475fbfa26cafbb7cbda
 --- /dev/null
@@ -795,7 +795,7 @@ index 0000000000000000000000000000000000000000..d3c9ff036abfbda0ad989475fbfa26ca
 +    dispose(): void;
 +} | undefined;
 +export {};
-diff --git abuild/integrations/shared/navigation/blockingTime.js b/build/integrations/shared/navigation/blockingTime.js
+diff --git a/build/integrations/shared/navigation/blockingTime.js b/build/integrations/shared/navigation/blockingTime.js
 new file mode 100644
 index 0000000000000000000000000000000000000000..b3ed1e4d92c2c24b6631389e3851352f3e9fd922
 --- /dev/null
@@ -877,7 +877,7 @@ index 0000000000000000000000000000000000000000..b3ed1e4d92c2c24b6631389e3851352f
 +}
 +
 +//# sourceMappingURL=blockingTime.js.map
-diff --git abuild/integrations/shared/navigation/blockingTime.js.map b/build/integrations/shared/navigation/blockingTime.js.map
+diff --git a/build/integrations/shared/navigation/blockingTime.js.map b/build/integrations/shared/navigation/blockingTime.js.map
 new file mode 100644
 index 0000000000000000000000000000000000000000..7ece34dc3faff8c8e84e7321a7912f9d206b8906
 --- /dev/null
@@ -2029,7 +2029,7 @@ index be7a049c36a05f7f320f1aa8e4c9d9dd82fc6bb5..fa7c01ae25daeaa9345b93cdf494a218
      if (hasPendingInteractive) {
        await emitTTI({
          session: mainSession,
-diff --git asrc/integrations/registry.ts b/src/integrations/registry.ts
+diff --git a/src/integrations/registry.ts b/src/integrations/registry.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..94708a16cd839ac97184e829d120a18f10e0434e
 --- /dev/null
@@ -2298,7 +2298,7 @@ index 0000000000000000000000000000000000000000..94708a16cd839ac97184e829d120a18f
 +    );
 +  }
 +}
-diff --git asrc/integrations/reportLimiter.ts b/src/integrations/reportLimiter.ts
+diff --git a/src/integrations/reportLimiter.ts b/src/integrations/reportLimiter.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..131d02eab2363c3e15dbf86d7b6529e9fdc62c4c
 --- /dev/null
@@ -2354,7 +2354,7 @@ index 0000000000000000000000000000000000000000..131d02eab2363c3e15dbf86d7b6529e9
 +    },
 +  };
 +}
-diff --git asrc/integrations/shared/navigation/blockingTime.ts b/src/integrations/shared/navigation/blockingTime.ts
+diff --git a/src/integrations/shared/navigation/blockingTime.ts b/src/integrations/shared/navigation/blockingTime.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..d34db177d03d507ea1c2358441248db01e292715
 --- /dev/null

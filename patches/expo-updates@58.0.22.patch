@@ -662,7 +662,7 @@ index 73d19533d2f863d68ef2a041e9c8da29875e27ea..95fbd085282711a46b9e7ace2e42cffd
          null
        }
      }
-diff --git aandroid/src/main/java/expo/modules/updates/loader/AssetsFailedToLoadException.kt b/android/src/main/java/expo/modules/updates/loader/AssetsFailedToLoadException.kt
+diff --git a/android/src/main/java/expo/modules/updates/loader/AssetsFailedToLoadException.kt b/android/src/main/java/expo/modules/updates/loader/AssetsFailedToLoadException.kt
 new file mode 100644
 index 0000000000000000000000000000000000000000..40bccfeb135ae184a865bc1c6fab2abf90b9094b
 --- /dev/null
@@ -1497,7 +1497,7 @@ index 53d758ce02eacd576a4187e17f7056d4c8b36ef4..8f03abcf3772b697a02e9de1c9d1a800
          false
        }
      }
-diff --git aandroid/src/main/java/expo/modules/updates/logging/LoadFailures.kt b/android/src/main/java/expo/modules/updates/logging/LoadFailures.kt
+diff --git a/android/src/main/java/expo/modules/updates/logging/LoadFailures.kt b/android/src/main/java/expo/modules/updates/logging/LoadFailures.kt
 new file mode 100644
 index 0000000000000000000000000000000000000000..67c4cbfc0495d0bdc2b760bf8da6a6ffd30372b2
 --- /dev/null
@@ -1652,7 +1652,7 @@ index f756950a40a0ea6a6e05f740cb228fb5bd441fdf..590fcd0283f5de8e0f1dd10b2dde2273
            }
          )
        } catch (e: Exception) {
-diff --git aandroid/src/main/java/expo/modules/updates/logging/UpdatesLogEntryForwarder.kt b/android/src/main/java/expo/modules/updates/logging/UpdatesLogEntryForwarder.kt
+diff --git a/android/src/main/java/expo/modules/updates/logging/UpdatesLogEntryForwarder.kt b/android/src/main/java/expo/modules/updates/logging/UpdatesLogEntryForwarder.kt
 new file mode 100644
 index 0000000000000000000000000000000000000000..3d670f3e0b3f2a0bf58b69533220ebbd7cefe391
 --- /dev/null
@@ -2492,7 +2492,7 @@ index b3c86abe095532939c2333a1cb65beae4e51ca7a..4420b6ab6576860ceaf05faffeae6f97
 \ No newline at end of file
 +{"version":3,"sources":["index.ts"],"sourcesContent":[null],"names":["registerUpdatesObserveIntegration"],"mappings":"AAAA,SAASA,iCAAiC,QAAQ,qBAAqB;AAEvE,cAAc,YAAY;AAC1B,cAAc,mBAAmB;AACjC,cAAc,kBAAkB;AAChC,cAAc,eAAe;AAC7B,cAAc,qBAAqB;AACnC,cAAc,4BAA4B;AAE1CA"}
 \ No newline at end of file
-diff --git abuild/observe/integration.d.ts b/build/observe/integration.d.ts
+diff --git a/build/observe/integration.d.ts b/build/observe/integration.d.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..da84503c1baf6d62b07386002c8760dd4334d546
 --- /dev/null
@@ -2519,7 +2519,7 @@ index 0000000000000000000000000000000000000000..da84503c1baf6d62b07386002c8760dd
 +    /** The read of the entries written since the last report, while it runs. */
 +    readonly pendingRead: Promise<void> | null;
 +};
-diff --git abuild/observe/integration.js b/build/observe/integration.js
+diff --git a/build/observe/integration.js b/build/observe/integration.js
 new file mode 100644
 index 0000000000000000000000000000000000000000..4a7882bf763645d480a748348f1e504348083514
 --- /dev/null
@@ -2746,7 +2746,7 @@ index 0000000000000000000000000000000000000000..4a7882bf763645d480a748348f1e5043
 +}
 +
 +//# sourceMappingURL=integration.js.map
-diff --git abuild/observe/integration.js.map b/build/observe/integration.js.map
+diff --git a/build/observe/integration.js.map b/build/observe/integration.js.map
 new file mode 100644
 index 0000000000000000000000000000000000000000..c76b38e02b905b90bddeb6d6d3524690e43905a9
 --- /dev/null
@@ -2754,7 +2754,7 @@ index 0000000000000000000000000000000000000000..c76b38e02b905b90bddeb6d6d3524690
 @@ -0,0 +1 @@
 +{"version":3,"sources":["observe/integration.ts"],"sourcesContent":[null],"names":["ERROR_TYPE","ERROR_RECOVERY_TYPE","WARNING_EVENT","ERROR_RECOVERY_LIMIT","CURSOR_KEY","ERROR_RECOVERY_KEY","ERROR_RECOVERY_CRASH_KEY","MAX_LOOKBACK_MS","CURSOR_OVERLAP_MS","REPORTABLE_LEVELS","Set","MAX_HANDLED_KEYS","entryKey","entry","timestamp","code","message","keyTimestamp","key","Number","slice","indexOf","parseCursor","value","now","cursor","JSON","parse","Array","isArray","keys","lookbackFrom","lookback","Math","min","max","mergeCursors","a","b","filter","cursorFor","entries","map","has","level","reportEntry","reporter","reportWarnings","isError","reportError","type","skipFilter","limit","filterValue","reportWarning","name","displayName","attributes","logTimestamp","updateId","assetId","createExpoUpdatesObserveIntegration","log","subscription","cursorWrite","Promise","resolve","readInProgress","handledKeys","rememberHandled","add","size","delete","values","next","storeCursor","activeReporter","serialized","stringify","then","storage","setItem","catch","error","console","warn","String","handleEntries","newEntries","sort","length","readAndReport","Date","storedCursor","getItem","forEach","readLogEntriesAsync","pendingRead","configure","config","newReporter","options","addLogEntryListener","finally","disable","remove"],"mappings":"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"}
 \ No newline at end of file
-diff --git abuild/observe/register.d.ts b/build/observe/register.d.ts
+diff --git a/build/observe/register.d.ts b/build/observe/register.d.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..668d85ebf62f6f4e7e720ea1ddf8d0012488ede1
 --- /dev/null
@@ -2764,7 +2764,7 @@ index 0000000000000000000000000000000000000000..668d85ebf62f6f4e7e720ea1ddf8d001
 + * Adds the `expo-updates` integration to the `expo-observe` integration registry, once.
 + */
 +export declare function registerUpdatesObserveIntegration(): void;
-diff --git abuild/observe/register.js b/build/observe/register.js
+diff --git a/build/observe/register.js b/build/observe/register.js
 new file mode 100644
 index 0000000000000000000000000000000000000000..e3b5c75d4a6dbbd997e69492fbf447eed736b63c
 --- /dev/null
@@ -2795,7 +2795,7 @@ index 0000000000000000000000000000000000000000..e3b5c75d4a6dbbd997e69492fbf447ee
 +}
 +
 +//# sourceMappingURL=register.js.map
-diff --git abuild/observe/register.js.map b/build/observe/register.js.map
+diff --git a/build/observe/register.js.map b/build/observe/register.js.map
 new file mode 100644
 index 0000000000000000000000000000000000000000..edf46a00e6374b18c9c7428f43b1600efb7d6efd
 --- /dev/null
@@ -2803,7 +2803,7 @@ index 0000000000000000000000000000000000000000..edf46a00e6374b18c9c7428f43b1600e
 @@ -0,0 +1 @@
 +{"version":3,"sources":["observe/register.ts"],"sourcesContent":[null],"names":["addLogEntryListener","readLogEntriesAsync","createExpoUpdatesObserveIntegration","REGISTRY_KEY","registerUpdatesObserveIntegration","global","globalThis","integrations","registry","some","integration","name","push","onRegister"],"mappings":"AAAA,SAASA,mBAAmB,EAAEC,mBAAmB,QAAQ,aAAa;AACtE,SAASC,mCAAmC,QAAQ,gBAAgB;AAGpE,8FAA8F;AAC9F,wEAAwE;AACxE,MAAMC,eAAe;AAMrB;;CAEC,GACD,OAAO,SAASC;IACd,MAAMC,SAASC;IACfD,MAAM,CAACF,aAAa,KAAK;QAAEI,cAAc,EAAE;IAAC;IAC5C,MAAMC,WAAWH,MAAM,CAACF,aAAa;IACrC,IAAIK,SAASD,YAAY,CAACE,IAAI,CAAC,CAACC,cAAgBA,YAAYC,IAAI,KAAK,iBAAiB;QACpF;IACF;IACA,MAAMD,cAAkCR,oCAAoC;QAC1ED;QACAD;IACF;IACAQ,SAASD,YAAY,CAACK,IAAI,CAACF;IAC3BF,SAASK,UAAU,GAAGH;AACxB"}
 \ No newline at end of file
-diff --git abuild/observe/types.d.ts b/build/observe/types.d.ts
+diff --git a/build/observe/types.d.ts b/build/observe/types.d.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..afa855c66da7c99711f365008586b1ff521d4929
 --- /dev/null
@@ -2852,7 +2852,7 @@ index 0000000000000000000000000000000000000000..afa855c66da7c99711f365008586b1ff
 +    reportWarnings?: boolean;
 +    shouldReport?: (entry: UpdatesLogEntry) => boolean;
 +};
-diff --git abuild/observe/types.js b/build/observe/types.js
+diff --git a/build/observe/types.js b/build/observe/types.js
 new file mode 100644
 index 0000000000000000000000000000000000000000..71bb8a8aff16b815de16156f0a9679c8bfbfeadf
 --- /dev/null
@@ -2870,7 +2870,7 @@ index 0000000000000000000000000000000000000000..71bb8a8aff16b815de16156f0a9679c8
 + */ export { };
 +
 +//# sourceMappingURL=types.js.map
-diff --git abuild/observe/types.js.map b/build/observe/types.js.map
+diff --git a/build/observe/types.js.map b/build/observe/types.js.map
 new file mode 100644
 index 0000000000000000000000000000000000000000..2b0d275f9938064c3b56a6a10f14cc32de9029e2
 --- /dev/null
@@ -3583,7 +3583,7 @@ index e97ca5882da56f3d8cb530645a6fbd3cfe3b63eb..2b285c5e40cc64595e257bb32ea7ae4d
    public var headers: [String: Any]?
  
    /**
-diff --git aios/EXUpdates/BSPatch/bspatch.c b/ios/EXUpdates/BSPatch/bspatch.c
+diff --git a/ios/EXUpdates/BSPatch/bspatch.c b/ios/EXUpdates/BSPatch/bspatch.c
 new file mode 100644
 index 0000000000000000000000000000000000000000..d331e4d34302a612c680553ae4a026bcb1aa22a2
 --- /dev/null
@@ -4442,7 +4442,7 @@ index a9a576c36b49b5d85e5102aa8fa8f73388b50190..df47922dd406d68a738bac95b9a13744
      return result
    }
  
-diff --git aios/EXUpdates/Logging/UpdatesLogMessage+LoadFailure.swift b/ios/EXUpdates/Logging/UpdatesLogMessage+LoadFailure.swift
+diff --git a/ios/EXUpdates/Logging/UpdatesLogMessage+LoadFailure.swift b/ios/EXUpdates/Logging/UpdatesLogMessage+LoadFailure.swift
 new file mode 100644
 index 0000000000000000000000000000000000000000..41e479d6a20da4454d13d18d56639b5c1f9a160f
 --- /dev/null
@@ -5503,7 +5503,7 @@ index ca01fe4678976da5fd226f54f03ea9911008334d..e6a1a7f803a0539dc17e5f866d3b2c30
  export * from './ExpoUpdatesModule.types';
 +
 +registerUpdatesObserveIntegration();
-diff --git asrc/observe/integration.ts b/src/observe/integration.ts
+diff --git a/src/observe/integration.ts b/src/observe/integration.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..b0d2487b1231be3928014c9997a7ff6fa2800755
 --- /dev/null
@@ -5775,7 +5775,7 @@ index 0000000000000000000000000000000000000000..b0d2487b1231be3928014c9997a7ff6f
 +    },
 +  };
 +}
-diff --git asrc/observe/register.ts b/src/observe/register.ts
+diff --git a/src/observe/register.ts b/src/observe/register.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..fb5d0b06f64be0b1c14f058e1106b8bdc8845342
 --- /dev/null
@@ -5810,7 +5810,7 @@ index 0000000000000000000000000000000000000000..fb5d0b06f64be0b1c14f058e1106b8bd
 +  registry.integrations.push(integration);
 +  registry.onRegister?.(integration);
 +}
-diff --git asrc/observe/types.ts b/src/observe/types.ts
+diff --git a/src/observe/types.ts b/src/observe/types.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..555b2a970d2446c38471d8ffcec5812e1e0dfab6
 --- /dev/null

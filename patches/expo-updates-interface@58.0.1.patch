@@ -1,4 +1,4 @@
-diff --git aandroid/src/main/java/expo/modules/updatesinterface/UpdatesErrorCode.kt b/android/src/main/java/expo/modules/updatesinterface/UpdatesErrorCode.kt
+diff --git a/android/src/main/java/expo/modules/updatesinterface/UpdatesErrorCode.kt b/android/src/main/java/expo/modules/updatesinterface/UpdatesErrorCode.kt
 new file mode 100644
 index 0000000000000000000000000000000000000000..ab2d068a7475c900a8f12885e4144fb5673c7be6
 --- /dev/null
@@ -22,7 +22,7 @@ index 0000000000000000000000000000000000000000..ab2d068a7475c900a8f12885e4144fb5
 +  InitializationError("InitializationError"),
 +  Unknown("Unknown")
 +}
-diff --git aandroid/src/main/java/expo/modules/updatesinterface/UpdatesLogEntryListenerRegistry.kt b/android/src/main/java/expo/modules/updatesinterface/UpdatesLogEntryListenerRegistry.kt
+diff --git a/android/src/main/java/expo/modules/updatesinterface/UpdatesLogEntryListenerRegistry.kt b/android/src/main/java/expo/modules/updatesinterface/UpdatesLogEntryListenerRegistry.kt
 new file mode 100644
 index 0000000000000000000000000000000000000000..e3e0b52b8bb8da1ceb72e35e1f2318db9fbd07ae
 --- /dev/null
@@ -78,7 +78,7 @@ index 0000000000000000000000000000000000000000..e3e0b52b8bb8da1ceb72e35e1f2318db
 +    }
 +  }
 +}
-diff --git aandroid/src/main/java/expo/modules/updatesinterface/UpdatesLogMessage.kt b/android/src/main/java/expo/modules/updatesinterface/UpdatesLogMessage.kt
+diff --git a/android/src/main/java/expo/modules/updatesinterface/UpdatesLogMessage.kt b/android/src/main/java/expo/modules/updatesinterface/UpdatesLogMessage.kt
 new file mode 100644
 index 0000000000000000000000000000000000000000..c0a0e582c2bfdcf1b0beed3d017e51978538395e
 --- /dev/null
@@ -397,7 +397,7 @@ index 0000000000000000000000000000000000000000..c0a0e582c2bfdcf1b0beed3d017e5197
 +    UpdatesErrorCode.None
 +  )
 +}
-diff --git aios/EXUpdatesInterface/UpdatesErrorCode.swift b/ios/EXUpdatesInterface/UpdatesErrorCode.swift
+diff --git a/ios/EXUpdatesInterface/UpdatesErrorCode.swift b/ios/EXUpdatesInterface/UpdatesErrorCode.swift
 new file mode 100644
 index 0000000000000000000000000000000000000000..30d812aa9be3fced329b6bad3cd37fbeacb294a6
 --- /dev/null
@@ -451,7 +451,7 @@ index 0000000000000000000000000000000000000000..30d812aa9be3fced329b6bad3cd37fbe
 +    }
 +  }
 +}
-diff --git aios/EXUpdatesInterface/UpdatesLogEntryListenerRegistry.swift b/ios/EXUpdatesInterface/UpdatesLogEntryListenerRegistry.swift
+diff --git a/ios/EXUpdatesInterface/UpdatesLogEntryListenerRegistry.swift b/ios/EXUpdatesInterface/UpdatesLogEntryListenerRegistry.swift
 new file mode 100644
 index 0000000000000000000000000000000000000000..8edf42cd1e4ac5aba5bad3ec4a0caca84e9662a6
 --- /dev/null
@@ -499,7 +499,7 @@ index 0000000000000000000000000000000000000000..8edf42cd1e4ac5aba5bad3ec4a0caca8
 +    }
 +  }
 +}
-diff --git aios/EXUpdatesInterface/UpdatesLogMessage.swift b/ios/EXUpdatesInterface/UpdatesLogMessage.swift
+diff --git a/ios/EXUpdatesInterface/UpdatesLogMessage.swift b/ios/EXUpdatesInterface/UpdatesLogMessage.swift
 new file mode 100644
 index 0000000000000000000000000000000000000000..bcaa0b01ef348a950e13809bf549b3b18ca53bae
 --- /dev/null
